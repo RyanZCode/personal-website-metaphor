@@ -1,0 +1,5 @@
+/* Cinzel — display font for menu items and headings */
+/* Weights used: 400 (regular), 700 (bold), 900 (black) */
+@import "@fontsource/cinzel/400.css";
+@import "@fontsource/cinzel/700.css";
+@import "@fontsource/cinzel/900.css";
