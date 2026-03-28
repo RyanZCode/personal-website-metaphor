@@ -1,0 +1,70 @@
+.menu-root {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+
+/* menu-root is already fixed+inset:0, so children use position:absolute
+   and are positioned relative to the full viewport */
+
+.menu-left {
+  position: absolute;
+  left: 30vh;
+  top: 0vh;
+  height: 70vh;
+  width: 58%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  z-index: 5;
+}
+
+.menu-splash-wrap {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.menu-stack {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: flex-start;
+  z-index: 2;
+  flex: 1;
+}
+
+/* Both the index number and COMMAND label are vertical,
+   grouped together in the top-right corner */
+.menu-top-right {
+  position: absolute;
+  top: 4vh;
+  right: 1.5vw;
+  z-index: 10;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 0.4rem;
+  pointer-events: none;
+}
+
+.stats-label {
+  font-family: "Cinzel", serif;
+  font-size: 0.55rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(200, 180, 190, 0.5);
+  display: block;
+  margin-bottom: 0.15rem;
+}
+
+.stats-value {
+  font-family: "Cinzel", serif;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--text-primary);
+  display: block;
+}

@@ -1,4 +1,7 @@
 ---
+import '../styles/global.css';
+import '../styles/menu.css';
+
 interface Props {
   title?: string;
   description?: string;
@@ -24,20 +27,11 @@ const {
 
     <title>{title}</title>
 
-    <!-- preload the hero image so it doesn't block the entry animation -->
     <link
       rel="preload"
       as="image"
-      href="/assets/dog.webp"
+      href="/assets/dog.png"
       fetchpriority="high"
-    />
-
-    <link
-      rel="preload"
-      as="font"
-      type="font/woff2"
-      href="/fonts/cinzel-700.woff2"
-      crossorigin="anonymous"
     />
   </head>
 
@@ -46,7 +40,3 @@ const {
   </body>
 </html>
 
-<style is:global>
-  @import '../styles/global.css';
-  @import '../styles/menu.css';
-</style>

@@ -1,0 +1,116 @@
+export interface MenuItemConfig {
+  id: string;
+  label: string;
+  index: string;
+  subtitle: string;
+  selectedSize: string;
+  marginBottom: string;
+  marginTop?: string;
+  accentH: number;
+  accentS: string;
+  accentL: string;
+  splashHeightVh: number;   // height of the paint splash as % of viewport height
+  splashWidthVh: number;    // total width of the splash element in vh (left edge stays fixed)
+  splashOffsetY: number;    // vertical fine-tune in vh (positive = down)
+  splashTipXPct: number;    // x% where the right edge comes to a point (default 60)
+  splashTaperYPct: number;  // y% inset of shoulder points from top/bottom - higher = sharper taper (default 12)
+}
+
+export const MENU_ITEMS: MenuItemConfig[] = [
+  {
+    id: 'about',
+    label: 'About',
+    index: '01',
+    subtitle: 'Gain Insight',
+    selectedSize: '24vh',
+    marginBottom: '-3vh',
+    accentH: 4,
+    accentS: '88%',
+    accentL: '45%',
+    splashHeightVh: 40,
+    splashWidthVh: 300,
+    splashOffsetY: 10.5,
+    splashTipXPct: 60,
+    splashTaperYPct: 12,
+  },
+  {
+    id: 'skills',
+    label: 'Skills',
+    index: '02',
+    subtitle: 'Wield Power',
+    selectedSize: '18vh',
+    marginBottom: '-1vh',
+    accentH: 335,
+    accentS: '75%',
+    accentL: '50%',
+    splashHeightVh: 36,
+    splashWidthVh: 250,
+    splashOffsetY: 4,
+    splashTipXPct: 60,
+    splashTaperYPct: 12,
+  },
+  {
+    id: 'experience',
+    label: 'Experience',
+    index: '03',
+    subtitle: 'Look Back',
+    selectedSize: '22vh',
+    marginBottom: '-3vh',
+    accentH: 215,
+    accentS: '72%',
+    accentL: '42%',
+    splashHeightVh: 40,
+    splashWidthVh: 310,
+    splashOffsetY: -1.5,
+    splashTipXPct: 60,
+    splashTaperYPct: 12,
+  },
+  {
+    id: 'contact',
+    label: 'Contact',
+    index: '04',
+    subtitle: 'Forge Bonds',
+    selectedSize: '18vh',
+    marginBottom: '1vh',
+    accentH: 25,
+    accentS: '80%',
+    accentL: '50%',
+    splashHeightVh: 32,
+    splashWidthVh: 300,
+    splashOffsetY: -8,
+    splashTipXPct: 60,
+    splashTaperYPct: 12,
+  },
+  {
+    id: 'memorandum',
+    label: 'Memorandum',
+    index: '05',
+    subtitle: 'Study Notes',
+    selectedSize: '18vh',
+    marginBottom: '-11vh',
+    accentH: 120,
+    accentS: '50%',
+    accentL: '40%',
+    splashHeightVh: 35,
+    splashWidthVh: 380,
+    splashOffsetY: -21.5,
+    splashTipXPct: 60,
+    splashTaperYPct: 12,
+  },
+  {
+    id: 'system',
+    label: 'System',
+    index: '06',
+    subtitle: 'Change The Site',
+    selectedSize: '17vh',
+    marginBottom: '0',
+    accentH: 175,
+    accentS: '55%',
+    accentL: '45%',
+    splashHeightVh: 30,
+    splashWidthVh: 300,
+    splashOffsetY: -14,
+    splashTipXPct: 60,
+    splashTaperYPct: 12,
+  },
+];
