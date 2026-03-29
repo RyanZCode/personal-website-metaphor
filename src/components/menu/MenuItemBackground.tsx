@@ -9,9 +9,10 @@ import ContactRings   from './splashEffects/ContactRings';
 import MemorandumTrapezoids from './splashEffects/MemorandumTrapezoids';
 import SystemGlitch   from './splashEffects/SystemGlitch';
 
-interface PaintSplashProps {
+interface MenuItemBackgroundProps {
   itemRefs: React.RefObject<(HTMLDivElement | null)[]>;
   selectedIndex: number;
+  animationsEnabled: boolean;
   accentH: number;
   accentS: string;
   accentL: string;
@@ -32,10 +33,7 @@ interface SplashPos {
 
 const SPLASH_LEFT_VH = -17.78;
 
-
-
-
-export default function PaintSplash({ itemRefs, selectedIndex, accentH, accentS, accentL, splashHeightVh, splashWidthVh, splashOffsetY, splashTipXPct, splashTaperYPct }: PaintSplashProps) {
+export default function MenuItemBackground({ itemRefs, selectedIndex, animationsEnabled, accentH, accentS, accentL, splashHeightVh, splashWidthVh, splashOffsetY, splashTipXPct, splashTaperYPct }: MenuItemBackgroundProps) {
   const [pos, setPos] = useState<SplashPos | null>(null);
 
   // Layer refs
@@ -89,6 +87,7 @@ export default function PaintSplash({ itemRefs, selectedIndex, accentH, accentS,
 
   useGSAP(() => {
     if (!backRef.current || !frontRef.current || !effectsWrapRef.current || !effectsInnerRef.current) return;
+    if (!animationsEnabled) return;
 
     // --- Back layer: slow bloom ---
     gsap.to(backRef.current, {
@@ -131,7 +130,7 @@ export default function PaintSplash({ itemRefs, selectedIndex, accentH, accentS,
         duration: 1.8, ease: 'power1.inOut', transformOrigin: 'left center',
       }, '<');
 
-  }, { dependencies: [pos], revertOnUpdate: true });
+  }, { dependencies: [pos, animationsEnabled], revertOnUpdate: true });
 
   const ready = pos !== null;
 
@@ -171,12 +170,12 @@ export default function PaintSplash({ itemRefs, selectedIndex, accentH, accentS,
         style={{ position: 'absolute', inset: 0, clipPath, pointerEvents: 'none', transformOrigin: 'left center' }}
       >
         <div ref={effectsInnerRef} style={{ position: 'absolute', inset: 0, transformOrigin: 'left center' }}>
-          <AboutTriangles isActive={selectedIndex === 0} />
-          <SkillsBands isActive={selectedIndex === 1} />
-          <ExperienceRipples isActive={selectedIndex === 2} />
-          <ContactRings isActive={selectedIndex === 3} />
-          <MemorandumTrapezoids isActive={selectedIndex === 4} />
-          <SystemGlitch isActive={selectedIndex === 5} />
+          <AboutTriangles isActive={selectedIndex === 0} animationsEnabled={animationsEnabled} />
+          <SkillsBands isActive={selectedIndex === 1} animationsEnabled={animationsEnabled} />
+          <ExperienceRipples isActive={selectedIndex === 2} animationsEnabled={animationsEnabled} />
+          <ContactRings isActive={selectedIndex === 3} animationsEnabled={animationsEnabled} />
+          <MemorandumTrapezoids isActive={selectedIndex === 4} animationsEnabled={animationsEnabled} />
+          <SystemGlitch isActive={selectedIndex === 5} animationsEnabled={animationsEnabled} />
         </div>
       </div>
 

@@ -1,3 +1,5 @@
+import { COLORS } from '../../lib/constants';
+
 export default function StatsPanel() {
   return (
     <div
@@ -5,7 +7,7 @@ export default function StatsPanel() {
       style={{
         // Extends ~4rem past the right viewport edge - viewport clips it naturally
         marginRight: '-4rem',
-        background: '#fff',
+        background: COLORS.chipBg,
         // Trapezoid: left side angled, right side straight (disappears off screen)
         clipPath: 'polygon(3rem 0%, 100% 0%, 100% 100%, 0% 100%)',
         padding: '0.8rem 7rem 0.5rem 5rem',
@@ -27,14 +29,14 @@ export default function StatsPanel() {
           letterSpacing: '-0.05em',
           fontWeight: 700,
           textTransform: 'uppercase',
-          color: 'rgba(0, 0, 0, 0.45)',
+          color: COLORS.chipTextSub,
         }}>
           Name
         </span>
         <span style={{
           gridColumn: 1, gridRow: 2,
           fontSize: '1.6rem',
-          color: 'rgba(0, 0, 0, 0.45)',
+          color: COLORS.chipTextSub,
           lineHeight: 1,
           textAlign: 'center',
           alignSelf: 'center',
@@ -48,7 +50,7 @@ export default function StatsPanel() {
           fontSize: '2rem',
           fontWeight: 900,
           letterSpacing: '0.1em',
-          color: 'rgba(0, 0, 0, 0.85)',
+          color: COLORS.chipTextStrong,
         }}>
           Ryan Zhou
         </span>
@@ -58,7 +60,7 @@ export default function StatsPanel() {
         fontFamily: '"Cinzel", serif',
         fontSize: '0.8rem',
         letterSpacing: '0.08em',
-        color: 'rgba(0, 0, 0, 0.35)',
+        color: COLORS.chipTextFaint,
         textTransform: 'uppercase',
         display: 'block',
       }}>

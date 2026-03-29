@@ -1,7 +1,14 @@
-export default function CharacterPortrait() {
+import { COLORS } from '../../lib/constants';
+
+interface Props { animationsEnabled: boolean; }
+
+export default function CharacterPortrait({ animationsEnabled }: Props) {
+  const bobAnim  = animationsEnabled ? 'portrait-bob 4s ease-in-out infinite' : 'none';
+  const glowAnim = animationsEnabled ? 'portrait-glow 3s ease-in-out infinite' : 'none';
   return (
     <div
       style={{
+        animation: bobAnim,
         position: 'absolute',
         left: '28%',
         right: 0,
@@ -22,6 +29,15 @@ export default function CharacterPortrait() {
         maskComposite: 'intersect',
       }}
     >
+      {/* purple gradient behind the portrait */}
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          background: `radial-gradient(ellipse 45% 50% at 50% 50%, ${COLORS.portraitGlow} 0%, transparent 100%)`,
+          animation: glowAnim,
+        }}
+      />
 
       <img
         src="/assets/dog.png"

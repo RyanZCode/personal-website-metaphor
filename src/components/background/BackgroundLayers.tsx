@@ -1,3 +1,5 @@
+import { COLORS } from '../../lib/constants';
+
 export default function BackgroundLayers() {
   return (
     <div
@@ -15,7 +17,7 @@ export default function BackgroundLayers() {
           position: 'absolute',
           inset: 0,
           background:
-            'radial-gradient(ellipse 110% 90% at 36% 52%, #2a7a72 0%, #0f4440 22%, #061e1c 45%, #020808 70%)',
+            `radial-gradient(ellipse 110% 90% at 36% 52%, ${COLORS.bgTealBright} 0%, ${COLORS.bgTealMid} 22%, ${COLORS.bgTealDeep} 45%, ${COLORS.bgVoid} 70%)`,
         }}
       />
 
@@ -25,7 +27,7 @@ export default function BackgroundLayers() {
           position: 'absolute',
           inset: 0,
           background:
-            'radial-gradient(ellipse 95% 150% at 105% 90%, rgba(140, 18, 26, 0.95) 0%, rgba(75, 10, 15, 0.65) 45%, transparent 82%)',
+            `radial-gradient(ellipse 95% 150% at 105% 90%, ${COLORS.bgCrimson} 0%, ${COLORS.bgCrimsonFade} 45%, transparent 82%)`,
         }}
       />
 

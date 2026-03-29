@@ -1,8 +1,9 @@
 import { useEffect, useRef } from 'react';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
+import { createAboutTrianglesTimelines } from '../../../lib/animations';
 
-interface Props { isActive: boolean; }
+interface Props { isActive: boolean; animationsEnabled: boolean; }
 
 const CLIPS = [
   'polygon(50% 0%, 0% 100%, 100% 100%)',
@@ -47,39 +48,25 @@ const TRIS: Array<[number, string, number, number, number, number, number, numbe
 
 const TRAVEL_VH = 240;
 
-export default function AboutTriangles({ isActive }: Props) {
+export default function AboutTriangles({ isActive, animationsEnabled }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const triRefs = useRef<(HTMLDivElement | null)[]>([]);
   const tlsRef = useRef<gsap.core.Animation[]>([]);
 
   useGSAP(() => {
-    tlsRef.current = [];
     const vh = window.innerHeight / 100;
-    const travelPx = TRAVEL_VH * vh;
-
-    triRefs.current.forEach((el, i) => {
-      if (!el) return;
-      const [,,,, maxOpacity, delay, duration] = TRIS[i];
-
-      gsap.set(el, { opacity: 0, x: 0, rotation: -45, transformOrigin: 'center center' });
-      const tl = gsap.timeline({ repeat: -1, delay, paused: true });
-
-      tl.to(el, { x: travelPx, duration, ease: 'none' })
-        .to(el, { opacity: maxOpacity, duration: 0.35, ease: 'power2.out' }, 0)
-        .to(el, { opacity: 0, duration: 0.5, ease: 'power1.in' }, duration - 0.5)
-        .set(el, { x: 0 });
-
-      tl.seek(Math.random() * tl.duration());
-      tlsRef.current.push(tl);
-    });
+    tlsRef.current = createAboutTrianglesTimelines(triRefs.current, TRIS, TRAVEL_VH * vh);
   }, { scope: containerRef });
 
   useEffect(() => {
     if (!containerRef.current) return;
     gsap.set(containerRef.current, { autoAlpha: isActive ? 1 : 0 });
-    if (isActive) tlsRef.current.forEach(t => t.resume());
+    const running = isActive && animationsEnabled;
+    const wc = running ? 'transform, opacity' : 'auto';
+    triRefs.current.forEach(el => { if (el) el.style.willChange = wc; });
+    if (running) tlsRef.current.forEach(t => t.resume());
     else tlsRef.current.forEach(t => t.pause());
-  }, [isActive]);
+  }, [isActive, animationsEnabled]);
 
   return (
     // No overflow:hidden - elements start to the left of the container (negative left);

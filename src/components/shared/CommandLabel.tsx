@@ -1,3 +1,5 @@
+import { COLORS } from '../../lib/constants';
+
 // Inside the "0" div in MenuIndex, which has writingMode: vertical-rl + rotate(180deg).
 // left: 25% ends up visually toward the right side of the "0" after the flip
 export default function CommandLabel() {
@@ -14,7 +16,7 @@ export default function CommandLabel() {
         fontWeight: 700,
         letterSpacing: '0.04em',
         textTransform: 'uppercase',
-        color: 'rgba(240, 232, 236, 1)',
+        color: COLORS.textPrimary,
         whiteSpace: 'nowrap',
         pointerEvents: 'none',
       }}

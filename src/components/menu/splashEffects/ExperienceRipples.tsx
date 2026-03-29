@@ -1,10 +1,11 @@
 import { useEffect, useRef } from 'react';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
+import { createExperienceRipplesTimelines, type RippleSlot } from '../../../lib/animations';
 
-interface Props { isActive: boolean; }
+interface Props { isActive: boolean; animationsEnabled: boolean; }
 
-const SLOTS = [
+const SLOTS: RippleSlot[] = [
   // Outward (expanding) - more of these
   { left: '21%', top: '31%', delay: 0,   inward: false },
   { left: '76%', top: '66%', delay: 1.8, inward: false },
@@ -21,58 +22,26 @@ const SLOTS = [
   { left: '40%', top: '43%', delay: 8.5, inward: true  },
 ];
 
-export default function ExperienceRipples({ isActive }: Props) {
+export default function ExperienceRipples({ isActive, animationsEnabled }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const dotRefs  = useRef<(HTMLDivElement | null)[]>([]);
   const ringRefs = useRef<(HTMLDivElement | null)[]>([]);
   const tlsRef = useRef<gsap.core.Animation[]>([]);
 
   useGSAP(() => {
-    tlsRef.current = [];
-
-    SLOTS.forEach((slot, i) => {
-      const dot  = dotRefs.current[i];
-      const ring = ringRefs.current[i];
-      if (!dot || !ring) return;
-
-      const tl = gsap.timeline({ repeat: -1, delay: slot.delay, paused: true });
-
-      if (slot.inward) {
-        gsap.set(dot,  { xPercent: -50, yPercent: -50, scale: 4.5, opacity: 0 });
-        gsap.set(ring, { xPercent: -50, yPercent: -50, scale: 10,  opacity: 0 });
-
-        tl.to(ring, { scale: 0, duration: 1.8, ease: 'power1.in' })
-          .to(ring, { opacity: 0.35, duration: 0.4, ease: 'power1.out' }, 0)
-          .to(ring, { opacity: 0,   duration: 0.6, ease: 'power1.in'  }, 1.2)
-          .to(dot,  { scale: 0, duration: 1.6, ease: 'power1.in' }, 0.1)
-          .to(dot,  { opacity: 0.35, duration: 0.3, ease: 'power1.out' }, 0.1)
-          .to(dot,  { opacity: 0,    duration: 0.5, ease: 'power1.in'  }, 1.1)
-          .to(dot,  { duration: 4.0 }); // long pause - inward fires much less often
-      } else {
-        gsap.set(dot,  { xPercent: -50, yPercent: -50, scale: 0, opacity: 0 });
-        gsap.set(ring, { xPercent: -50, yPercent: -50, scale: 0, opacity: 0 });
-
-        // Expand directly from scale 0 - no intermediate scale:1 step, so no spawn-wait stutter
-        tl.to(ring, { scale: 10,  duration: 2.4, ease: 'power1.out' })
-          .to(ring, { opacity: 0.32, duration: 0.3, ease: 'power2.out' }, 0)
-          .to(ring, { opacity: 0,   duration: 0.7, ease: 'power1.in'  }, 1.7)
-          .to(dot,  { scale: 5,  duration: 2.2, ease: 'power1.out' }, 0)
-          .to(dot,  { opacity: 0.38, duration: 0.25, ease: 'power2.out' }, 0)
-          .to(dot,  { opacity: 0,    duration: 0.6,  ease: 'power1.in'  }, 1.6)
-          .to(dot,  { duration: 2.5 }); // pause before next cycle
-      }
-
-      tl.seek(Math.random() * tl.duration());
-      tlsRef.current.push(tl);
-    });
+    tlsRef.current = createExperienceRipplesTimelines(dotRefs.current, ringRefs.current, SLOTS);
   }, { scope: containerRef });
 
   useEffect(() => {
     if (!containerRef.current) return;
     gsap.set(containerRef.current, { autoAlpha: isActive ? 1 : 0 });
-    if (isActive) tlsRef.current.forEach(t => t.resume());
+    const running = isActive && animationsEnabled;
+    const wc = running ? 'transform, opacity' : 'auto';
+    dotRefs.current.forEach(el => { if (el) el.style.willChange = wc; });
+    ringRefs.current.forEach(el => { if (el) el.style.willChange = wc; });
+    if (running) tlsRef.current.forEach(t => t.resume());
     else tlsRef.current.forEach(t => t.pause());
-  }, [isActive]);
+  }, [isActive, animationsEnabled]);
 
   return (
     <div ref={containerRef} style={{ position: 'absolute', inset: 0, overflow: 'hidden', opacity: 0 }}>

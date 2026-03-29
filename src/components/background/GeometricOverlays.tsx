@@ -1,4 +1,20 @@
-export default function GeometricOverlays() {
+import { COLORS } from '../../lib/constants';
+
+interface Props { animationsEnabled: boolean; }
+
+export default function GeometricOverlays({ animationsEnabled }: Props) {
+  // transform-box: fill-box + transform-origin: center makes each circle rotate
+  // around its own center regardless of viewport size, no pixel math needed.
+  // The existing "spin" keyframe (global.css) handles clockwise; spin-ccw handles counter.
+  const playState = animationsEnabled ? 'running' : 'paused';
+  const spinCw  = `spin 60s linear infinite ${playState}`;
+  const spinCcw = `spin-ccw 40s linear infinite ${playState}`;
+
+  const circleBase: React.CSSProperties = {
+    transformBox: 'fill-box',
+    transformOrigin: 'center',
+  };
+
   return (
     <>
       <div
@@ -11,44 +27,48 @@ export default function GeometricOverlays() {
         }}
         aria-hidden="true"
       >
-        <div
-          style={{
-            position: 'absolute',
-            left: 'calc(57% - 38vw)',
-            top: 'calc(50% - 38vw)',
-            width: '76vw',
-            height: '76vw',
-            borderRadius: '50%',
-            border: '1px solid rgba(240, 232, 236, 0.5)',
-          }}
-        />
-
-        <div
-          style={{
-            position: 'absolute',
-            left: 'calc(57% - 24vw)',
-            top: 'calc(50% - 24vw)',
-            width: '48vw',
-            height: '48vw',
-            borderRadius: '50%',
-            border: '1px solid rgba(240, 232, 236, 0.5)',
-          }}
-        />
-
         <svg
           style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
           aria-hidden="true"
         >
           <defs>
             <linearGradient id="h-line-fade" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="rgba(240, 232, 236, 0)" />
-              <stop offset="100%" stopColor="rgba(240, 232, 236, 0.75)" />
+              <stop offset="0%" stopColor={COLORS.textPrimaryGhost} />
+              <stop offset="100%" stopColor={COLORS.textPrimaryDim} />
             </linearGradient>
           </defs>
+
+          {/* pathLength=360 lets us express dasharray in degrees.
+              dasharray="84 6": four 84-degree arcs separated by 6-degree gaps.
+              dashoffset=87 (arc 84 + half-gap 3) centers the first gap at East (0 deg),
+              putting all four gaps exactly at the cardinal directions. */}
+          <circle
+            cx="57%" cy="50%"
+            r="38vw"
+            fill="none"
+            stroke={COLORS.textPrimaryFade}
+            strokeWidth="1"
+            pathLength="360"
+            strokeDasharray="84 6"
+            strokeDashoffset="87"
+            style={{ ...circleBase, animation: spinCw }}
+          />
+          <circle
+            cx="57%" cy="50%"
+            r="24vw"
+            fill="none"
+            stroke={COLORS.textPrimaryFade}
+            strokeWidth="1"
+            pathLength="360"
+            strokeDasharray="84 6"
+            strokeDashoffset="87"
+            style={{ ...circleBase, animation: spinCcw }}
+          />
+
           <line
             x1="60%" y1="100%"
             x2="100%" y2="10%"
-            stroke="rgba(240, 232, 236, 0.75)"
+            stroke={COLORS.textPrimaryDim}
             strokeWidth="1.5"
           />
           <rect x="70%" y="57%" width="30%" height="1.5" fill="url(#h-line-fade)" />
@@ -70,9 +90,9 @@ export default function GeometricOverlays() {
       >
         <defs>
           <linearGradient id="v-line-fade" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor="rgba(240, 232, 236, 0.75)" />
-            <stop offset="70%" stopColor="rgba(240, 232, 236, 0.75)" />
-            <stop offset="100%" stopColor="rgba(240, 232, 236, 0)" />
+            <stop offset="0%" stopColor={COLORS.textPrimaryDim} />
+            <stop offset="70%" stopColor={COLORS.textPrimaryDim} />
+            <stop offset="100%" stopColor={COLORS.textPrimaryGhost} />
           </linearGradient>
         </defs>
         <rect x="95.2%" y="0" width="1.5" height="70%" fill="url(#v-line-fade)" />
