@@ -1,11 +1,12 @@
 import CommandLabel from '../shared/CommandLabel';
+import { COLORS } from '../../lib/constants';
 
 interface MenuIndexProps {
   index: string;
   textColor?: string;
 }
 
-export default function MenuIndex({ index, textColor = 'rgba(240, 232, 236, 0.75)' }: MenuIndexProps) {
+export default function MenuIndex({ index, textColor = COLORS.textPrimaryDim }: MenuIndexProps) {
   const units = index[1];
   const tens = index[0];  // always 0
 

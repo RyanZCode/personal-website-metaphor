@@ -1,3 +1,5 @@
+import { COLORS } from '../../lib/constants';
+
 export default function UnsupportedScreen() {
   return (
     <div
@@ -9,7 +11,7 @@ export default function UnsupportedScreen() {
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: '#0a0608',
+        backgroundColor: COLORS.bgPrimary,
         gap: '2rem',
       }}
     >
@@ -18,7 +20,7 @@ export default function UnsupportedScreen() {
           fontFamily: '"Cinzel", serif',
           fontSize: '2rem',
           letterSpacing: '0.1em',
-          color: 'rgba(240, 232, 236, 0.6)',
+          color: COLORS.textPrimaryMuted,
           textTransform: 'uppercase',
           textAlign: 'center',
           margin: 0,

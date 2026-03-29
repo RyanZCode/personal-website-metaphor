@@ -1,6 +1,6 @@
 import { forwardRef } from 'react';
 import type { MenuItemConfig } from '../../lib/menuConfig';
-import { ITEM_SCALES, ARC_CURVE_X } from '../../lib/constants';
+import { ITEM_SCALES, ARC_CURVE_X, COLORS } from '../../lib/constants';
 
 interface MenuItemProps {
   item: MenuItemConfig;
@@ -38,7 +38,7 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
           lineHeight: 1.0,
           // Selected item is black - sits on top of the coloured paint splash
           // Non-selected items are the usual light text on dark background
-          color: isSelected ? '#000' : 'var(--text-primary)',
+          color: isSelected ? COLORS.black : 'var(--text-primary)',
           textTransform: 'uppercase',
           letterSpacing: '-0.08em',
           cursor: isSelected ? 'default' : 'pointer',
@@ -66,8 +66,8 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
               bottom: '-0.4em',
               // Start at 50% of the item width so the subtitle overlaps slightly with the text
               left: '50%',
-              backgroundColor: '#000',
-              color: '#fff',
+              backgroundColor: COLORS.black,
+              color: COLORS.chipBg,
               fontSize: '0.25em',
               fontWeight: 700,
               fontVariant: 'small-caps',

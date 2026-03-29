@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { COLORS } from '../../lib/constants';
 
 export default function LoadingScreen() {
   const [imgFailed, setImgFailed] = useState(false);
@@ -13,7 +14,7 @@ export default function LoadingScreen() {
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: '#0a0608',
+        backgroundColor: COLORS.bgPrimary,
         gap: '2rem',
       }}
     >
@@ -23,7 +24,7 @@ export default function LoadingScreen() {
             fontFamily: '"Cinzel", serif',
             fontSize: '1.5rem',
             letterSpacing: '0.3em',
-            color: 'rgba(240, 232, 236, 0.4)',
+            color: COLORS.textPrimaryFaint,
             textTransform: 'uppercase',
             margin: 0,
           }}

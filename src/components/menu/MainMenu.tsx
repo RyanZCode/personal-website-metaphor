@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { MENU_ITEMS } from '../../lib/menuConfig';
+import { COLORS } from '../../lib/constants';
+import { prefersReducedMotion } from '../../lib/animations';
 import BackgroundLayers from '../background/BackgroundLayers';
 import CharacterPortrait from '../background/CharacterPortrait';
 import GeometricOverlays from '../background/GeometricOverlays';
 import MenuItem from './MenuItem';
 import MenuIndex from './MenuIndex';
-import PaintSplash from './PaintSplash';
+import MenuItemBackground from './MenuItemBackground';
 import StatsPanel from './StatsPanel';
 import ControlHints from '../shared/ControlHints';
 import LoadingScreen from '../shared/LoadingScreen';
@@ -14,6 +16,9 @@ import UnsupportedScreen from '../shared/UnsupportedScreen';
 export default function MainMenu() {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [loaded, setLoaded] = useState(false);
+  // Initialized to true; corrected from OS preference on mount.
+  // Safe to initialize this way since the menu is behind the loading screen.
+  const [animationsEnabled, setAnimationsEnabled] = useState(true);
   const [clipPath, setClipPath] = useState('polygon(2% 100%, 99% 0%, 100% 0%, 100% 100%)');
   const [unsupported, setUnsupported] = useState(false);
   const menuIndexRef = useRef<HTMLDivElement>(null);
@@ -33,6 +38,26 @@ export default function MainMenu() {
     ]).then(() => {
       requestAnimationFrame(() => requestAnimationFrame(() => setLoaded(true)));
     });
+  }, []);
+
+  // Read persisted preference on mount; fall back to OS reduced-motion setting
+  useEffect(() => {
+    const stored = localStorage.getItem('animationsEnabled');
+    setAnimationsEnabled(stored !== null ? stored === 'true' : !prefersReducedMotion());
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'f' || e.key === 'F') {
+        setAnimationsEnabled(prev => {
+          const next = !prev;
+          localStorage.setItem('animationsEnabled', String(next));
+          return next;
+        });
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, []);
 
   useEffect(() => {
@@ -116,12 +141,13 @@ export default function MainMenu() {
   return (
     <div className="menu-root">
       <BackgroundLayers />
-      <CharacterPortrait />
-      <GeometricOverlays />
+      <CharacterPortrait animationsEnabled={animationsEnabled} />
+      <GeometricOverlays animationsEnabled={animationsEnabled} />
 
-      <PaintSplash
+      <MenuItemBackground
         itemRefs={itemRefs}
         selectedIndex={selectedIndex}
+        animationsEnabled={animationsEnabled}
         accentH={activeItem.accentH}
         accentS={activeItem.accentS}
         accentL={activeItem.accentL}
@@ -169,7 +195,7 @@ export default function MainMenu() {
             pointerEvents: 'none',
           }}
         >
-          <MenuIndex index={activeItem.index} textColor="rgba(205, 35, 45, 1)" />
+          <MenuIndex index={activeItem.index} textColor={COLORS.accentRed} />
         </div>
       </div>
 
@@ -188,7 +214,7 @@ export default function MainMenu() {
         }}
       >
         <StatsPanel />
-        <ControlHints />
+        <ControlHints animationsEnabled={animationsEnabled} />
       </div>
     </div>
   );

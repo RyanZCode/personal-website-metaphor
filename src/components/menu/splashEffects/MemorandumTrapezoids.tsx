@@ -1,10 +1,11 @@
 import { useEffect, useRef } from 'react';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
+import { createMemorandumRotationTimelines, type TrapData } from '../../../lib/animations';
 
-interface Props { isActive: boolean; }
+interface Props { isActive: boolean; animationsEnabled: boolean; }
 
-const TRAPS = [
+const TRAPS: TrapData[] = [
   { left: '15%', top: '20%', w: '18vh', h: '10vh', rot: 0,   dir: 1,  color: 'rgba(255,255,255,0.28)' },
   { left: '50%', top: '10%', w: '14vh', h:  '8vh', rot: 25,  dir: -1, color: 'rgba(0,0,0,0.35)'       },
   { left: '25%', top: '55%', w: '20vh', h: '11vh', rot: -15, dir: 1,  color: 'rgba(255,255,255,0.22)' },
@@ -21,37 +22,31 @@ const TRAP_CLIP = 'polygon(8% 0%, 92% 0%, 100% 100%, 0% 100%)';
 
 interface Particle { x: number; y: number; vx: number; vy: number; r: number; el: HTMLDivElement | null; }
 
-export default function MemorandumTrapezoids({ isActive }: Props) {
+export default function MemorandumTrapezoids({ isActive, animationsEnabled }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const trapRefs = useRef<(HTMLDivElement | null)[]>([]);
   const tlsRef = useRef<gsap.core.Animation[]>([]);
   const isActiveRef = useRef(isActive);
+  const animationsEnabledRef = useRef(animationsEnabled);
 
   // Rotation only - GSAP rotation is composed with physics x/y below without conflict
   useGSAP(() => {
-    tlsRef.current = [];
     const W = containerRef.current?.offsetWidth  ?? 0;
     const H = containerRef.current?.offsetHeight ?? 0;
-
-    trapRefs.current.forEach((el, i) => {
-      if (!el) return;
-      const t = TRAPS[i];
-      const cx = (parseFloat(t.left) / 100) * W;
-      const cy = (parseFloat(t.top)  / 100) * H;
-      gsap.set(el, { xPercent: -50, yPercent: -50, x: cx, y: cy, rotation: t.rot });
-      const tween = gsap.to(el, { rotation: t.rot + 360 * t.dir, duration: 13 + i * 1.4, ease: 'none', repeat: -1, paused: true });
-      tween.seek(Math.random() * tween.duration());
-      tlsRef.current.push(tween);
-    });
+    tlsRef.current = createMemorandumRotationTimelines(trapRefs.current, TRAPS, W, H);
   }, { scope: containerRef });
 
   useEffect(() => {
     isActiveRef.current = isActive;
+    animationsEnabledRef.current = animationsEnabled;
     if (!containerRef.current) return;
     gsap.set(containerRef.current, { autoAlpha: isActive ? 1 : 0 });
-    if (isActive) tlsRef.current.forEach(t => t.resume());
+    const running = isActive && animationsEnabled;
+    const wc = running ? 'transform, opacity' : 'auto';
+    trapRefs.current.forEach(el => { if (el) el.style.willChange = wc; });
+    if (running) tlsRef.current.forEach(t => t.resume());
     else tlsRef.current.forEach(t => t.pause());
-  }, [isActive]);
+  }, [isActive, animationsEnabled]);
 
   // Physics simulation - tracks element CENTERS in px; applies via GSAP x/y which
   // composes with the rotation from useGSAP without conflict
@@ -63,7 +58,7 @@ export default function MemorandumTrapezoids({ isActive }: Props) {
     let initialized = false;
 
     const tick = (_time: number, deltaTime: number) => {
-      if (!isActiveRef.current) return;
+      if (!isActiveRef.current || !animationsEnabledRef.current) return;
 
       if (!initialized) {
         const W = container.offsetWidth;
