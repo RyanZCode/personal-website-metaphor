@@ -11,6 +11,7 @@ import SystemGlitch   from './splashEffects/SystemGlitch';
 
 interface MenuItemBackgroundProps {
   itemRefs: React.RefObject<(HTMLDivElement | null)[]>;
+  menuStackRef: React.RefObject<HTMLDivElement | null>;
   selectedIndex: number;
   animationsEnabled: boolean;
   accentH: number;
@@ -21,6 +22,7 @@ interface MenuItemBackgroundProps {
   splashOffsetY: number;
   splashTipXPct: number;
   splashTaperYPct: number;
+  menuScrollYVh: number;
 }
 
 interface SplashPos {
@@ -33,7 +35,7 @@ interface SplashPos {
 
 const SPLASH_LEFT_VH = -17.78;
 
-export default function MenuItemBackground({ itemRefs, selectedIndex, animationsEnabled, accentH, accentS, accentL, splashHeightVh, splashWidthVh, splashOffsetY, splashTipXPct, splashTaperYPct }: MenuItemBackgroundProps) {
+export default function MenuItemBackground({ itemRefs, menuStackRef, selectedIndex, animationsEnabled, accentH, accentS, accentL, splashHeightVh, splashWidthVh, splashOffsetY, splashTipXPct, splashTaperYPct, menuScrollYVh }: MenuItemBackgroundProps) {
   const [pos, setPos] = useState<SplashPos | null>(null);
 
   // Layer refs
@@ -46,19 +48,33 @@ export default function MenuItemBackground({ itemRefs, selectedIndex, animations
     const compute = () => {
       const el = itemRefs.current[selectedIndex];
       if (!el) return;
-      const offsetParent = el.offsetParent as HTMLElement | null;
-      if (!offsetParent) return;
+      const menuStack = menuStackRef.current;
+      if (!menuStack) return;
 
       const scale = ITEM_SCALES[Math.min(selectedIndex, ITEM_SCALES.length - 1)];
       const arcX = ARC_CURVE_X[Math.min(selectedIndex, ARC_CURVE_X.length - 1)];
       const vh = window.innerHeight / 100;
       const splashH = splashHeightVh * vh;
 
-      const parentRect = offsetParent.getBoundingClientRect();
-      const pivotY = parentRect.top + el.offsetTop + el.offsetHeight / 2;
+      // Walk the offsetParent chain from el up to menuStack, accumulating layout offsets.
+      // Chrome treats GSAP-transformed elements as offsetParents, so we can't rely on
+      // el.offsetParent being menuStack directly - we traverse to get the true layout position.
+      let layoutTop = 0, layoutLeft = 0;
+      let node: HTMLElement | null = el;
+      while (node && node !== menuStack) {
+        layoutTop += node.offsetTop;
+        layoutLeft += node.offsetLeft;
+        node = node.offsetParent as HTMLElement | null;
+      }
+
+      const menuStackRect = menuStack.getBoundingClientRect();
+      // Use layout offsetTop (unaffected by GSAP) + the final target scroll position.
+      // getBoundingClientRect().top sees the mid-animation position; offsetTop does not.
+      // menu-left has top:0vh in CSS, so menuStack.offsetTop is its natural viewport Y.
+      const pivotY = menuStack.offsetTop + menuScrollYVh * vh + layoutTop + el.offsetHeight / 2;
 
       const T_px = (arcX * 16 / 9) * vh;
-      const leftEdgeScreen = parentRect.left + el.offsetLeft + T_px;
+      const leftEdgeScreen = menuStackRect.left + layoutLeft + T_px;
 
       const rotateRad = scale.rotate * Math.PI / 180;
       const textCenterY = pivotY + (el.offsetWidth / 2) * Math.sin(rotateRad);
@@ -80,10 +96,22 @@ export default function MenuItemBackground({ itemRefs, selectedIndex, animations
       });
     };
 
-    compute();
+    // Defer the initial measurement by one frame so the browser has finished
+    // laying out with the correct font metrics before we read offsetWidth/offsetHeight.
+    let rafId = requestAnimationFrame(compute);
+
+    // Re-measure whenever the selected item's size changes (e.g. font swap settling)
+    const el = itemRefs.current[selectedIndex];
+    const ro = el ? new ResizeObserver(compute) : null;
+    if (el && ro) ro.observe(el);
+
     window.addEventListener('resize', compute);
-    return () => window.removeEventListener('resize', compute);
-  }, [selectedIndex, splashHeightVh, splashWidthVh, splashOffsetY, splashTipXPct, splashTaperYPct]);
+    return () => {
+      cancelAnimationFrame(rafId);
+      ro?.disconnect();
+      window.removeEventListener('resize', compute);
+    };
+  }, [selectedIndex, splashHeightVh, splashWidthVh, splashOffsetY, splashTipXPct, splashTaperYPct, menuScrollYVh]);
 
   useGSAP(() => {
     if (!backRef.current || !frontRef.current || !effectsWrapRef.current || !effectsInnerRef.current) return;

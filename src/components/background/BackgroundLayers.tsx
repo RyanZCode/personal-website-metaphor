@@ -3,6 +3,7 @@ import { COLORS } from '../../lib/constants';
 export default function BackgroundLayers() {
   return (
     <div
+      data-bg-layers
       style={{
         position: 'fixed',
         inset: 0,

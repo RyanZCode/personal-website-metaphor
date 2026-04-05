@@ -1,5 +1,114 @@
 import gsap from 'gsap';
 
+export function setEntryInitialStates(container: Element): void {
+  gsap.set(container.querySelector('[data-portrait-wrap]'), { y: '25vh', opacity: 0 });
+  gsap.set(container.querySelector('[data-bg-layers]'), { opacity: 0 });
+  gsap.set(container.querySelectorAll('[data-geometric-overlays]'), { opacity: 0 });
+  gsap.set(container.querySelectorAll('[data-char]'), { opacity: 0 });
+  gsap.set(container.querySelectorAll('[data-menu-item-wrap]'), { x: 0, y: 0 });
+  gsap.set(container.querySelector('[data-menu-index]'), { y: '-1.5vh', opacity: 0 });
+  gsap.set(container.querySelector('[data-paint-splash-wrap]'), { opacity: 0 });
+  gsap.set(container.querySelector('[data-stats-hints]'), { x: '3vw', opacity: 0 });
+}
+
+export function createEntryTimeline(
+  container: Element,
+  onComplete: () => void,
+  onSubtitleVisible: () => void,
+): gsap.core.Timeline {
+  const portraitWrap = container.querySelector('[data-portrait-wrap]');
+  const bgLayers = container.querySelector('[data-bg-layers]');
+  const geoOverlays = Array.from(container.querySelectorAll('[data-geometric-overlays]'));
+  const menuItemEls = Array.from(container.querySelectorAll('[data-menu-item]')) as HTMLElement[];
+  const firstSubtitle = container.querySelector('[data-subtitle]');
+  const menuIndex = container.querySelector('[data-menu-index]');
+  const paintSplash = container.querySelector('[data-paint-splash-wrap]');
+  const statsHints = container.querySelector('[data-stats-hints]');
+
+  type CharEntry = { char: HTMLElement; withinItemIdx: number; itemIdx: number };
+  const charEntries: CharEntry[] = [];
+  menuItemEls.forEach((itemEl, itemIdx) => {
+    const chars = Array.from(itemEl.querySelectorAll('[data-char]')) as HTMLElement[];
+    [...chars].sort(() => Math.random() - 0.5).forEach((char, j) => {
+      charEntries.push({ char, withinItemIdx: j, itemIdx });
+    });
+  });
+
+  // Displace every char to the shared screen origin NOW, before any tl.to() calls.
+  // GSAP captures FROM values at tween-creation time, so the displaced values must
+  // already be in GSAP's cache when the tweens are added below.
+  // Chars live inside rotate/rotateY/scale transforms, so a local (lx, ly) does not
+  // map 1:1 to screen pixels. Probe one char per item with test displacements to
+  // measure the actual 2x2 local->screen matrix, then invert it.
+  const originX = window.innerWidth  * 1.05;
+  const originY = window.innerHeight * 0.82;
+
+  menuItemEls.forEach((_, i) => {
+    const items = charEntries.filter(e => e.itemIdx === i);
+    if (!items.length) return;
+
+    const probe = items[0].char;
+    const r0 = probe.getBoundingClientRect();
+
+    gsap.set(probe, { x: 100 });
+    const r1 = probe.getBoundingClientRect();
+
+    gsap.set(probe, { x: 0, y: 100 });
+    const r2 = probe.getBoundingClientRect();
+
+    gsap.set(probe, { x: 0, y: 0 });
+
+    const a = (r1.left - r0.left) / 100;
+    const b = (r2.left - r0.left) / 100;
+    const c = (r1.top  - r0.top)  / 100;
+    const d = (r2.top  - r0.top)  / 100;
+    const det = a * d - b * c;
+
+    items.forEach(({ char }) => {
+      const rect = char.getBoundingClientRect();
+      const sdx = originX - (rect.left + rect.width  / 2);
+      const sdy = originY - (rect.top  + rect.height / 2);
+      gsap.set(char, {
+        x: ( d * sdx - b * sdy) / det,
+        y: (-c * sdx + a * sdy) / det,
+      });
+    });
+  });
+
+  const snapAll = () => {
+    charEntries.forEach(({ char }) => gsap.set(char, { x: 0, y: 0, opacity: 1 }));
+  };
+
+  const tl = gsap.timeline({ onComplete, onInterrupt: snapAll });
+
+  const flyXDuration = 0.45;
+  const flyYDuration = 0.55;
+  const firstCharStart = 0.4;
+  const itemStagger  = 0.035;
+  const charStagger  = 0.028;
+
+  // Chars fly in one by one: each item starts itemStagger later than the previous,
+  // each char within an item starts charStagger later than the previous (shuffled order).
+  // x uses power3.out (fast dart from origin, decelerates), y uses power2.inOut (gentle arc).
+  // Opacity snaps in at the moment each char starts moving so you see the full arc path.
+  charEntries.forEach(({ char: charEl, withinItemIdx: j, itemIdx: i }) => {
+    const start = firstCharStart + i * itemStagger + j * charStagger;
+    tl.to(charEl, { x: 0, duration: flyXDuration, ease: 'power3.out'   }, start);
+    tl.to(charEl, { y: 0, duration: flyYDuration, ease: 'power2.inOut' }, start);
+    tl.to(charEl, { opacity: 1, duration: 0.1, ease: 'none' }, start);
+  });
+
+  tl.to(portraitWrap,              { y: 0, opacity: 1, duration: 0.5, ease: 'power3.out' }, 0)
+    .to([bgLayers, ...geoOverlays], { opacity: 1, duration: 0.6 }, 0.35)
+    .to(firstSubtitle,             { opacity: 1, duration: 0.2, ease: 'power2.out' }, 0.75)
+    .call(onSubtitleVisible,       [], 0.95)
+    .to(menuIndex,                 { y: 0, opacity: 1, duration: 0.1, ease: 'power2.out' }, 0.45)
+    .to(paintSplash,               { opacity: 1, duration: 0.25 }, 0.45)
+    .to(statsHints,                { x: 0, opacity: 1, duration: 0.2, ease: 'power2.out' }, 0.7);
+
+  return tl;
+}
+
 export function prefersReducedMotion(): boolean {
   return typeof window !== 'undefined' &&
     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
