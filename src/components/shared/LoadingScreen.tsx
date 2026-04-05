@@ -35,11 +35,14 @@ export default function LoadingScreen() {
         <img
           src="/assets/take-your-time.png"
           alt=""
+          draggable={false}
           onError={() => setImgFailed(true)}
           style={{
             height: '40vh',
             width: 'auto',
             objectFit: 'contain',
+            userSelect: 'none',
+            WebkitUserSelect: 'none',
           }}
         />
       )}

@@ -18,6 +18,7 @@ export default function GeometricOverlays({ animationsEnabled }: Props) {
   return (
     <>
       <div
+        data-geometric-overlays
         style={{
           position: 'absolute',
           inset: 0,
@@ -77,6 +78,7 @@ export default function GeometricOverlays({ animationsEnabled }: Props) {
 
       {/* Separate sibling at z-index 11 so this line renders above the menu index (z-index 10) */}
       <svg
+        data-geometric-overlays
         style={{
           position: 'absolute',
           inset: 0,

@@ -43,6 +43,7 @@ export default function CharacterPortrait({ animationsEnabled }: Props) {
         src="/assets/dog.png"
         alt=""
         data-portrait
+        draggable={false}
         style={{
           height: '105%',
           width: 'auto',
@@ -51,6 +52,8 @@ export default function CharacterPortrait({ animationsEnabled }: Props) {
           position: 'relative',
           zIndex: 1,
           maxWidth: 'none',
+          userSelect: 'none',
+          WebkitUserSelect: 'none',
         }}
       />
     </div>
