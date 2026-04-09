@@ -1,0 +1,28 @@
+export default function SectionBackground() {
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        inset: 0,
+        zIndex: 0,
+        pointerEvents: 'none',
+        overflow: 'hidden',
+      }}
+    >
+      <div style={{ position: 'absolute', inset: 0, background: '#0a0608' }} />
+
+      <div style={{ position: 'absolute', inset: 0, background: 'var(--bg-combined)' }} />
+
+      <svg
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.05 }}
+        aria-hidden="true"
+      >
+        <filter id="section-grain">
+          <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch" />
+          <feColorMatrix type="saturate" values="0" />
+        </filter>
+        <rect width="100%" height="100%" filter="url(#section-grain)" />
+      </svg>
+    </div>
+  );
+}

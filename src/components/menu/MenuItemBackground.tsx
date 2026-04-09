@@ -23,6 +23,7 @@ interface MenuItemBackgroundProps {
   splashTipXPct: number;
   splashTaperYPct: number;
   menuScrollYVh: number;
+  measureKey: number;
 }
 
 interface SplashPos {
@@ -35,7 +36,7 @@ interface SplashPos {
 
 const SPLASH_LEFT_VH = -17.78;
 
-export default function MenuItemBackground({ itemRefs, menuStackRef, selectedIndex, animationsEnabled, accentH, accentS, accentL, splashHeightVh, splashWidthVh, splashOffsetY, splashTipXPct, splashTaperYPct, menuScrollYVh }: MenuItemBackgroundProps) {
+export default function MenuItemBackground({ itemRefs, menuStackRef, selectedIndex, animationsEnabled, accentH, accentS, accentL, splashHeightVh, splashWidthVh, splashOffsetY, splashTipXPct, splashTaperYPct, menuScrollYVh, measureKey }: MenuItemBackgroundProps) {
   const [pos, setPos] = useState<SplashPos | null>(null);
 
   // Layer refs
@@ -111,7 +112,7 @@ export default function MenuItemBackground({ itemRefs, menuStackRef, selectedInd
       ro?.disconnect();
       window.removeEventListener('resize', compute);
     };
-  }, [selectedIndex, splashHeightVh, splashWidthVh, splashOffsetY, splashTipXPct, splashTaperYPct, menuScrollYVh]);
+  }, [selectedIndex, splashHeightVh, splashWidthVh, splashOffsetY, splashTipXPct, splashTaperYPct, menuScrollYVh, measureKey]);
 
   useGSAP(() => {
     if (!backRef.current || !frontRef.current || !effectsWrapRef.current || !effectsInnerRef.current) return;
@@ -158,7 +159,9 @@ export default function MenuItemBackground({ itemRefs, menuStackRef, selectedInd
         duration: 1.8, ease: 'power1.inOut', transformOrigin: 'left center',
       }, '<');
 
-  }, { dependencies: [pos, animationsEnabled], revertOnUpdate: true });
+  // pos !== null (not pos itself) - the pulsing animation doesn't use position values,
+  // so revertOnUpdate shouldn't fire on every re-measure, only when readiness changes.
+  }, { dependencies: [pos !== null, animationsEnabled], revertOnUpdate: true });
 
   const ready = pos !== null;
 

@@ -22,7 +22,7 @@ export default function LoadingScreen() {
         <p
           style={{
             fontFamily: '"Cinzel", serif',
-            fontSize: '1.5rem',
+            fontSize: 'var(--font-fluid-xl)',
             letterSpacing: '0.3em',
             color: COLORS.textPrimaryFaint,
             textTransform: 'uppercase',

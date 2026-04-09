@@ -28,6 +28,8 @@ export default function MemorandumTrapezoids({ isActive, animationsEnabled }: Pr
   const tlsRef = useRef<gsap.core.Animation[]>([]);
   const isActiveRef = useRef(isActive);
   const animationsEnabledRef = useRef(animationsEnabled);
+  // Set to true once the physics tick has run its first init pass and applied x/y to elements
+  const physicsInitializedRef = useRef(false);
 
   // Rotation only - GSAP rotation is composed with physics x/y below without conflict
   useGSAP(() => {
@@ -44,8 +46,28 @@ export default function MemorandumTrapezoids({ isActive, animationsEnabled }: Pr
     const running = isActive && animationsEnabled;
     const wc = running ? 'transform, opacity' : 'auto';
     trapRefs.current.forEach(el => { if (el) el.style.willChange = wc; });
-    if (running) tlsRef.current.forEach(t => t.resume());
-    else tlsRef.current.forEach(t => t.pause());
+    if (running) {
+      tlsRef.current.forEach(t => t.resume());
+    } else {
+      tlsRef.current.forEach(t => t.pause());
+      // The rotation timelines set x/y at mount when the container has zero height,
+      // so all positions default to 0. If physics hasn't run yet (no animations before
+      // first activation), manually place trapezoids at their intended positions now.
+      if (isActive && !physicsInitializedRef.current) {
+        const W = containerRef.current.offsetWidth;
+        const H = containerRef.current.offsetHeight;
+        if (W > 0 && H > 0) {
+          trapRefs.current.forEach((el, i) => {
+            if (!el || i >= TRAPS.length) return;
+            const t = TRAPS[i];
+            gsap.set(el, {
+              x: (parseFloat(t.left) / 100) * W,
+              y: (parseFloat(t.top)  / 100) * H,
+            });
+          });
+        }
+      }
+    }
   }, [isActive, animationsEnabled]);
 
   // Physics simulation - tracks element CENTERS in px; applies via GSAP x/y which
@@ -69,14 +91,19 @@ export default function MemorandumTrapezoids({ isActive, animationsEnabled }: Pr
         TRAPS.forEach((t, i) => {
           const w = parseFloat(t.w) * vh;
           const h = parseFloat(t.h) * vh;
-          const cx = (parseFloat(t.left) / 100) * W;
-          const cy = (parseFloat(t.top)  / 100) * H;
           const r = Math.sqrt(w * w + h * h) * 0.5;
           const angle = (i * 137.508 + 22) * Math.PI / 180;
           const speed = 22 + i * 2.8;
-          particles.push({ x: cx, y: cy, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, r, el: trapRefs.current[i] });
+          const el = trapRefs.current[i];
+          // Start from current GSAP position so physics continues from wherever
+          // the element is displayed - avoids mismatch when dimensions differ
+          // between when positions were last set and when physics initializes
+          const cx = el ? (gsap.getProperty(el, 'x') as number) : (parseFloat(t.left) / 100) * W;
+          const cy = el ? (gsap.getProperty(el, 'y') as number) : (parseFloat(t.top)  / 100) * H;
+          particles.push({ x: cx, y: cy, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, r, el });
         });
         initialized = true;
+        physicsInitializedRef.current = true;
         return;
       }
 

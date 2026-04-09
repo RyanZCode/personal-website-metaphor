@@ -1,5 +1,3 @@
-import { COLORS } from '../../lib/constants';
-
 export default function BackgroundLayers() {
   return (
     <div
@@ -12,25 +10,7 @@ export default function BackgroundLayers() {
         overflow: 'hidden',
       }}
     >
-      {/* teal radial - pure CSS to avoid SVG filter edge artifacts */}
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background:
-            `radial-gradient(ellipse 110% 90% at 36% 52%, ${COLORS.bgTealBright} 0%, ${COLORS.bgTealMid} 22%, ${COLORS.bgTealDeep} 45%, ${COLORS.bgVoid} 70%)`,
-        }}
-      />
-
-      {/* crimson glow from bottom-right */}
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background:
-            `radial-gradient(ellipse 95% 150% at 105% 90%, ${COLORS.bgCrimson} 0%, ${COLORS.bgCrimsonFade} 45%, transparent 82%)`,
-        }}
-      />
+      <div style={{ position: 'absolute', inset: 0, background: 'var(--bg-combined)' }} />
 
       {/* dark patches - multiply only darkens, so transparent areas are no-ops */}
       <svg

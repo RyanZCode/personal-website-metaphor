@@ -22,7 +22,7 @@ export default function StatsPanel() {
         <span style={{
           gridColumn: 1, gridRow: 1,
           fontFamily: '"Cinzel", serif',
-          fontSize: '1.2rem',
+          fontSize: 'var(--font-fluid-lg)',
           lineHeight: 1,
           transform: 'scaleY(0.85)',
           transformOrigin: 'top left',
@@ -35,7 +35,7 @@ export default function StatsPanel() {
         </span>
         <span style={{
           gridColumn: 1, gridRow: 2,
-          fontSize: '1.6rem',
+          fontSize: 'var(--font-fluid-xl)',
           color: COLORS.chipTextSub,
           lineHeight: 1,
           textAlign: 'center',
@@ -47,7 +47,7 @@ export default function StatsPanel() {
           gridColumn: 2, gridRow: 2,
           alignSelf: 'center',
           fontFamily: '"Cinzel", serif',
-          fontSize: '2rem',
+          fontSize: 'var(--font-fluid-2xl)',
           fontWeight: 900,
           letterSpacing: '0.1em',
           color: COLORS.chipTextStrong,
@@ -58,7 +58,7 @@ export default function StatsPanel() {
 
       <span style={{
         fontFamily: '"Cinzel", serif',
-        fontSize: '0.8rem',
+        fontSize: 'var(--font-fluid-sm)',
         letterSpacing: '0.08em',
         color: COLORS.chipTextFaint,
         textTransform: 'uppercase',

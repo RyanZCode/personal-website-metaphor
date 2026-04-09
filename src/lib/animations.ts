@@ -1,31 +1,15 @@
 import gsap from 'gsap';
 
-export function setEntryInitialStates(container: Element): void {
-  gsap.set(container.querySelector('[data-portrait-wrap]'), { y: '25vh', opacity: 0 });
-  gsap.set(container.querySelector('[data-bg-layers]'), { opacity: 0 });
-  gsap.set(container.querySelectorAll('[data-geometric-overlays]'), { opacity: 0 });
-  gsap.set(container.querySelectorAll('[data-char]'), { opacity: 0 });
-  gsap.set(container.querySelectorAll('[data-menu-item-wrap]'), { x: 0, y: 0 });
-  gsap.set(container.querySelector('[data-menu-index]'), { y: '-1.5vh', opacity: 0 });
-  gsap.set(container.querySelector('[data-paint-splash-wrap]'), { opacity: 0 });
-  gsap.set(container.querySelector('[data-stats-hints]'), { x: '3vw', opacity: 0 });
-}
+type CharEntry = { char: HTMLElement; withinItemIdx: number; itemIdx: number };
 
-export function createEntryTimeline(
-  container: Element,
-  onComplete: () => void,
-  onSubtitleVisible: () => void,
-): gsap.core.Timeline {
-  const portraitWrap = container.querySelector('[data-portrait-wrap]');
-  const bgLayers = container.querySelector('[data-bg-layers]');
-  const geoOverlays = Array.from(container.querySelectorAll('[data-geometric-overlays]'));
-  const menuItemEls = Array.from(container.querySelectorAll('[data-menu-item]')) as HTMLElement[];
-  const firstSubtitle = container.querySelector('[data-subtitle]');
-  const menuIndex = container.querySelector('[data-menu-index]');
-  const paintSplash = container.querySelector('[data-paint-splash-wrap]');
-  const statsHints = container.querySelector('[data-stats-hints]');
-
-  type CharEntry = { char: HTMLElement; withinItemIdx: number; itemIdx: number };
+// Collects all chars from menu items, shuffles them within each item,
+// then displaces each char to a shared screen origin using the local transform matrix.
+// Returns the char entries in animation order.
+function collectAndDisplaceChars(
+  menuItemEls: HTMLElement[],
+  originX: number,
+  originY: number,
+): CharEntry[] {
   const charEntries: CharEntry[] = [];
   menuItemEls.forEach((itemEl, itemIdx) => {
     const chars = Array.from(itemEl.querySelectorAll('[data-char]')) as HTMLElement[];
@@ -34,28 +18,18 @@ export function createEntryTimeline(
     });
   });
 
-  // Displace every char to the shared screen origin NOW, before any tl.to() calls.
-  // GSAP captures FROM values at tween-creation time, so the displaced values must
-  // already be in GSAP's cache when the tweens are added below.
-  // Chars live inside rotate/rotateY/scale transforms, so a local (lx, ly) does not
-  // map 1:1 to screen pixels. Probe one char per item with test displacements to
-  // measure the actual 2x2 local->screen matrix, then invert it.
-  const originX = window.innerWidth  * 1.05;
-  const originY = window.innerHeight * 0.82;
-
+  // Probe each item's local->screen transform matrix, then invert to get the
+  // local displacement needed to move each char to the shared screen origin.
   menuItemEls.forEach((_, i) => {
     const items = charEntries.filter(e => e.itemIdx === i);
     if (!items.length) return;
 
     const probe = items[0].char;
     const r0 = probe.getBoundingClientRect();
-
     gsap.set(probe, { x: 100 });
     const r1 = probe.getBoundingClientRect();
-
     gsap.set(probe, { x: 0, y: 100 });
     const r2 = probe.getBoundingClientRect();
-
     gsap.set(probe, { x: 0, y: 0 });
 
     const a = (r1.left - r0.left) / 100;
@@ -75,36 +49,71 @@ export function createEntryTimeline(
     });
   });
 
+  return charEntries;
+}
+
+function appendCharFlyTweens(
+  tl: gsap.core.Timeline,
+  charEntries: CharEntry[],
+  flyXDur: number,
+  flyYDur: number,
+  firstStart: number,
+  itemStagger: number,
+  charStagger: number,
+): void {
+  charEntries.forEach(({ char, withinItemIdx: j, itemIdx: i }) => {
+    const start = firstStart + i * itemStagger + j * charStagger;
+    tl.to(char, { x: 0, duration: flyXDur, ease: 'power3.out'   }, start);
+    tl.to(char, { y: 0, duration: flyYDur, ease: 'power2.inOut' }, start);
+    tl.to(char, { opacity: 1, duration: 0.1, ease: 'none'       }, start);
+  });
+}
+
+export function setEntryInitialStates(container: Element): void {
+  gsap.set(container.querySelector('[data-portrait-wrap]'), { y: '25vh', opacity: 0 });
+  gsap.set(container.querySelector('[data-bg-layers]'), { opacity: 0 });
+  gsap.set(container.querySelectorAll('[data-geometric-overlays]'), { opacity: 0 });
+  gsap.set(container.querySelectorAll('[data-char]'), { opacity: 0 });
+  gsap.set(container.querySelectorAll('[data-menu-item-wrap]'), { x: 0, y: 0 });
+  gsap.set(container.querySelector('[data-menu-index]'), { y: '1.5vh', opacity: 0 });
+  gsap.set(container.querySelector('[data-paint-splash-wrap]'), { opacity: 0 });
+  gsap.set(container.querySelector('[data-stats-hints]'), { y: '1.5vh', opacity: 0 });
+  gsap.set(container.querySelector('[data-control-hints-fixed]'), { y: '1vh', opacity: 0 });
+}
+
+export function createEntryTimeline(
+  container: Element,
+  onComplete: () => void,
+  onSubtitleVisible: () => void,
+): gsap.core.Timeline {
+  const portraitWrap    = container.querySelector('[data-portrait-wrap]');
+  const bgLayers        = container.querySelector('[data-bg-layers]');
+  const geoOverlays     = Array.from(container.querySelectorAll('[data-geometric-overlays]'));
+  const menuItemEls     = Array.from(container.querySelectorAll('[data-menu-item]')) as HTMLElement[];
+  const menuIndex       = container.querySelector('[data-menu-index]');
+  const paintSplash     = container.querySelector('[data-paint-splash-wrap]');
+  const statsHints      = container.querySelector('[data-stats-hints]');
+  const controlHints    = container.querySelector('[data-control-hints-fixed]');
+
+  const originX = window.innerWidth  * 1.05;
+  const originY = window.innerHeight * 0.82;
+  const charEntries = collectAndDisplaceChars(menuItemEls, originX, originY);
+
   const snapAll = () => {
     charEntries.forEach(({ char }) => gsap.set(char, { x: 0, y: 0, opacity: 1 }));
   };
 
   const tl = gsap.timeline({ onComplete, onInterrupt: snapAll });
 
-  const flyXDuration = 0.45;
-  const flyYDuration = 0.55;
-  const firstCharStart = 0.4;
-  const itemStagger  = 0.035;
-  const charStagger  = 0.028;
-
-  // Chars fly in one by one: each item starts itemStagger later than the previous,
-  // each char within an item starts charStagger later than the previous (shuffled order).
-  // x uses power3.out (fast dart from origin, decelerates), y uses power2.inOut (gentle arc).
-  // Opacity snaps in at the moment each char starts moving so you see the full arc path.
-  charEntries.forEach(({ char: charEl, withinItemIdx: j, itemIdx: i }) => {
-    const start = firstCharStart + i * itemStagger + j * charStagger;
-    tl.to(charEl, { x: 0, duration: flyXDuration, ease: 'power3.out'   }, start);
-    tl.to(charEl, { y: 0, duration: flyYDuration, ease: 'power2.inOut' }, start);
-    tl.to(charEl, { opacity: 1, duration: 0.1, ease: 'none' }, start);
-  });
+  appendCharFlyTweens(tl, charEntries, 0.25, 0.35, 0.4, 0.035, 0.028);
 
   tl.to(portraitWrap,              { y: 0, opacity: 1, duration: 0.5, ease: 'power3.out' }, 0)
     .to([bgLayers, ...geoOverlays], { opacity: 1, duration: 0.6 }, 0.35)
-    .to(firstSubtitle,             { opacity: 1, duration: 0.2, ease: 'power2.out' }, 0.75)
-    .call(onSubtitleVisible,       [], 0.95)
+    .call(onSubtitleVisible,       [], 0.45)
     .to(menuIndex,                 { y: 0, opacity: 1, duration: 0.1, ease: 'power2.out' }, 0.45)
     .to(paintSplash,               { opacity: 1, duration: 0.25 }, 0.45)
-    .to(statsHints,                { x: 0, opacity: 1, duration: 0.2, ease: 'power2.out' }, 0.7);
+    .to(statsHints,                { y: 0, opacity: 1, duration: 0.2, ease: 'power2.out' }, 0.45)
+    .to(controlHints,              { y: 0, opacity: 1, duration: 0.2, ease: 'power2.out' }, 0.35);
 
   return tl;
 }
@@ -112,6 +121,465 @@ export function createEntryTimeline(
 export function prefersReducedMotion(): boolean {
   return typeof window !== 'undefined' &&
     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+interface CharExitEntry {
+  char: HTMLElement;
+  localX: number;
+  localY: number;
+  startTime: number;
+}
+
+// Mirror of collectAndDisplaceChars but for exit: probes each item's local->screen
+// matrix, computes local offsets that send each char to a random off-screen-left
+// target, shuffles and staggers them.
+function computeCharExitPositions(menuItemEls: HTMLElement[]): CharExitEntry[] {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const entries: CharExitEntry[] = [];
+
+  menuItemEls.forEach((itemEl) => {
+    const chars = Array.from(itemEl.querySelectorAll('[data-char]')) as HTMLElement[];
+    if (!chars.length) return;
+
+    const probe = chars[0];
+    const r0 = probe.getBoundingClientRect();
+    gsap.set(probe, { x: 100 });
+    const r1 = probe.getBoundingClientRect();
+    gsap.set(probe, { x: 0, y: 100 });
+    const r2 = probe.getBoundingClientRect();
+    gsap.set(probe, { x: 0, y: 0 });
+
+    const a = (r1.left - r0.left) / 100;
+    const b = (r2.left - r0.left) / 100;
+    const c = (r1.top  - r0.top)  / 100;
+    const d = (r2.top  - r0.top)  / 100;
+    const det = a * d - b * c;
+
+    chars.forEach((char) => {
+      const rect = char.getBoundingClientRect();
+      const cx = rect.left + rect.width  / 2;
+      const cy = rect.top  + rect.height / 2;
+      const targetSX = -(vw * (0.30 + Math.random() * 0.12));
+      const targetSY = cy + (Math.random() - 0.5) * vh * 0.06;
+      const sdx = targetSX - cx;
+      const sdy = targetSY - cy;
+      entries.push({
+        char,
+        localX: ( d * sdx - b * sdy) / det,
+        localY: (-c * sdx + a * sdy) / det,
+        startTime: 0,
+      });
+    });
+  });
+
+  const shuffled = [...entries].sort(() => Math.random() - 0.5);
+  shuffled.forEach((e, i) => { e.startTime = i * 0.007; });
+  return shuffled;
+}
+
+// onMountSection fires mid-animation to trigger React rendering the section content.
+// Delaying this is what makes the exit animation visible - otherwise the section
+// appears in the first frame and covers everything.
+export function createSectionEnterTimeline(
+  container: Element,
+  onComplete: () => void,
+  onSwitchToSectionMode: () => void,
+  onMountSection: () => void,
+  onSubtitleHide: () => void,
+): gsap.core.Timeline {
+  const menuIndex    = container.querySelector('[data-menu-index]');
+  const statsHints   = container.querySelector('[data-stats-hints]');
+  const paintSplash  = container.querySelector('[data-paint-splash-wrap]');
+  const controlHints = container.querySelector('[data-control-hints-fixed]');
+  const portraitWrap = container.querySelector('[data-portrait-wrap]');
+  const menuItemEls = Array.from(container.querySelectorAll('[data-menu-item]')) as HTMLElement[];
+
+  gsap.set(paintSplash, { clipPath: 'inset(0 0 0 0%)' });
+  gsap.killTweensOf(portraitWrap);
+
+  const charExits = computeCharExitPositions(menuItemEls);
+
+  const FLY_DUR    = 0.55;
+  const FADE_DELAY = 0.08;
+  const FADE_DUR   = 0.20;
+  const MOUNT_AT   = 0.42;
+  const DONE_AT    = MOUNT_AT + 0.40;
+
+  const tl = gsap.timeline();
+
+  charExits.forEach(({ char, localX, localY, startTime }) => {
+    tl.to(char, { x: localX, y: localY, duration: FLY_DUR, ease: 'power2.in' }, startTime);
+    tl.to(char, { opacity: 0, duration: FADE_DUR, ease: 'power1.in'          }, startTime + FADE_DELAY);
+  });
+
+  tl.to([menuIndex, statsHints], { y: '1.5vh', opacity: 0, duration: 0.18, ease: 'power2.in' }, 0.24)
+    .call(onSubtitleHide, [], 0.20)
+    .to(paintSplash,  { clipPath: 'inset(0 0 0 100%)', duration: 0.26, ease: 'power2.inOut' }, 0.20)
+    .to(portraitWrap, { opacity: 0, duration: 0.22, ease: 'power2.in' }, 0.22)
+    .to(controlHints, { y: '1vh', opacity: 0, duration: 0.12, ease: 'power2.in' }, 0.20)
+    .call(onSwitchToSectionMode, [], 0.34)
+    .to(controlHints, { y: 0, opacity: 1, duration: 0.14, ease: 'power2.out' }, 0.36)
+    .call(() => {
+      onMountSection();
+      // Double RAF so React has rendered the section shell before we touch it
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        const shell = container.querySelector('[data-section-shell]');
+        if (!shell) return;
+        gsap.set(shell, { opacity: 1 });
+      }));
+    }, [], MOUNT_AT)
+    .call(onComplete, [], DONE_AT);
+
+  return tl;
+}
+
+// White vertical line sweeps left-to-right, content zooms out behind it.
+// Called from useLayoutEffect in AboutSection so gsap.set runs before first paint.
+export function createAboutEntryTimeline(container: Element): gsap.core.Timeline {
+  const panel     = container.querySelector('[data-about-panel]');
+  const portrait  = container.querySelector('[data-about-portrait-anim]');
+  const watermark = container.querySelector('[data-about-watermark]');
+  const geoLines  = container.querySelector('[data-about-geo-lines]');
+  const triangles = container.querySelector('[data-about-triangles]');
+  const wipeLine  = container.querySelector('[data-about-wipe]');
+
+  const vw    = window.innerWidth;
+  const lineW = vw * 0.16;
+
+  gsap.set(wipeLine,  { x: -lineW, autoAlpha: 1 });
+  // Watermark, geo lines, and panel zoom together - same scale, same origin, same start
+  gsap.set([watermark, geoLines, panel], { scale: 1.06, opacity: 0, transformOrigin: 'center center' });
+  // Triangles start hidden; revealed by opacity as the line passes over the bottom-right corner
+  gsap.set(triangles, { opacity: 0 });
+  // Portrait is a separate, more dramatic zoom anchored to the bottom
+  gsap.set(portrait, { scale: 1.10, opacity: 0, transformOrigin: '50% 100%' });
+
+  const WIPE_DUR = 0.35;
+  const tl = gsap.timeline();
+
+  // Wipe line sweeps across full width
+  tl.to(wipeLine, { x: vw + lineW, duration: WIPE_DUR, ease: 'power1.inOut' }, 0);
+  // Content group zooms out together as the line passes the left half.
+  // Watermark targets its natural 0.75 opacity; panel and geo lines target 1.
+  tl.to([geoLines, panel], { scale: 1, opacity: 1,    duration: 0.40, ease: 'power2.out' }, 0.10);
+  tl.to(watermark,         { scale: 1, opacity: 0.75, duration: 0.40, ease: 'power2.out' }, 0.10);
+  // Triangles are in the bottom-right (~45% from left). Line left edge reaches them at ~0.25s.
+  tl.to(triangles, { opacity: 1, duration: 0.22, ease: 'power1.out' }, 0.25);
+  // Portrait: reveals just ahead of the wipe reaching the right half, anchored-bottom zoom
+  tl.to(portrait, { scale: 1, opacity: 1, duration: 0.42, ease: 'power3.out' }, 0.24);
+  tl.set(wipeLine, { autoAlpha: 0 }, WIPE_DUR);
+
+  return tl;
+}
+
+// Fast re-entry: fades section out and flies chars in from the center of the Experience item.
+export function createMenuReEntryTimeline(
+  container: Element,
+  onComplete: () => void,
+  onSubtitleVisible: () => void,
+  onSwitchToMenuMode: () => void,
+): gsap.core.Timeline {
+  const menuLeft     = container.querySelector('[data-menu-left]');
+  const menuIndex    = container.querySelector('[data-menu-index]');
+  const paintSplash  = container.querySelector('[data-paint-splash-wrap]');
+  const statsHints   = container.querySelector('[data-stats-hints]');
+  const controlHints = container.querySelector('[data-control-hints-fixed]');
+  const sectionShell = container.querySelector('[data-section-shell]');
+  const portraitWrap = container.querySelector('[data-portrait-wrap]');
+  const menuItemEls  = Array.from(container.querySelectorAll('[data-menu-item]')) as HTMLElement[];
+
+  // Reset menu-left to its natural x before measuring char positions.
+  // Also kill any in-flight char tweens from the section-enter animation and reset
+  // x/y so collectAndDisplaceChars gets accurate matrix measurements.
+  gsap.set(menuLeft, { x: 0, opacity: 1 });
+  const allCharsForReset = Array.from(container.querySelectorAll('[data-char]')) as HTMLElement[];
+  gsap.killTweensOf(allCharsForReset);
+  gsap.set(allCharsForReset, { x: 0, y: 0, opacity: 0 });
+  gsap.set(paintSplash, { clipPath: 'inset(0 0 0 0%)', opacity: 0 });
+  gsap.set(portraitWrap, { opacity: 0 });
+
+  // Fly chars in from the center of the Experience item (index 2, the middle of the stack)
+  const anchorEl = menuItemEls[2] ?? menuItemEls[Math.floor(menuItemEls.length / 2)];
+  let originX: number;
+  let originY: number;
+  if (anchorEl) {
+    const rect = anchorEl.getBoundingClientRect();
+    originX = rect.left + rect.width  / 2;
+    originY = rect.top  + rect.height / 2;
+  } else {
+    originX = window.innerWidth  * 0.25;
+    originY = window.innerHeight * 0.5;
+  }
+
+  const charEntries = collectAndDisplaceChars(menuItemEls, originX, originY);
+
+  const snapAll = () => {
+    charEntries.forEach(({ char }) => gsap.set(char, { x: 0, y: 0, opacity: 1 }));
+  };
+
+  const FADE_DUR = 0.22;
+  const REENTRY_START = FADE_DUR + 0.02;
+
+  const tl = gsap.timeline({ onInterrupt: snapAll });
+
+  // Phase 1: fade the section content out
+  if (sectionShell) {
+    tl.to(sectionShell, { opacity: 0, duration: FADE_DUR, ease: 'power2.in' }, 0);
+  }
+  tl.to(controlHints, { y: '1vh', opacity: 0, duration: 0.12, ease: 'power2.in' }, 0);
+
+  // Phase 2: re-entry starts once section is gone
+  // Portrait fades in over the background
+  tl.to(portraitWrap, { opacity: 1, duration: 0.8, ease: 'power2.out' }, REENTRY_START);
+
+  // Chars burst out from the Experience item center
+  // Last char finishes at roughly REENTRY_START + 5*0.02 + 9*0.016 + 0.18 ≈ REENTRY_START + 0.47
+  appendCharFlyTweens(tl, charEntries, 0.14, 0.18, REENTRY_START, 0.02, 0.016);
+
+  const CHROME_IN = REENTRY_START + 0.2;
+
+  tl.call(onSwitchToMenuMode, [], REENTRY_START - 0.02)
+    .to(controlHints,            { y: 0, opacity: 1, duration: 0.14, ease: 'power2.out' }, CHROME_IN)
+    .call(onSubtitleVisible, [], REENTRY_START + 0.12)
+    .to([menuIndex, statsHints], { y: 0, x: 0, opacity: 1, duration: 0.15, ease: 'power2.out' }, CHROME_IN)
+    .to(paintSplash, { opacity: 1, duration: 0.2 }, REENTRY_START + 0.12)
+    .call(onComplete, [], CHROME_IN + 0.15);
+
+  return tl;
+}
+
+// Top-to-bottom vertical wipe reveal for the Skills section.
+// Elements with movement start slightly above their final position (negative y) and
+// settle into place while fading in. Background lines and portrait just fade in.
+export function createSkillsEntryTimeline(container: Element): gsap.core.Timeline {
+  const watermark = container.querySelector('[data-skills-watermark]');
+  const geoLines  = container.querySelector('[data-skills-geo-lines]');
+  const content   = container.querySelector('[data-skills-content]');
+  const portrait  = container.querySelector('[data-skills-portrait]');
+  const bands     = container.querySelector('[data-skills-bands]');
+  const wipeLine  = container.querySelector('[data-skills-wipe]');
+
+  const vh = window.innerHeight;
+  const lineH = vh * 0.26;
+
+  gsap.set(wipeLine,              { y: -lineH, autoAlpha: 1 });
+  gsap.set(watermark,             { y: -18, opacity: 0 });
+  gsap.set(content,               { y: -22, opacity: 0 });
+  gsap.set([geoLines, portrait, bands], { opacity: 0 });
+
+  const WIPE_DUR = 0.32;
+  const tl = gsap.timeline();
+
+  tl.to(wipeLine,  { y: vh + lineH, duration: WIPE_DUR, ease: 'power1.inOut' }, 0);
+  tl.to(geoLines,  { opacity: 1, duration: 0.35, ease: 'power2.out' }, 0.22);
+  tl.to(watermark, { y: 0, opacity: 0.75, duration: 0.38, ease: 'power2.out' }, 0.06);
+  tl.to(portrait,  { opacity: 1, duration: 0.70, ease: 'power1.out' }, 0.05);
+  tl.to(content,   { y: 0, opacity: 1, duration: 0.40, ease: 'power2.out' }, 0.12);
+  tl.to(bands,     { opacity: 1, duration: 0.65, ease: 'power1.out' }, 0);
+  tl.set(wipeLine, { autoAlpha: 0 }, WIPE_DUR);
+
+  return tl;
+}
+
+// Exit: watermark and content drift downward while the parent shell fades them out.
+// Opacity is intentionally not animated here - the shell fade handles it.
+export function createSkillsExitTimeline(container: Element): gsap.core.Timeline {
+  const watermark = container.querySelector('[data-skills-watermark]');
+  const content   = container.querySelector('[data-skills-content]');
+
+  const tl = gsap.timeline();
+  tl.to(watermark, { y: 48, duration: 0.22, ease: 'power2.in' }, 0);
+  tl.to(content,   { y: 52, duration: 0.22, ease: 'power2.in' }, 0);
+  return tl;
+}
+
+function withWillChange(targets: gsap.TweenTarget): gsap.TweenTarget[] {
+  return gsap.utils.toArray(targets);
+}
+
+function getExperiencePanelAngle(): number {
+  const dx = (65 - 35) * window.innerWidth / 100;
+  const dy = window.innerHeight;
+  return Math.atan2(dx, dy) * 180 / Math.PI;
+}
+
+export function createExperienceEntryTimeline(container: Element): gsap.core.Timeline {
+  const portrait = container.querySelector('[data-experience-portrait]');
+  const watermark = container.querySelector('[data-experience-watermark]');
+  const panelGroup = container.querySelector('[data-experience-panel-group]');
+  const geoLines = container.querySelector('[data-experience-geo-lines]');
+  const wipeLine = container.querySelector('[data-experience-wipe]') as HTMLElement | null;
+  const wipeLineInner = container.querySelector('[data-experience-wipe-line]');
+  const rippleGroup = container.querySelector('[data-experience-ripples]');
+  const rippleFade = container.querySelector('[data-experience-ripples-fade]');
+
+  const animated = withWillChange([portrait, watermark, panelGroup, geoLines, wipeLine, wipeLineInner, rippleFade]);
+  const angle = getExperiencePanelAngle();
+  const wipeStartX = window.innerWidth * 0.94;
+  const wipeWidth = wipeLine?.getBoundingClientRect().width ?? 0;
+  const wipeEndX = window.innerWidth * 0.47 - wipeWidth / 2;
+
+  gsap.set(wipeLine, {
+    autoAlpha: 1,
+    x: wipeStartX,
+    y: -window.innerHeight * 0.08,
+    rotation: angle,
+    transformOrigin: '50% 50%',
+  });
+  gsap.set(wipeLineInner, {
+    scaleX: 2.25,
+    scaleY: 0.92,
+    transformOrigin: '50% 50%',
+  });
+  gsap.set(watermark, { opacity: 0, scale: 1.1, transformOrigin: '50% 50%' });
+  gsap.set(portrait, {
+    opacity: 0,
+    scale: 1.5,
+    x: window.innerWidth * 0.08,
+    transformOrigin: '50% 50%',
+  });
+  gsap.set(panelGroup, {
+    opacity: 0,
+    x: window.innerWidth * 0.09,
+    y: -window.innerHeight * 0.08,
+  });
+  gsap.set(geoLines, { opacity: 0 });
+  gsap.set(rippleFade, {
+    opacity: 0,
+  });
+
+  const tl = gsap.timeline({
+    onStart: () => {
+      gsap.set(animated, { willChange: 'transform, opacity' });
+    },
+    onComplete: () => {
+      gsap.set(watermark, { clearProps: 'scale,willChange' });
+      gsap.set(portrait, { clearProps: 'x,scale,willChange' });
+      gsap.set(panelGroup, { clearProps: 'x,y,willChange' });
+      gsap.set(geoLines, { clearProps: 'opacity,willChange' });
+      gsap.set(rippleFade, { clearProps: 'opacity,willChange' });
+      gsap.set(wipeLineInner, { clearProps: 'scaleX,scaleY,willChange' });
+      gsap.set(wipeLine, { clearProps: 'x,y,willChange' });
+      gsap.set(wipeLine, { autoAlpha: 0 });
+      container.dispatchEvent(new CustomEvent('experience-entry-complete'));
+    },
+    onInterrupt: () => {
+      gsap.set(watermark, { clearProps: 'scale,willChange' });
+      gsap.set(portrait, { clearProps: 'x,scale,willChange' });
+      gsap.set(panelGroup, { clearProps: 'x,y,willChange' });
+      gsap.set(geoLines, { clearProps: 'opacity,willChange' });
+      gsap.set(rippleFade, { clearProps: 'opacity,willChange' });
+      gsap.set(wipeLineInner, { clearProps: 'scaleX,scaleY,willChange' });
+      gsap.set(wipeLine, { clearProps: 'x,y,willChange' });
+      gsap.set(wipeLine, { autoAlpha: 0 });
+    },
+  });
+
+  tl.to(watermark, {
+    opacity: 0.75,
+    scale: 1,
+    duration: 0.45,
+    ease: 'power3.out',
+  }, 0)
+    .to(portrait, {
+      opacity: 1,
+      scale: 1,
+      x: 0,
+      duration: 0.45,
+      ease: 'power3.out',
+    }, 0.04)
+    .to(wipeLine, {
+      x: wipeEndX,
+      duration: 0.24,
+      ease: 'none',
+    }, 0.06)
+    .to(wipeLineInner, {
+      scaleX: 2.25,
+      duration: 0.04,
+      ease: 'none',
+    }, 0.06)
+    .to(wipeLineInner, {
+      scaleX: 0.02,
+      scaleY: 1,
+      duration: 0.18,
+      ease: 'none',
+    }, 0.10)
+    .set(wipeLine, {
+      autoAlpha: 0,
+    }, 0.28)
+    .to(panelGroup, {
+      opacity: 1,
+      x: 0,
+      y: 0,
+      duration: 0.36,
+      ease: 'power3.out',
+    }, 0.12)
+    .to(geoLines, {
+      opacity: 1,
+      duration: 0.24,
+      ease: 'power2.out',
+    }, 0.14)
+    .to(rippleFade, {
+      opacity: 1,
+      duration: 0.26,
+      ease: 'power2.out',
+    }, 0.18);
+
+  return tl;
+}
+
+export function createExperienceExitTimeline(container: Element): gsap.core.Timeline {
+  const portrait = container.querySelector('[data-experience-portrait]');
+  const watermark = container.querySelector('[data-experience-watermark]');
+  const panelGroup = container.querySelector('[data-experience-panel-group]');
+  const geoLines = container.querySelector('[data-experience-geo-lines]');
+  const rippleFade = container.querySelector('[data-experience-ripples-fade]');
+
+  const animated = withWillChange([portrait, watermark, panelGroup, geoLines, rippleFade]);
+
+  const tl = gsap.timeline({
+    onStart: () => {
+      gsap.set(animated, { willChange: 'transform, opacity' });
+    },
+    onComplete: () => {
+      gsap.set(animated, { clearProps: 'willChange' });
+    },
+    onInterrupt: () => {
+      gsap.set(animated, { clearProps: 'willChange' });
+    },
+  });
+
+  tl.to([panelGroup, portrait, watermark], {
+    x: -window.innerWidth * 0.12,
+    duration: 0.2,
+    ease: 'power2.in',
+  }, 0)
+    .to([panelGroup, portrait, watermark], {
+      x: `-=${window.innerWidth * 0.08}`,
+      opacity: 0,
+      duration: 0.16,
+      ease: 'power2.in',
+      stagger: 0,
+    }, 0.18)
+    .to(geoLines, {
+      x: -window.innerWidth * 0.12,
+      duration: 0.2,
+      ease: 'power2.in',
+    }, 0)
+    .to(geoLines, {
+      x: `-=${window.innerWidth * 0.08}`,
+      opacity: 0,
+      duration: 0.16,
+      ease: 'power2.in',
+    }, 0.18)
+    .to(rippleFade, {
+      opacity: 0,
+      duration: 0.14,
+      ease: 'power2.in',
+    }, 0.18);
+
+  return tl;
 }
 
 // triData columns: [leftVh, top, w, h, maxOpacity, delay, duration, clipIdx]
@@ -190,8 +658,9 @@ export function createExperienceRipplesTimelines(
     const tl = gsap.timeline({ repeat: -1, delay: slot.delay, paused: true });
 
     if (slot.inward) {
-      gsap.set(dot,  { xPercent: -50, yPercent: -50, scale: 4.5, opacity: 0 });
-      gsap.set(ring, { xPercent: -50, yPercent: -50, scale: 10,  opacity: 0 });
+      // base: dot 300px, ring 500px - start near natural size so GPU doesn't stretch
+      gsap.set(dot,  { xPercent: -50, yPercent: -50, scale: 0.9, opacity: 0 });
+      gsap.set(ring, { xPercent: -50, yPercent: -50, scale: 1.0, opacity: 0 });
 
       tl.to(ring, { scale: 0, duration: 1.8, ease: 'power1.in' })
         .to(ring, { opacity: 0.35, duration: 0.4, ease: 'power1.out' }, 0)
@@ -201,14 +670,14 @@ export function createExperienceRipplesTimelines(
         .to(dot,  { opacity: 0,    duration: 0.5, ease: 'power1.in'  }, 1.1)
         .to(dot,  { duration: 4.0 });
     } else {
+      // base: dot 300px, ring 500px - scale to 1.0 so display size matches rasterized size
       gsap.set(dot,  { xPercent: -50, yPercent: -50, scale: 0, opacity: 0 });
       gsap.set(ring, { xPercent: -50, yPercent: -50, scale: 0, opacity: 0 });
 
-      // Expand directly from scale 0 - no intermediate scale:1 step, so no spawn-wait stutter
-      tl.to(ring, { scale: 10,  duration: 2.4, ease: 'power1.out' })
+      tl.to(ring, { scale: 1.0, duration: 2.4, ease: 'power1.out' })
         .to(ring, { opacity: 0.32, duration: 0.3, ease: 'power2.out' }, 0)
         .to(ring, { opacity: 0,   duration: 0.7, ease: 'power1.in'  }, 1.7)
-        .to(dot,  { scale: 5,  duration: 2.2, ease: 'power1.out' }, 0)
+        .to(dot,  { scale: 1.0, duration: 2.2, ease: 'power1.out' }, 0)
         .to(dot,  { opacity: 0.38, duration: 0.25, ease: 'power2.out' }, 0)
         .to(dot,  { opacity: 0,    duration: 0.6,  ease: 'power1.in'  }, 1.6)
         .to(dot,  { duration: 2.5 });
@@ -302,7 +771,6 @@ export function createSystemGlitchTimelines(
     if (!bar) return;
     let cycle = 0;
 
-    // Initial position matches the original top: ${10 + i * 11}% layout
     const initialY = ((10 + i * 11) / 100) * getContainerHeight();
     gsap.set(bar, {
       opacity: 0,
