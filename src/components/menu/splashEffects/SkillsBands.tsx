@@ -35,16 +35,20 @@ export default function SkillsBands({ isActive, animationsEnabled }: Props) {
   useGSAP(() => {
     const cW = containerRef.current?.offsetWidth ?? (window.innerHeight / 100) * 250;
     tlsRef.current = createSkillsBandsTimelines(bandRefs.current, BANDS, cW);
-  }, { scope: containerRef });
+  }, { scope: containerRef, dependencies: [] });
 
   useEffect(() => {
     if (!containerRef.current) return;
     gsap.set(containerRef.current, { autoAlpha: isActive ? 1 : 0 });
     const running = isActive && animationsEnabled;
-    const wc = running ? 'transform, opacity' : 'auto';
-    bandRefs.current.forEach(el => { if (el) el.style.willChange = wc; });
-    if (running) tlsRef.current.forEach(t => t.resume());
-    else tlsRef.current.forEach(t => t.pause());
+    bandRefs.current.forEach(el => {
+      if (el) el.style.willChange = running ? 'transform, opacity' : 'auto';
+    });
+    if (running) {
+      tlsRef.current.forEach(t => t.resume());
+    } else {
+      tlsRef.current.forEach(t => t.pause());
+    }
   }, [isActive, animationsEnabled]);
 
   return (

@@ -18,7 +18,7 @@ export default function UnsupportedScreen() {
       <p
         style={{
           fontFamily: '"Cinzel", serif',
-          fontSize: '2rem',
+          fontSize: 'var(--font-fluid-2xl)',
           letterSpacing: '0.1em',
           color: COLORS.textPrimaryMuted,
           textTransform: 'uppercase',

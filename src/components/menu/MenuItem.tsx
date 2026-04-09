@@ -8,11 +8,12 @@ interface MenuItemProps {
   isSelected: boolean;
   subtitle?: string;
   subtitleVisible: boolean;
+  animationsEnabled: boolean;
   onMouseEnter?: () => void;
 }
 
 const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
-  ({ item, index, isSelected, subtitle, subtitleVisible, onMouseEnter }, ref) => {
+  ({ item, index, isSelected, subtitle, subtitleVisible, animationsEnabled, onMouseEnter }, ref) => {
     const scale = ITEM_SCALES[Math.min(index, ITEM_SCALES.length - 1)];
     const arcX = ARC_CURVE_X[Math.min(index, ARC_CURVE_X.length - 1)];
     const sizeScale = isSelected
@@ -35,7 +36,7 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
           color: isSelected ? COLORS.black : 'var(--text-primary)',
           textTransform: 'uppercase',
           letterSpacing: '-0.08em',
-          cursor: isSelected ? 'default' : 'pointer',
+          cursor: 'default',
           userSelect: 'none',
           whiteSpace: 'nowrap',
           willChange: 'transform, opacity',
@@ -68,7 +69,9 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
               whiteSpace: 'nowrap',
               padding: '0.25em 0.6em 0.25em 0.4em',
               lineHeight: 1,
-              opacity: isSelected && subtitleVisible ? 1 : 0,
+              visibility: isSelected ? 'visible' : 'hidden',
+              opacity: subtitleVisible ? 1 : 0,
+              transition: animationsEnabled ? 'opacity 0.25s ease' : 'none',
               pointerEvents: 'none',
             }}
           >

@@ -52,7 +52,7 @@ export default function ExperienceRipples({ isActive, animationsEnabled }: Props
             style={{
               position: 'absolute',
               left: slot.left, top: slot.top,
-              width: '6vh', height: '6vh',
+              width: '300px', height: '300px',
               borderRadius: '50%',
               background: 'rgba(255,255,255,0.95)',
             }}
@@ -62,9 +62,9 @@ export default function ExperienceRipples({ isActive, animationsEnabled }: Props
             style={{
               position: 'absolute',
               left: slot.left, top: slot.top,
-              width: '5vh', height: '5vh',
+              width: '500px', height: '500px',
               borderRadius: '50%',
-              border: '0.2vh solid rgba(255,255,255,0.85)',
+              border: '2px solid rgba(255,255,255,0.85)',
             }}
           />
         </div>

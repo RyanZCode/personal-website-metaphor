@@ -48,7 +48,7 @@ export default function GeometricOverlays({ animationsEnabled }: Props) {
             r="38vw"
             fill="none"
             stroke={COLORS.textPrimaryFade}
-            strokeWidth="1"
+            strokeWidth="3"
             pathLength="360"
             strokeDasharray="84 6"
             strokeDashoffset="87"
@@ -59,7 +59,7 @@ export default function GeometricOverlays({ animationsEnabled }: Props) {
             r="24vw"
             fill="none"
             stroke={COLORS.textPrimaryFade}
-            strokeWidth="1"
+            strokeWidth="3"
             pathLength="360"
             strokeDasharray="84 6"
             strokeDashoffset="87"
@@ -70,9 +70,9 @@ export default function GeometricOverlays({ animationsEnabled }: Props) {
             x1="60%" y1="100%"
             x2="100%" y2="10%"
             stroke={COLORS.textPrimaryDim}
-            strokeWidth="1.5"
+            strokeWidth="1"
           />
-          <rect x="70%" y="57%" width="30%" height="1.5" fill="url(#h-line-fade)" />
+          <rect x="70%" y="57%" width="30%" height="3" fill="url(#h-line-fade)" />
         </svg>
       </div>
 
@@ -97,7 +97,7 @@ export default function GeometricOverlays({ animationsEnabled }: Props) {
             <stop offset="100%" stopColor={COLORS.textPrimaryGhost} />
           </linearGradient>
         </defs>
-        <rect x="95.2%" y="0" width="1.5" height="70%" fill="url(#v-line-fade)" />
+        <rect x="95.2%" y="0" width="3" height="70%" fill="url(#v-line-fade)" />
       </svg>
     </>
   );

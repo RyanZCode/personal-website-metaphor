@@ -2,15 +2,13 @@ import { COLORS } from '../../lib/constants';
 
 interface Props {
   animationsEnabled: boolean;
+  mode: 'menu' | 'section';
+  onConfirm?: () => void;
+  onBack?: () => void;
+  onAnimationsToggle?: () => void;
 }
 
-const HINTS = [
-  { keys: 'W / S', label: 'Navigate' },
-  { keys: 'Space', label: 'Confirm' },
-  { keys: 'C',     label: 'Back' },
-];
-
-const chipStyle: React.CSSProperties = {
+const baseChipStyle: React.CSSProperties = {
   background: COLORS.chipBg,
   clipPath: 'polygon(0.8rem 0%, 100% 0%, calc(100% - 0.8rem) 100%, 0% 100%)',
   padding: '0.45rem 1.8rem',
@@ -21,7 +19,7 @@ const chipStyle: React.CSSProperties = {
 
 const keyStyle: React.CSSProperties = {
   fontFamily: '"Cinzel", serif',
-  fontSize: '0.55rem',
+  fontSize: 'var(--font-fluid-2xs)',
   fontWeight: 700,
   letterSpacing: '0.08em',
   textTransform: 'uppercase',
@@ -33,44 +31,80 @@ const keyStyle: React.CSSProperties = {
 
 const labelStyle: React.CSSProperties = {
   fontFamily: '"Cinzel", serif',
-  fontSize: '0.5rem',
+  fontSize: 'var(--font-fluid-2xs)',
   letterSpacing: '0.12em',
   textTransform: 'uppercase',
   color: COLORS.chipText,
 };
 
-export default function ControlHints({ animationsEnabled }: Props) {
+function Chip({ keys, label, onClick }: { keys: string; label: string; onClick?: () => void }) {
+  if (onClick) {
+    return (
+      <button
+        onClick={onClick}
+        style={{
+          ...baseChipStyle,
+          border: 'none',
+          cursor: 'pointer',
+          pointerEvents: 'auto',
+        }}
+      >
+        <span style={keyStyle}>{keys}</span>
+        <span style={labelStyle}>{label}</span>
+      </button>
+    );
+  }
+  return (
+    <div style={baseChipStyle}>
+      <span style={keyStyle}>{keys}</span>
+      <span style={labelStyle}>{label}</span>
+    </div>
+  );
+}
+
+export default function ControlHints({ animationsEnabled, mode, onConfirm, onBack, onAnimationsToggle }: Props) {
   return (
     <div data-control-hints style={{ display: 'flex', gap: '0.3rem' }}>
-      {HINTS.map(({ keys, label }) => (
-        <div key={keys} style={chipStyle}>
-          <span style={keyStyle}>{keys}</span>
-          <span style={labelStyle}>{label}</span>
-        </div>
-      ))}
-      <div style={chipStyle}>
-        <span style={keyStyle}>F</span>
-        <span style={labelStyle}>Toggle Animations</span>
-        <span style={{
-          fontFamily: '"Cinzel", serif',
-          fontSize: '0.45rem',
-          fontWeight: 700,
-          letterSpacing: '0.1em',
-          textTransform: 'uppercase',
-          position: 'relative',
-          display: 'inline-block',
-        }}>
-          {/* hidden "Off" always reserves the max width */}
-          <span style={{ visibility: 'hidden' }}>Off</span>
+      {mode === 'menu' && <Chip keys="W / S" label="Navigate" />}
+
+      {mode === 'menu' && (
+        <Chip keys="Space" label="Confirm" onClick={onConfirm} />
+      )}
+
+      {mode === 'section' && (
+        <Chip keys="C" label="Back" onClick={onBack} />
+      )}
+
+      <button
+          onClick={onAnimationsToggle}
+          style={{
+            ...baseChipStyle,
+            border: 'none',
+            cursor: 'pointer',
+            pointerEvents: 'auto',
+          }}
+        >
+          <span style={keyStyle}>F</span>
+          <span style={labelStyle}>Toggle Animations</span>
           <span style={{
-            position: 'absolute',
-            left: 0,
-            color: animationsEnabled ? COLORS.chipTextOn : COLORS.chipTextOff,
+            fontFamily: '"Cinzel", serif',
+            fontSize: 'var(--font-fluid-2xs)',
+            fontWeight: 700,
+            letterSpacing: '0.1em',
+            textTransform: 'uppercase',
+            position: 'relative',
+            display: 'inline-block',
           }}>
-            {animationsEnabled ? 'On' : 'Off'}
+            <span style={{ visibility: 'hidden' }}>Off</span>
+            <span style={{
+              position: 'absolute',
+              left: 0,
+              color: animationsEnabled ? COLORS.chipTextOn : COLORS.chipTextOff,
+            }}>
+              {animationsEnabled ? 'On' : 'Off'}
+            </span>
           </span>
-        </span>
-      </div>
+        </button>
     </div>
   );
 }

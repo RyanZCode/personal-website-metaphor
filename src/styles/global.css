@@ -23,6 +23,14 @@
   --bg-warm: #1a0a12;
   --text-primary: #f0e8ec;
   --text-muted: rgba(200, 180, 190, 0.5);
+  --font-fluid-2xs: clamp(0.55rem, 0.5rem + 0.18vw, 0.7rem);
+  --font-fluid-xs: clamp(0.68rem, 0.61rem + 0.25vw, 0.88rem);
+  --font-fluid-sm: clamp(0.84rem, 0.75rem + 0.35vw, 1.1rem);
+  --font-fluid-md: clamp(1.02rem, 0.9rem + 0.5vw, 1.4rem);
+  --font-fluid-lg: clamp(1.2rem, 1.04rem + 0.72vw, 1.78rem);
+  --font-fluid-xl: clamp(1.46rem, 1.24rem + 1vw, 2.26rem);
+  --font-fluid-2xl: clamp(2.34rem, 1.66rem + 2.18vw, 4.42rem);
+  --font-fluid-3xl: clamp(2.96rem, 2.1rem + 2.88vw, 5.82rem);
 
   /* active accent, tweened by GSAP when the menu selection changes */
   --accent-h: 320;
@@ -76,6 +84,10 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+h1, h2, h3, h4, h5, h6 {
+  font-family: "Cinzel", serif;
+}
+
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
@@ -114,7 +126,49 @@ body {
   100% { transform: translateX(350%); }
 }
 
+:root {
+  --bg-combined:
+    radial-gradient(ellipse 95% 150% at 105% 90%, rgba(140, 18, 26, 0.95) 0%, rgba(75, 10, 15, 0.65) 45%, transparent 82%),
+    radial-gradient(ellipse 110% 90% at 36% 52%, rgba(42, 122, 114, 1) 0%, rgba(15, 68, 64, 1) 22%, rgba(6, 30, 28, 1) 45%, rgba(2, 8, 8, 1) 70%);
+}
+
+body.bg-inverted {
+  --bg-combined:
+    radial-gradient(ellipse 95% 150% at 105% 90%, rgba(42, 122, 114, 1) 0%, rgba(15, 68, 64, 0.65) 45%, transparent 82%),
+    radial-gradient(ellipse 110% 90% at 36% 52%, rgba(170, 22, 32, 1) 0%, rgba(95, 13, 19, 1) 22%, rgba(25, 4, 6, 1) 45%, rgba(2, 8, 8, 1) 70%);
+}
+
+body.cursor-metaphor,
+body.cursor-metaphor * {
+  cursor: none !important;
+}
+
+body.cursor-metaphor ::-webkit-scrollbar,
+body.cursor-metaphor ::-webkit-scrollbar-thumb,
+body.cursor-metaphor ::-webkit-scrollbar-track,
+body.cursor-metaphor ::-webkit-scrollbar-corner {
+  cursor: none !important;
+}
+
 .keyboard-mode,
 .keyboard-mode * {
   cursor: none !important;
+}
+
+[data-custom-scroll-viewport]::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+[data-custom-scroll-viewport]::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+[data-custom-scroll-viewport]::-webkit-scrollbar-thumb {
+  background: transparent;
+}
+
+[data-custom-scroll-viewport] {
+  scrollbar-width: none;
+  scrollbar-color: transparent transparent;
 }
