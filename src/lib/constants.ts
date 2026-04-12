@@ -65,11 +65,11 @@ export const COLORS = {
   portraitGlow:     'rgba(110, 35, 160, 0.45)',
 } as const;
 
-// Animation durations in seconds, used in Phase 3+
+// Animation durations in seconds
 export const TIMING = {
   hoverTransition: 0.2,
-  sectionEnter: 0.4,
-  sectionExit: 0.35,
+  pageEnter: 0.4,
+  pageExit: 0.35,
   entryTotal: 1.0,
   idleBob: 4,
   idleSplash: 3,

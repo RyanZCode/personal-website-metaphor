@@ -57,12 +57,12 @@ export default function StatsPanel() {
       </div>
 
       <span style={{
-        fontFamily: '"Cinzel", serif',
+        fontFamily: 'Cambria, "Times New Roman", serif',
         fontSize: 'var(--font-fluid-sm)',
         letterSpacing: '0.08em',
         color: COLORS.chipTextFaint,
-        textTransform: 'uppercase',
         display: 'block',
+        textAlign: 'center',
       }}>
         Design inspired by Metaphor: ReFantazio
       </span>

@@ -40,8 +40,8 @@ export default function CharacterPortrait({ animationsEnabled }: Props) {
       />
 
       <img
-        src="/assets/dog.png"
-        alt=""
+        src="/assets/coby-main.png"
+        alt="Coby sitting pretty"
         data-portrait
         draggable={false}
         style={{

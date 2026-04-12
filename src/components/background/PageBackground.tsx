@@ -1,4 +1,4 @@
-export default function SectionBackground() {
+export default function PageBackground() {
   return (
     <div
       style={{
@@ -17,11 +17,11 @@ export default function SectionBackground() {
         style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.05 }}
         aria-hidden="true"
       >
-        <filter id="section-grain">
+          <filter id="page-grain">
           <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch" />
           <feColorMatrix type="saturate" values="0" />
         </filter>
-        <rect width="100%" height="100%" filter="url(#section-grain)" />
+        <rect width="100%" height="100%" filter="url(#page-grain)" />
       </svg>
     </div>
   );

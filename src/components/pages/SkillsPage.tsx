@@ -1,14 +1,16 @@
-import { useLayoutEffect, useEffect, useRef } from 'react';
+import { useLayoutEffect, useEffect, useRef, useState } from 'react';
 import gsap from 'gsap';
 import { COLORS } from '../../lib/constants';
-import SectionBackground from '../background/SectionBackground';
+import PageBackground from '../background/PageBackground';
 import SkillsBands from '../menu/splashEffects/SkillsBands';
 import { createSkillsEntryTimeline, createSkillsExitTimeline } from '../../lib/animations';
 import ScrollViewport from '../shared/ScrollViewport';
+import type { RegisterPageNavigation } from '../../lib/pageNavigation';
 
-interface SkillsSectionProps {
+interface SkillsPageProps {
   isActive: boolean;
   animationsEnabled: boolean;
+  registerNavigation: RegisterPageNavigation;
 }
 
 interface SkillGroup {
@@ -24,12 +26,15 @@ const SKILL_GROUPS: SkillGroup[] = [
 ];
 
 const accent = 'hsl(335, 75%, 50%)';
+const BOTTOM_DIAGONAL_WEDGE_CLIP_PATH = 'polygon(0 100%, 100% 0, 100% 100%)';
 
-export default function SkillsSection({ isActive, animationsEnabled }: SkillsSectionProps) {
+export default function SkillsPage({ isActive, animationsEnabled, registerNavigation }: SkillsPageProps) {
   const containerRef  = useRef<HTMLElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
   const entryTlRef    = useRef<gsap.core.Timeline | null>(null);
   const exitTlRef     = useRef<gsap.core.Timeline | null>(null);
   const prevIsActive  = useRef(isActive);
+  const [isScrollable, setIsScrollable] = useState(false);
 
   const bobAnim  = animationsEnabled ? 'portrait-bob 4s ease-in-out infinite' : 'none';
   const glowAnim = animationsEnabled ? 'portrait-glow 3s ease-in-out infinite' : 'none';
@@ -66,11 +71,66 @@ export default function SkillsSection({ isActive, animationsEnabled }: SkillsSec
     return () => { exitTlRef.current?.kill(); };
   }, []);
 
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+
+    const updateScrollability = () => {
+      setIsScrollable(viewport.scrollHeight - viewport.clientHeight > 1);
+    };
+
+    updateScrollability();
+
+    const resizeObserver = typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver(updateScrollability);
+
+    resizeObserver?.observe(viewport);
+    if (viewport.firstElementChild instanceof HTMLElement) {
+      resizeObserver?.observe(viewport.firstElementChild);
+    }
+
+    window.addEventListener('resize', updateScrollability);
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', updateScrollability);
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!isActive) {
+      registerNavigation(null);
+      return;
+    }
+
+    registerNavigation({
+      showScrollHint: isScrollable,
+      onDirection: (direction) => {
+        if (direction !== 'up' && direction !== 'down') return false;
+
+        const viewport = viewportRef.current;
+        if (!viewport) return false;
+
+        const scrollRange = viewport.scrollHeight - viewport.clientHeight;
+        if (scrollRange <= 1) return false;
+
+        const step = Math.max(96, viewport.clientHeight * 0.72);
+        viewport.scrollBy({
+          top: direction === 'down' ? step : -step,
+          behavior: animationsEnabled ? 'smooth' : 'auto',
+        });
+        return true;
+      },
+    });
+
+    return () => registerNavigation(null);
+  }, [animationsEnabled, isActive, isScrollable, registerNavigation]);
+
   return (
     <section
       ref={containerRef}
       aria-hidden={!isActive}
-      data-skills-section
+      data-skills-page
       style={{
         position: 'absolute',
         inset: 0,
@@ -80,11 +140,11 @@ export default function SkillsSection({ isActive, animationsEnabled }: SkillsSec
         overflow: 'hidden',
       }}
     >
-      <SectionBackground />
+      <PageBackground />
 
       {/* Watermark title - top left */}
       <div
-        data-section-title
+        data-page-title
         data-skills-watermark
         style={{
           position: 'absolute',
@@ -154,7 +214,7 @@ export default function SkillsSection({ isActive, animationsEnabled }: SkillsSec
       >
         {/* Left panel - skills list */}
         <div
-          data-section-content
+            data-page-content
           data-skills-content
           style={{
             position: 'relative',
@@ -170,13 +230,14 @@ export default function SkillsSection({ isActive, animationsEnabled }: SkillsSec
             aria-hidden="true"
             style={{
               position: 'absolute',
-              inset: '-2px',
+              inset: '-3px',
               background: 'rgba(255, 255, 255, 0.5)',
               clipPath: 'polygon(0 0, 94% 0, 100% 10%, 100% 100%, 6% 100%, 0 90%)',
               pointerEvents: 'none',
             }}
           />
           <ScrollViewport
+            ref={viewportRef}
             style={{
               position: 'absolute',
               inset: 0,
@@ -307,8 +368,8 @@ export default function SkillsSection({ isActive, animationsEnabled }: SkillsSec
               }}
             >
               <img
-                src="/assets/dog-2.jpg"
-                alt="Dog"
+                src="/assets/coby-left.jpg"
+                alt="Coby looking left"
                 draggable={false}
                 style={{
                   width: '100%',
@@ -327,21 +388,35 @@ export default function SkillsSection({ isActive, animationsEnabled }: SkillsSec
 
       {/* Bands in the bottom-right corner */}
       <div
-        data-skills-bands
+        aria-hidden="true"
         style={{
           position: 'absolute',
-          right: '-60vw',
-          bottom: '-10vw',
-          width: '110vw',
-          height: '40vw',
-          transform: 'rotate(-30deg)',
-          transformOrigin: 'center',
-          overflow: 'hidden',
+          left: '20vw',
+          top: '50vh',
+          width: '80vw',
+          height: '50vh',
           zIndex: 1,
+          clipPath: BOTTOM_DIAGONAL_WEDGE_CLIP_PATH,
+          overflow: 'hidden',
           pointerEvents: 'none',
         }}
       >
-        <SkillsBands isActive={true} animationsEnabled={animationsEnabled} />
+        <div
+          data-skills-bands
+          style={{
+            position: 'absolute',
+            left: '0vw',
+            bottom: '-40vw',
+            width: '160vw',
+            height: '40vw',
+            transform: `rotate(-23.5deg)`,
+            transformOrigin: 'bottom left',
+            overflow: 'hidden',
+            pointerEvents: 'none',
+          }}
+        >
+          <SkillsBands isActive={true} animationsEnabled={animationsEnabled} />
+        </div>
       </div>
 
       {/* Wipe line - GSAP moves this from above the screen to below on entry */}

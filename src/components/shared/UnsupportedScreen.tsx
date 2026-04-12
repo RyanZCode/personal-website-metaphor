@@ -30,7 +30,7 @@ export default function UnsupportedScreen() {
       </p>
       <img
         src="/assets/sad-dog.png"
-        alt=""
+        alt="Crying dog looking at phone"
         style={{
           width: 'auto',
           height: '40vh',

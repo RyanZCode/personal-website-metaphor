@@ -2,12 +2,14 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import gsap from 'gsap';
 import { COLORS } from '../../lib/constants';
 import { createExperienceEntryTimeline, createExperienceExitTimeline } from '../../lib/animations';
-import SectionBackground from '../background/SectionBackground';
+import type { RegisterPageNavigation } from '../../lib/pageNavigation';
+import PageBackground from '../background/PageBackground';
 import ExperienceRipples from '../menu/splashEffects/ExperienceRipples';
 
-interface ExperienceSectionProps {
+interface ExperiencePageProps {
   isActive: boolean;
   animationsEnabled: boolean;
+  registerNavigation: RegisterPageNavigation;
 }
 
 interface Job {
@@ -16,6 +18,9 @@ interface Job {
   period: string;
   type: string;
   logo?: string;
+  logoScale?: number;
+  logoOffsetX?: string;
+  logoOffsetY?: string;
 }
 
 const JOBS: Job[] = [
@@ -25,6 +30,9 @@ const JOBS: Job[] = [
     period: 'May 2026 - Present',
     type: 'Internship',
     logo: '/assets/experience-logos/shopify-logo.jpg',
+    logoScale: 0.8,
+    logoOffsetX: '0%',
+    logoOffsetY: '-3%',
   },
   {
     company: 'Shopify',
@@ -32,6 +40,9 @@ const JOBS: Job[] = [
     period: 'Sept 2025 - Dec 2025',
     type: 'Internship',
     logo: '/assets/experience-logos/shopify-logo.jpg',
+    logoScale: 0.8,
+    logoOffsetX: '0%',
+    logoOffsetY: '-3%',
   },
   {
     company: 'University Health Network',
@@ -39,6 +50,9 @@ const JOBS: Job[] = [
     period: 'Jan 2025 - Apr 2025',
     type: 'Internship',
     logo: '/assets/experience-logos/uhn-logo.png',
+    logoScale: 1.2,
+    logoOffsetX: '0%',
+    logoOffsetY: '0%',
   },
   {
     company: 'Dishon Limited',
@@ -46,6 +60,9 @@ const JOBS: Job[] = [
     period: 'Aug 2024 - Nov 2025',
     type: 'Independent Contractor',
     logo: '/assets/experience-logos/dishon-logo.jpg',
+    logoScale: 0.95,
+    logoOffsetX: '-0.5%',
+    logoOffsetY: '2%',
   },
   {
     company: 'Dishon Limited',
@@ -53,6 +70,9 @@ const JOBS: Job[] = [
     period: 'May 2024 - Aug 2024',
     type: 'Internship',
     logo: '/assets/experience-logos/dishon-logo.jpg',
+    logoScale: 0.95,
+    logoOffsetX: '-0.5%',
+    logoOffsetY: '2%',
   },
   {
     company: 'University of Waterloo',
@@ -60,6 +80,9 @@ const JOBS: Job[] = [
     period: 'Sept 2023 - Present',
     type: 'Education',
     logo: '/assets/experience-logos/uwaterloo-logo.png',
+    logoScale: 1,
+    logoOffsetX: '0%',
+    logoOffsetY: '-0.5%',
   },
 ];
 
@@ -68,6 +91,7 @@ const accent = 'hsl(215, 72%, 42%)';
 const LEFT_TOP      = 65;
 const LEFT_BOT      = 35;
 const RIGHT_BOT     = 73;
+const EXPERIENCE_SCROLL_STEP = 132;
 // Right border line starts at the right edge of the screen at 9/10ths up (y=10%)
 const RIGHT_START_Y = 10;
 
@@ -77,7 +101,7 @@ const RIGHT_START_Y = 10;
 // Width ~41vw at row positions, rows use 41vw to stay inside each boundary.
 // paddingLeft inside each row is 0.5vw, accounted for in the margin calculation.
 const ROW_PADDING_L_VW = 0.5;
-const ROW_PADDING_R_VW = 2.75;
+const ROW_PADDING_R_VW = 5.25;
 const LOGO_OVERHANG_REM = 0.7;
 
 // Estimated top y-positions of each row as a fraction of screen height.
@@ -132,18 +156,26 @@ function computeRippleLayout(): { angleDeg: number; rightVw: number; bottomVh: n
   };
 }
 
-export default function ExperienceSection({ isActive, animationsEnabled }: ExperienceSectionProps) {
+export default function ExperiencePage({ isActive, animationsEnabled, registerNavigation }: ExperiencePageProps) {
   const containerRef = useRef<HTMLElement | null>(null);
   const entryTlRef = useRef<gsap.core.Timeline | null>(null);
   const exitTlRef = useRef<gsap.core.Timeline | null>(null);
   const prevIsActive = useRef(isActive);
   const bobAnim  = animationsEnabled ? 'portrait-bob 4s ease-in-out infinite' : 'none';
   const glowAnim = animationsEnabled ? 'portrait-glow 3s ease-in-out infinite' : 'none';
+  const viewportRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const rowRefs = useRef<Array<HTMLDivElement | null>>([]);
 
   // 16:9 fallbacks (θ≈28°, ar≈1.778, W2≈40): updated after mount and on resize
   const [ripple, setRipple] = useState({ angleDeg: 28, rightVw: -63, bottomVh: -57, sideVw: 80 });
+  const [viewportSize, setViewportSize] = useState(() => ({
+    width: typeof window === 'undefined' ? 1440 : window.innerWidth,
+    height: typeof window === 'undefined' ? 900 : window.innerHeight,
+  }));
+  const [scrollOffset, setScrollOffset] = useState(0);
+  const [maxScrollOffset, setMaxScrollOffset] = useState(0);
+  const [scrollMetrics, setScrollMetrics] = useState({ viewportWidth: 1, viewportHeight: 1, contentHeight: 1 });
   const [rowLayouts, setRowLayouts] = useState<RowLayout[]>(
     () => JOBS.map(() => ({
       marginLeft: '0px',
@@ -197,10 +229,51 @@ export default function ExperienceSection({ isActive, animationsEnabled }: Exper
   }, []);
 
   useEffect(() => {
-    const update = () => setRipple(computeRippleLayout());
+    const update = () => {
+      setRipple(computeRippleLayout());
+      setViewportSize({
+        width: window.innerWidth,
+        height: window.innerHeight,
+      });
+    };
     update();
     window.addEventListener('resize', update);
     return () => window.removeEventListener('resize', update);
+  }, []);
+
+  useLayoutEffect(() => {
+    const updateScrollMetrics = () => {
+      const viewport = viewportRef.current;
+      const content = contentRef.current;
+
+      if (!viewport || !content) return;
+
+      const nextMax = Math.max(0, content.scrollHeight - viewport.clientHeight);
+      setMaxScrollOffset(nextMax);
+      setScrollOffset((current) => Math.min(current, nextMax));
+      setScrollMetrics({
+        viewportWidth: viewport.clientWidth,
+        viewportHeight: viewport.clientHeight,
+        contentHeight: content.scrollHeight,
+      });
+    };
+
+    updateScrollMetrics();
+
+    const resizeObserver = typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver(updateScrollMetrics);
+
+    if (resizeObserver) {
+      if (viewportRef.current) resizeObserver.observe(viewportRef.current);
+      if (contentRef.current) resizeObserver.observe(contentRef.current);
+    }
+
+    window.addEventListener('resize', updateScrollMetrics);
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', updateScrollMetrics);
+    };
   }, []);
 
   useEffect(() => {
@@ -310,13 +383,52 @@ export default function ExperienceSection({ isActive, animationsEnabled }: Exper
       resizeObserver?.disconnect();
       window.removeEventListener('resize', updateRowLayouts);
     };
-  }, [isActive]);
+  }, [isActive, scrollOffset]);
+
+  useLayoutEffect(() => {
+    if (!isActive) {
+      registerNavigation(null);
+      return;
+    }
+
+    registerNavigation({
+      showScrollHint: maxScrollOffset > 1,
+      captureWheel: true,
+      onDirection: (direction) => {
+        if (direction !== 'up' && direction !== 'down') return false;
+        if (maxScrollOffset <= 1) return false;
+
+        const delta = direction === 'down' ? EXPERIENCE_SCROLL_STEP : -EXPERIENCE_SCROLL_STEP;
+        setScrollOffset((current) => Math.max(0, Math.min(current + delta, maxScrollOffset)));
+        return true;
+      },
+    });
+
+    return () => registerNavigation(null);
+  }, [isActive, maxScrollOffset, registerNavigation]);
+
+  const diagonalScrollX = scrollOffset * ((LEFT_TOP - LEFT_BOT) / 100) * (viewportSize.width / viewportSize.height);
+  const scrollbarThumbFraction = Math.min(
+    1,
+    Math.max(0.18, scrollMetrics.viewportHeight / Math.max(scrollMetrics.contentHeight, 1))
+  );
+  const scrollbarProgress = maxScrollOffset <= 1 ? 0 : scrollOffset / maxScrollOffset;
+  const trackAngleDeg = Math.atan2(
+    ((100 - RIGHT_START_Y) / 100) * viewportSize.height,
+    ((RIGHT_BOT - 100) / 100) * viewportSize.width
+  ) * 180 / Math.PI;
+  const trackLengthPx = Math.min(scrollMetrics.viewportHeight * 0.76, scrollMetrics.viewportWidth * 0.7);
+  const trackTopPx = scrollMetrics.viewportHeight * 0.16;
+  const trackRightPx = Math.max(18, scrollMetrics.viewportWidth * 0.075);
+  const thumbWidthPx = trackLengthPx * scrollbarThumbFraction;
+  const thumbTravelPx = Math.max(0, trackLengthPx - thumbWidthPx);
+  const thumbOffsetPx = thumbTravelPx * scrollbarProgress;
 
   return (
     <section
       ref={containerRef}
       aria-hidden={!isActive}
-      data-experience-section
+      data-experience-page
       style={{
         position: 'absolute',
         inset: 0,
@@ -326,12 +438,12 @@ export default function ExperienceSection({ isActive, animationsEnabled }: Exper
         overflow: 'hidden',
       }}
     >
-      <SectionBackground />
+      <PageBackground />
 
       {/* Watermark - behind the dark panel */}
       <div
         data-experience-watermark
-        data-section-title
+        data-page-title
         style={{
           position: 'absolute',
           bottom: '2vh',
@@ -401,19 +513,6 @@ export default function ExperienceSection({ isActive, animationsEnabled }: Exper
           />
         </svg>
 
-        <div
-          style={{
-            position: 'absolute',
-            left: '6vw',
-            top: '13vh',
-            width: 'clamp(25rem, 36vw, 46rem)',
-            height: 'clamp(25rem, 36vw, 46rem)',
-            borderRadius: '50%',
-            border: '3px solid rgba(240,232,236,0.34)',
-            clipPath: 'inset(0 0 52% 0)',
-            pointerEvents: 'none',
-          }}
-        />
       </div>
 
       <div
@@ -440,6 +539,21 @@ export default function ExperienceSection({ isActive, animationsEnabled }: Exper
           }}
         >
           <div
+            aria-hidden="true"
+            style={{
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              width: '120%',
+              height: '120%',
+              transform: 'translate(-50%, -50%)',
+              borderRadius: '50%',
+              border: '3px solid rgba(240,232,236,0.34)',
+              clipPath: 'inset(0 0 52% 0)',
+              pointerEvents: 'none',
+            }}
+          />
+          <div
             style={{
               position: 'absolute',
               top: '50%',
@@ -463,8 +577,8 @@ export default function ExperienceSection({ isActive, animationsEnabled }: Exper
             }}
           >
             <img
-              src="/assets/dog-3.jpg"
-              alt="Dog"
+              src="/assets/coby-wistful.jpg"
+              alt="Coby with a wistful look"
               draggable={false}
               style={{
                 width: '100%',
@@ -496,7 +610,8 @@ export default function ExperienceSection({ isActive, animationsEnabled }: Exper
           style={{
             position: 'absolute',
             inset: 0,
-            background: 'rgba(8, 5, 7, 0.84)',
+            background: 'linear-gradient(140deg, rgba(25, 9, 13, 0.92), rgba(7, 4, 7, 0.86))',
+            boxShadow: '0 0 0 1px rgba(205, 35, 45, 0.18), 0 2rem 5rem rgba(0, 0, 0, 0.45)',
             clipPath: `polygon(${LEFT_TOP}% 0%, 100% 0%, 100% ${RIGHT_START_Y}%, ${RIGHT_BOT}% 100%, ${LEFT_BOT}% 100%)`,
             pointerEvents: 'none',
           }}
@@ -530,160 +645,238 @@ export default function ExperienceSection({ isActive, animationsEnabled }: Exper
           }}
         >
           <div
-            data-section-content
-            ref={contentRef}
             style={{
               width: '100%',
-              display: 'flex',
-              flexDirection: 'column',
+              height: '100%',
               minWidth: 0,
+              overflow: 'hidden',
+              display: 'flex',
+              alignItems: maxScrollOffset > 1 ? 'stretch' : 'center',
             }}
           >
-            {JOBS.map((job, i) => {
-              const isLast = i === JOBS.length - 1;
-              const rowLayout = rowLayouts[i];
-              return (
+            <div
+              ref={viewportRef}
+              style={{
+                width: '100%',
+                height: '100%',
+                minHeight: 0,
+                overflow: 'hidden',
+                position: 'relative',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: maxScrollOffset > 1 ? 'flex-start' : 'center',
+              }}
+            >
+              {maxScrollOffset > 1 ? (
                 <div
-                  key={`${job.company}-${i}`}
-                  data-experience-row
-                  ref={(node) => {
-                    rowRefs.current[i] = node;
-                  }}
+                  aria-hidden="true"
                   style={{
-                    position: 'relative',
-                    marginLeft: rowLayout?.marginLeft ?? '0px',
-                    width: rowLayout?.width ?? '35vw',
-                    boxSizing: 'border-box',
-                    paddingLeft: '0.5vw',
-                    paddingTop: '1.1rem',
-                    paddingBottom: '1.1rem',
-                    paddingRight: `${ROW_PADDING_R_VW}vw`,
-                    borderTop: '1px solid rgba(240, 232, 236, 0.22)',
-                    background: 'transparent',
+                    position: 'absolute',
+                    top: `${trackTopPx}px`,
+                    left: `calc(100% - ${trackRightPx}px)`,
+                    width: `${trackLengthPx}px`,
+                    height: '12px',
+                    zIndex: 2,
+                    pointerEvents: 'none',
+                    transform: `translateY(-50%) rotate(${trackAngleDeg}deg)`,
+                    transformOrigin: '0 50%',
                   }}
                 >
                   <div
                     style={{
-                      display: 'flex',
-                      alignItems: 'flex-start',
-                      gap: '0.85rem',
-                      paddingLeft: rowLayout?.contentInsetLeft ?? '0px',
+                      position: 'absolute',
+                      left: 0,
+                      top: '50%',
+                      width: '100%',
+                      height: '4px',
+                      transform: 'translateY(-50%)',
+                      borderRadius: '999px',
+                      background: 'rgba(255, 214, 224, 0.24)',
                     }}
-                  >
+                  />
+                  <div
+                    style={{
+                      position: 'absolute',
+                      left: `${thumbOffsetPx}px`,
+                      top: '50%',
+                      width: `${thumbWidthPx}px`,
+                      height: '4px',
+                      transform: 'translateY(-50%)',
+                      borderRadius: '999px',
+                      background: 'rgba(255, 214, 224, 0.7)',
+                      boxShadow: '0 0 8px rgba(255, 132, 176, 0.42)',
+                    }}
+                  />
+                </div>
+              ) : null}
+              <div
+                data-page-content
+                ref={contentRef}
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  minWidth: 0,
+                  transform: maxScrollOffset > 1 ? `translate(${diagonalScrollX}px, ${-scrollOffset}px)` : 'translate(0px, 0px)',
+                  willChange: maxScrollOffset > 1 ? 'transform' : 'auto',
+                }}
+              >
+                {JOBS.map((job, i) => {
+                  const isLast = i === JOBS.length - 1;
+                  const rowLayout = rowLayouts[i];
+                  return (
                     <div
+                      key={`${job.company}-${i}`}
+                      data-experience-row
+                      ref={(node) => {
+                        rowRefs.current[i] = node;
+                      }}
                       style={{
-                        flexShrink: 0,
-                        width: '3.5rem',
-                        height: '3.5rem',
-                        borderRadius: '50%',
-                        border: '1px solid rgba(240, 232, 236, 0.2)',
-                        background: 'rgba(255, 255, 255, 1)',
-                        overflow: 'hidden',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
+                        position: 'relative',
+                        marginLeft: rowLayout?.marginLeft ?? '0px',
+                        width: rowLayout?.width ?? '35vw',
+                        boxSizing: 'border-box',
+                        paddingLeft: '0.5vw',
+                        paddingTop: '1.1rem',
+                        paddingBottom: '1.1rem',
+                        paddingRight: `${ROW_PADDING_R_VW}vw`,
+                        borderTop: '1px solid rgba(240, 232, 236, 0.22)',
+                        background: 'transparent',
                       }}
                     >
-                      {job.logo ? (
-                        <img
-                          src={job.logo}
-                          alt={job.company}
-                          style={{ width: '100%', height: '100%', objectFit: 'contain', padding: '0.28rem', background: 'rgba(255, 255, 255, 1)' }}
-                        />
-                      ) : (
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: '0.85rem',
+                          paddingLeft: rowLayout?.contentInsetLeft ?? '0px',
+                        }}
+                      >
                         <div
                           style={{
-                            width: '45%',
-                            height: '45%',
-                            border: '1px solid rgba(240, 232, 236, 0.14)',
-                            borderRadius: '50%',
-                          }}
-                        />
-                      )}
-                    </div>
-
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
-                        <div style={{ minWidth: 0 }}>
-                          <div
-                            style={{
-                              fontSize: 'var(--font-fluid-md)',
-                              fontWeight: 600,
-                              letterSpacing: '0.04em',
-                              color: COLORS.textPrimary,
-                              marginBottom: '0.15rem',
-                              whiteSpace: 'nowrap',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                            }}
-                          >
-                            {job.company}
-                          </div>
-                          <div
-                            style={{
-                              fontSize: 'var(--font-fluid-sm)',
-                              letterSpacing: '0.08em',
-                              textTransform: 'uppercase',
-                              color: COLORS.textPrimaryDim,
-                            }}
-                          >
-                            {job.role}
-                          </div>
-                        </div>
-                        <div
-                          style={{
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: 'flex-end',
-                            gap: '0.3rem',
                             flexShrink: 0,
+                            width: '3.5rem',
+                            height: '3.5rem',
+                            borderRadius: '50%',
+                            border: '1px solid rgba(240, 232, 236, 0.2)',
+                            background: 'rgba(255, 255, 255, 1)',
+                            overflow: 'hidden',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
                           }}
                         >
-                          <div
-                            style={{
-                              fontSize: 'var(--font-fluid-xs)',
-                              letterSpacing: '0.1em',
-                              color: COLORS.textPrimaryDim,
-                              textTransform: 'uppercase',
-                              whiteSpace: 'nowrap',
-                            }}
-                          >
-                            {job.period}
-                          </div>
-                          <div
-                            style={{
-                              padding: '0.18rem 0.45rem',
-                              background: 'rgba(240, 232, 236, 0.1)',
-                              border: '1px solid rgba(240, 232, 236, 0.16)',
-                              fontSize: 'var(--font-fluid-2xs)',
-                              fontWeight: 700,
-                              letterSpacing: '0.15em',
-                              textTransform: 'uppercase',
-                              color: COLORS.textPrimaryDim,
-                              whiteSpace: 'nowrap',
-                            }}
-                          >
-                            {job.type}
+                          {job.logo ? (
+                            <img
+                              src={job.logo}
+                              alt={job.company}
+                              style={{
+                                width: '100%',
+                                height: '100%',
+                                objectFit: 'contain',
+                                padding: '0.28rem',
+                                background: 'rgba(255, 255, 255, 1)',
+                                transform: `translate(${job.logoOffsetX ?? '0%'}, ${job.logoOffsetY ?? '0%'}) scale(${job.logoScale ?? 1})`,
+                                transformOrigin: '50% 50%',
+                              }}
+                            />
+                          ) : (
+                            <div
+                              style={{
+                                width: '45%',
+                                height: '45%',
+                                border: '1px solid rgba(240, 232, 236, 0.14)',
+                                borderRadius: '50%',
+                              }}
+                            />
+                          )}
+                        </div>
+
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
+                            <div style={{ minWidth: 0 }}>
+                              <div
+                              style={{
+                                  fontSize: 'var(--font-fluid-md)',
+                                  fontWeight: 600,
+                                  letterSpacing: '0.04em',
+                                  color: COLORS.textPrimary,
+                                  marginBottom: '0.15rem',
+                                  whiteSpace: 'normal',
+                                  overflow: 'visible',
+                                  textOverflow: 'clip',
+                                  lineHeight: 1.05,
+                                }}
+                              >
+                                {job.company}
+                              </div>
+                              <div
+                                style={{
+                                  fontSize: 'var(--font-fluid-sm)',
+                                  letterSpacing: '0.08em',
+                                  textTransform: 'uppercase',
+                                  color: COLORS.textPrimaryDim,
+                                }}
+                              >
+                                {job.role}
+                              </div>
+                            </div>
+                            <div
+                              style={{
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'flex-end',
+                                gap: '0.3rem',
+                                flexShrink: 0,
+                              }}
+                            >
+                              <div
+                                style={{
+                                  fontSize: 'var(--font-fluid-xs)',
+                                  letterSpacing: '0.1em',
+                                  color: COLORS.textPrimaryDim,
+                                  textTransform: 'uppercase',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {job.period}
+                              </div>
+                              <div
+                                style={{
+                                  padding: '0.18rem 0.45rem',
+                                  background: 'rgba(240, 232, 236, 0.1)',
+                                  border: '1px solid rgba(240, 232, 236, 0.16)',
+                                  fontSize: 'var(--font-fluid-2xs)',
+                                  fontWeight: 700,
+                                  letterSpacing: '0.15em',
+                                  textTransform: 'uppercase',
+                                  color: COLORS.textPrimaryDim,
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {job.type}
+                              </div>
+                            </div>
                           </div>
                         </div>
                       </div>
+                      {isLast ? (
+                        <div
+                          aria-hidden="true"
+                          style={{
+                            position: 'absolute',
+                            left: rowLayout?.bottomBorderInsetLeft ?? '0px',
+                            right: rowLayout?.bottomBorderInsetRight ?? '0px',
+                            bottom: 0,
+                            borderBottom: '1px solid rgba(240, 232, 236, 0.22)',
+                          }}
+                        />
+                      ) : null}
                     </div>
-                  </div>
-                  {isLast ? (
-                    <div
-                      aria-hidden="true"
-                      style={{
-                        position: 'absolute',
-                        left: rowLayout?.bottomBorderInsetLeft ?? '0px',
-                        right: rowLayout?.bottomBorderInsetRight ?? '0px',
-                        bottom: 0,
-                        borderBottom: '1px solid rgba(240, 232, 236, 0.22)',
-                      }}
-                    />
-                  ) : null}
-                </div>
-              );
-            })}
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </div>
       </div>
