@@ -2,7 +2,7 @@ import { COLORS } from '../../lib/constants';
 
 interface Props { animationsEnabled: boolean; }
 
-export default function GeometricOverlays({ animationsEnabled }: Props) {
+export default function BackgroundLines({ animationsEnabled }: Props) {
   // transform-box: fill-box + transform-origin: center makes each circle rotate
   // around its own center regardless of viewport size, no pixel math needed.
   // The existing "spin" keyframe (global.css) handles clockwise; spin-ccw handles counter.

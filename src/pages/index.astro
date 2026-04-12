@@ -1,8 +1,11 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import MainMenu from '../components/menu/MainMenu';
+import { loadMemorandumData } from '../lib/memorandumContent';
+
+const memorandumData = await loadMemorandumData();
 ---
 
 <Layout>
-  <MainMenu client:load />
+  <MainMenu client:load memorandumData={memorandumData} />
 </Layout>

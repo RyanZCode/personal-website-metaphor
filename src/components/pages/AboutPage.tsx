@@ -1,19 +1,33 @@
-import { useLayoutEffect, useEffect, useRef } from 'react';
+import { useLayoutEffect, useEffect, useRef, useState } from 'react';
 import gsap from 'gsap';
 import { COLORS } from '../../lib/constants';
-import SectionBackground from '../background/SectionBackground';
+import { MENU_ITEMS } from '../../lib/menuConfig';
+import PageBackground from '../background/PageBackground';
 import AboutTriangles from '../menu/splashEffects/AboutTriangles';
 import ScrollViewport from '../shared/ScrollViewport';
 import { createAboutEntryTimeline } from '../../lib/animations';
+import type { RegisterPageNavigation } from '../../lib/pageNavigation';
+import type { PlaySoundEffect } from '../../lib/soundEffects';
 
-interface AboutSectionProps {
+interface AboutPageProps {
   isActive: boolean;
   animationsEnabled: boolean;
+  registerNavigation: RegisterPageNavigation;
+  playSoundEffect: PlaySoundEffect;
 }
 
-export default function AboutSection({ isActive, animationsEnabled }: AboutSectionProps) {
+const BOTTOM_DIAGONAL_WEDGE_CLIP_PATH = 'polygon(0 100%, 100% 0, 100% 100%)';
+
+export default function AboutPage({ isActive, animationsEnabled, registerNavigation, playSoundEffect }: AboutPageProps) {
   const containerRef = useRef<HTMLElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
   const entryTlRef   = useRef<gsap.core.Timeline | null>(null);
+  const [isScrollable, setIsScrollable] = useState(false);
+  const [memorandumLinkHovered, setMemorandumLinkHovered] = useState(false);
+  const memorandumItem = MENU_ITEMS.find(item => item.id === 'memorandum');
+  const memorandumLinkColor = memorandumItem
+    ? `hsl(${memorandumItem.accentH} ${memorandumItem.accentS} ${memorandumItem.accentL})`
+    : COLORS.textPrimary;
 
   const bobAnim  = isActive && animationsEnabled ? 'portrait-bob 4s ease-in-out infinite' : 'none';
   const glowAnim = animationsEnabled ? 'portrait-glow 3s ease-in-out infinite' : 'none';
@@ -39,6 +53,62 @@ export default function AboutSection({ isActive, animationsEnabled }: AboutSecti
     gsap.set(wipeLine, { autoAlpha: 0 });
   }, [animationsEnabled]);
 
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+
+    const updateScrollability = () => {
+      setIsScrollable(viewport.scrollHeight - viewport.clientHeight > 1);
+    };
+
+    updateScrollability();
+
+    const resizeObserver = typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver(updateScrollability);
+
+    resizeObserver?.observe(viewport);
+    if (viewport.firstElementChild instanceof HTMLElement) {
+      resizeObserver?.observe(viewport.firstElementChild);
+    }
+
+    window.addEventListener('resize', updateScrollability);
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', updateScrollability);
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!isActive) {
+      registerNavigation(null);
+      return;
+    }
+
+    registerNavigation({
+      showScrollHint: isScrollable,
+      onDirection: (direction) => {
+        if (direction !== 'up' && direction !== 'down') return false;
+
+        const viewport = viewportRef.current;
+        if (!viewport) return false;
+
+        const scrollRange = viewport.scrollHeight - viewport.clientHeight;
+        if (scrollRange <= 1) return false;
+
+        const step = Math.max(96, viewport.clientHeight * 0.72);
+        const delta = direction === 'down' ? step : -step;
+        viewport.scrollBy({
+          top: delta,
+          behavior: animationsEnabled ? 'smooth' : 'auto',
+        });
+        return true;
+      },
+    });
+
+    return () => registerNavigation(null);
+  }, [animationsEnabled, isActive, isScrollable, registerNavigation]);
+
   return (
     <section
       ref={containerRef}
@@ -52,7 +122,7 @@ export default function AboutSection({ isActive, animationsEnabled }: AboutSecti
         overflow: 'hidden',
       }}
     >
-      <SectionBackground />
+      <PageBackground />
 
       <div
         data-about-watermark
@@ -95,7 +165,7 @@ export default function AboutSection({ isActive, animationsEnabled }: AboutSecti
         }} />
 
         {/* Line 2: horizontal right below the text panel */}
-        {/* panel bottom = section height - bottom padding (6vh) */}
+        {/* panel bottom = page height - bottom padding (6vh) */}
         <div style={{
           position: 'absolute',
           top: 'calc(100% - 6vh)',
@@ -166,13 +236,14 @@ export default function AboutSection({ isActive, animationsEnabled }: AboutSecti
             aria-hidden="true"
             style={{
               position: 'absolute',
-              inset: '-2px',
+              inset: '-3px',
               background: 'rgba(255, 255, 255, 0.5)',
               clipPath: 'polygon(0 0, 94% 0, 100% 10%, 100% 100%, 6% 100%, 0 90%)',
               pointerEvents: 'none',
             }}
           />
           <ScrollViewport
+            ref={viewportRef}
             style={{
               position: 'absolute',
               inset: 0,
@@ -232,7 +303,32 @@ export default function AboutSection({ isActive, animationsEnabled }: AboutSecti
                 <li>At the gym (begrudgingly)</li>
                 <li>An avid casual of the NBA, NFL, and F1</li>
               </ul>
-              <p>Check my <a href="#memorandum">memorandum</a> for more about me!</p>
+              <p>
+                Check out my{' '}
+                <a
+                  href="#memorandum"
+                  onClick={() => playSoundEffect('enter')}
+                  style={{
+                    display: 'inline-block',
+                    verticalAlign: 'baseline',
+                    color: memorandumLinkColor,
+                    fontWeight: 700,
+                    textDecoration: 'underline',
+                    textUnderlineOffset: '0.2em',
+                    cursor: 'pointer',
+                    transition: 'filter 120ms ease, opacity 120ms ease',
+                    filter: memorandumLinkHovered ? 'brightness(1.3)' : 'brightness(1)',
+                    opacity: memorandumLinkHovered ? 1 : 0.92,
+                  }}
+                  onMouseEnter={() => setMemorandumLinkHovered(true)}
+                  onMouseLeave={() => setMemorandumLinkHovered(false)}
+                  onFocus={() => setMemorandumLinkHovered(true)}
+                  onBlur={() => setMemorandumLinkHovered(false)}
+                >
+                  memorandum
+                </a>{' '}
+                for more about me!
+              </p>
             </div>
           </ScrollViewport>
         </div>
@@ -320,23 +416,37 @@ export default function AboutSection({ isActive, animationsEnabled }: AboutSecti
         }}
       />
 
-      {/* Triangles in the bottom-right corner, rotated 45deg to flow like a forward slash */}
+      {/* Triangles in the bottom-right corner */}
       <div
-        data-about-triangles
+        aria-hidden="true"
         style={{
           position: 'absolute',
-          right: '-15vw',
-          bottom: '-20vw',
-          width: '70vw',
-          height: '40vw',
-          transform: 'rotate(-30deg)',
-          transformOrigin: 'center',
-          overflow: 'hidden',
+          left: '20vw',
+          top: '50vh',
+          width: '80vw',
+          height: '50vh',
           zIndex: 1,
+          clipPath: BOTTOM_DIAGONAL_WEDGE_CLIP_PATH,
+          overflow: 'hidden',
           pointerEvents: 'none',
         }}
       >
-        <AboutTriangles isActive={true} animationsEnabled={animationsEnabled} />
+        <div
+          data-about-triangles
+          style={{
+            position: 'absolute',
+            left: '0vw',
+            bottom: '-40vw',
+            width: '160vw',
+            height: '40vw',
+            transform: `rotate(-23.5deg)`,
+            transformOrigin: 'bottom left',
+            overflow: 'hidden',
+            pointerEvents: 'none',
+          }}
+        >
+          <AboutTriangles isActive={true} animationsEnabled={animationsEnabled} />
+        </div>
       </div>
     </section>
   );

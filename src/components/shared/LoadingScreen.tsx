@@ -34,7 +34,7 @@ export default function LoadingScreen() {
       ) : (
         <img
           src="/assets/take-your-time.png"
-          alt=""
+          alt="Take your time"
           draggable={false}
           onError={() => setImgFailed(true)}
           style={{

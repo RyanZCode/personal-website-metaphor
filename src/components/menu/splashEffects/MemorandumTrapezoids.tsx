@@ -1,175 +1,90 @@
 import { useEffect, useRef } from 'react';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
-import { createMemorandumRotationTimelines, type TrapData } from '../../../lib/animations';
+import { createMemorandumTrapezoidTimelines, type MemorandumTrapData } from '../../../lib/animations';
 
-interface Props { isActive: boolean; animationsEnabled: boolean; }
+interface Props {
+  isActive: boolean;
+  animationsEnabled: boolean;
+}
 
-const TRAPS: TrapData[] = [
-  { left: '15%', top: '20%', w: '18vh', h: '10vh', rot: 0,   dir: 1,  color: 'rgba(255,255,255,0.28)' },
-  { left: '50%', top: '10%', w: '14vh', h:  '8vh', rot: 25,  dir: -1, color: 'rgba(0,0,0,0.35)'       },
-  { left: '25%', top: '55%', w: '20vh', h: '11vh', rot: -15, dir: 1,  color: 'rgba(255,255,255,0.22)' },
-  { left: '60%', top: '45%', w: '12vh', h:  '7vh', rot: 40,  dir: -1, color: 'rgba(0,0,0,0.3)'        },
-  { left: '10%', top: '65%', w: '16vh', h:  '9vh', rot: -30, dir: 1,  color: 'rgba(255,255,255,0.2)'  },
-  { left: '65%', top: '70%', w: '13vh', h:  '8vh', rot: 10,  dir: -1, color: 'rgba(0,0,0,0.28)'       },
-  { left: '40%', top: '30%', w: '15vh', h:  '9vh', rot: -20, dir: 1,  color: 'rgba(255,255,255,0.18)' },
-  { left: '75%', top: '25%', w: '11vh', h:  '7vh', rot: 50,  dir: -1, color: 'rgba(0,0,0,0.32)'       },
-  { left: '32%', top: '48%', w:  '9vh', h:  '5vh', rot: 35,  dir: -1, color: 'rgba(255,255,255,0.24)' },
-  { left: '58%', top: '15%', w:  '8vh', h:  '5vh', rot: -45, dir: 1,  color: 'rgba(0,0,0,0.26)'       },
+const TRAPEZOIDS: MemorandumTrapData[] = [
+  { left: '8%', width: 'clamp(8rem, 12vw, 13rem)', height: 'clamp(3.4rem, 4.9vw, 5.4rem)', rotation: -10, driftVw: 1.8, duration: 8.2, delay: 0, opacity: 0.34 },
+  { left: '26%', width: 'clamp(6.8rem, 10vw, 11rem)', height: 'clamp(2.8rem, 4.2vw, 4.7rem)', rotation: 14, driftVw: -1.4, duration: 7.4, delay: 0.9, opacity: 0.28 },
+  { left: '47%', width: 'clamp(9rem, 13vw, 14rem)', height: 'clamp(3.6rem, 5.2vw, 5.8rem)', rotation: -18, driftVw: 1.1, duration: 9.1, delay: 1.8, opacity: 0.4 },
+  { left: '76%', width: 'clamp(5.8rem, 8.5vw, 9rem)', height: 'clamp(2.4rem, 3.5vw, 4rem)', rotation: 9, driftVw: -1.1, duration: 6.8, delay: 0.4, opacity: 0.24 },
+  { left: '16%', width: 'clamp(10rem, 14vw, 15rem)', height: 'clamp(4rem, 5.8vw, 6.3rem)', rotation: 20, driftVw: -2, duration: 10.4, delay: 2.3, opacity: 0.3 },
+  { left: '61%', width: 'clamp(7.4rem, 10.8vw, 12rem)', height: 'clamp(3rem, 4.4vw, 4.9rem)', rotation: -6, driftVw: 1.6, duration: 7.8, delay: 3.2, opacity: 0.36 },
+  { left: '36%', width: 'clamp(6.2rem, 9vw, 10rem)', height: 'clamp(2.6rem, 3.8vw, 4.2rem)', rotation: 12, driftVw: 0.9, duration: 6.2, delay: 4.1, opacity: 0.22 },
+  { left: '12%', width: 'clamp(6.4rem, 9.4vw, 10.6rem)', height: 'clamp(2.7rem, 3.9vw, 4.4rem)', rotation: -14, driftVw: 1.3, duration: 6.9, delay: 1.1, opacity: 0.26 },
+  { left: '22%', width: 'clamp(8.8rem, 12.8vw, 13.8rem)', height: 'clamp(3.5rem, 5vw, 5.6rem)', rotation: 16, driftVw: -1.7, duration: 8.7, delay: 2.8, opacity: 0.32 },
+  { left: '41%', width: 'clamp(7rem, 10.2vw, 11.4rem)', height: 'clamp(2.9rem, 4.1vw, 4.6rem)', rotation: -8, driftVw: 1.5, duration: 7.1, delay: 0.6, opacity: 0.27 },
+  { left: '55%', width: 'clamp(9.4rem, 13.6vw, 14.8rem)', height: 'clamp(3.8rem, 5.4vw, 6rem)', rotation: 11, driftVw: -1.2, duration: 9.6, delay: 3.7, opacity: 0.33 },
+  { left: '69%', width: 'clamp(6.6rem, 9.6vw, 10.8rem)', height: 'clamp(2.8rem, 4vw, 4.4rem)', rotation: -20, driftVw: 1, duration: 6.5, delay: 4.6, opacity: 0.23 },
+  { left: '84%', width: 'clamp(8.2rem, 11.8vw, 12.8rem)', height: 'clamp(3.3rem, 4.7vw, 5.2rem)', rotation: 13, driftVw: -0.9, duration: 8, delay: 1.9, opacity: 0.29 },
 ];
 
-const TRAP_CLIP = 'polygon(8% 0%, 92% 0%, 100% 100%, 0% 100%)';
-
-interface Particle { x: number; y: number; vx: number; vy: number; r: number; el: HTMLDivElement | null; }
+const TRAPEZOID_CLIP_PATH = 'polygon(10% 0%, 90% 0%, 100% 100%, 0% 100%)';
 
 export default function MemorandumTrapezoids({ isActive, animationsEnabled }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const trapRefs = useRef<(HTMLDivElement | null)[]>([]);
-  const tlsRef = useRef<gsap.core.Animation[]>([]);
-  const isActiveRef = useRef(isActive);
-  const animationsEnabledRef = useRef(animationsEnabled);
-  // Set to true once the physics tick has run its first init pass and applied x/y to elements
-  const physicsInitializedRef = useRef(false);
+  const timelinesRef = useRef<gsap.core.Animation[]>([]);
 
-  // Rotation only - GSAP rotation is composed with physics x/y below without conflict
   useGSAP(() => {
-    const W = containerRef.current?.offsetWidth  ?? 0;
-    const H = containerRef.current?.offsetHeight ?? 0;
-    tlsRef.current = createMemorandumRotationTimelines(trapRefs.current, TRAPS, W, H);
+    timelinesRef.current = createMemorandumTrapezoidTimelines(trapRefs.current, TRAPEZOIDS);
   }, { scope: containerRef });
 
   useEffect(() => {
-    isActiveRef.current = isActive;
-    animationsEnabledRef.current = animationsEnabled;
-    if (!containerRef.current) return;
-    gsap.set(containerRef.current, { autoAlpha: isActive ? 1 : 0 });
-    const running = isActive && animationsEnabled;
-    const wc = running ? 'transform, opacity' : 'auto';
-    trapRefs.current.forEach(el => { if (el) el.style.willChange = wc; });
-    if (running) {
-      tlsRef.current.forEach(t => t.resume());
-    } else {
-      tlsRef.current.forEach(t => t.pause());
-      // The rotation timelines set x/y at mount when the container has zero height,
-      // so all positions default to 0. If physics hasn't run yet (no animations before
-      // first activation), manually place trapezoids at their intended positions now.
-      if (isActive && !physicsInitializedRef.current) {
-        const W = containerRef.current.offsetWidth;
-        const H = containerRef.current.offsetHeight;
-        if (W > 0 && H > 0) {
-          trapRefs.current.forEach((el, i) => {
-            if (!el || i >= TRAPS.length) return;
-            const t = TRAPS[i];
-            gsap.set(el, {
-              x: (parseFloat(t.left) / 100) * W,
-              y: (parseFloat(t.top)  / 100) * H,
-            });
-          });
-        }
-      }
-    }
-  }, [isActive, animationsEnabled]);
+    const shouldRun = animationsEnabled;
+    const willChange = shouldRun ? 'transform, opacity' : 'auto';
 
-  // Physics simulation - tracks element CENTERS in px; applies via GSAP x/y which
-  // composes with the rotation from useGSAP without conflict
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
+    trapRefs.current.forEach((trap) => {
+      if (!trap) return;
+      trap.style.willChange = willChange;
+    });
 
-    const particles: Particle[] = [];
-    let initialized = false;
-
-    const tick = (_time: number, deltaTime: number) => {
-      if (!isActiveRef.current || !animationsEnabledRef.current) return;
-
-      if (!initialized) {
-        const W = container.offsetWidth;
-        const H = container.offsetHeight;
-        if (W === 0 || H === 0) return;
-
-        const vh = window.innerHeight / 100;
-        TRAPS.forEach((t, i) => {
-          const w = parseFloat(t.w) * vh;
-          const h = parseFloat(t.h) * vh;
-          const r = Math.sqrt(w * w + h * h) * 0.5;
-          const angle = (i * 137.508 + 22) * Math.PI / 180;
-          const speed = 22 + i * 2.8;
-          const el = trapRefs.current[i];
-          // Start from current GSAP position so physics continues from wherever
-          // the element is displayed - avoids mismatch when dimensions differ
-          // between when positions were last set and when physics initializes
-          const cx = el ? (gsap.getProperty(el, 'x') as number) : (parseFloat(t.left) / 100) * W;
-          const cy = el ? (gsap.getProperty(el, 'y') as number) : (parseFloat(t.top)  / 100) * H;
-          particles.push({ x: cx, y: cy, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed, r, el });
-        });
-        initialized = true;
-        physicsInitializedRef.current = true;
+    timelinesRef.current.forEach((timeline) => {
+      if (shouldRun) {
+        timeline.resume();
         return;
       }
 
-      const W = container.offsetWidth;
-      const H = container.offsetHeight;
-      const dt = Math.min(deltaTime, 50) / 1000;
+      timeline.pause();
+    });
 
-      for (const p of particles) {
-        p.x += p.vx * dt;
-        p.y += p.vy * dt;
-        // Bounce: keep CENTER at least p.r from each edge
-        if (p.x < p.r)     { p.vx =  Math.abs(p.vx); p.x = p.r; }
-        if (p.x > W - p.r) { p.vx = -Math.abs(p.vx); p.x = W - p.r; }
-        if (p.y < p.r)     { p.vy =  Math.abs(p.vy); p.y = p.r; }
-        if (p.y > H - p.r) { p.vy = -Math.abs(p.vy); p.y = H - p.r; }
-      }
-
-      for (let i = 0; i < particles.length; i++) {
-        for (let j = i + 1; j < particles.length; j++) {
-          const a = particles[i], b = particles[j];
-          const dx = b.x - a.x, dy = b.y - a.y;
-          const distSq = dx * dx + dy * dy;
-          const minDist = a.r + b.r;
-          if (distSq < minDist * minDist && distSq > 0.001) {
-            const dist = Math.sqrt(distSq);
-            const nx = dx / dist, ny = dy / dist;
-            const relV = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;
-            if (relV > 0) {
-              a.vx -= relV * nx; a.vy -= relV * ny;
-              b.vx += relV * nx; b.vy += relV * ny;
-            }
-            const push = (minDist - dist) * 0.5;
-            a.x -= nx * push; a.y -= ny * push;
-            b.x += nx * push; b.y += ny * push;
-          }
-        }
-      }
-
-      // Clamp after collision resolution - collision push can exceed wall bounds before next tick
-      for (const p of particles) {
-        p.x = Math.max(p.r, Math.min(W - p.r, p.x));
-        p.y = Math.max(p.r, Math.min(H - p.r, p.y));
-      }
-
-      // x/y compose with xPercent/yPercent and rotation set by useGSAP - no conflict
-      for (const p of particles) {
-        if (p.el) gsap.set(p.el, { x: p.x, y: p.y });
-      }
-    };
-
-    gsap.ticker.add(tick);
-    return () => gsap.ticker.remove(tick);
-  }, []);
+    if (containerRef.current) {
+      gsap.set(containerRef.current, { autoAlpha: isActive ? 1 : 0 });
+    }
+  }, [animationsEnabled, isActive]);
 
   return (
-    <div ref={containerRef} style={{ position: 'absolute', inset: 0, overflow: 'hidden', opacity: 0 }}>
-      {TRAPS.map((t, i) => (
+    <div
+      ref={containerRef}
+      style={{
+        position: 'absolute',
+        inset: 0,
+        overflow: 'hidden',
+        opacity: 0,
+        pointerEvents: 'none',
+      }}
+    >
+      {TRAPEZOIDS.map((trap, index) => (
         <div
-          key={i}
-          ref={el => { trapRefs.current[i] = el; }}
+          key={`${trap.left}-${index}`}
+          ref={(node) => {
+            trapRefs.current[index] = node;
+          }}
           style={{
             position: 'absolute',
-            left: 0, top: 0,
-            width: t.w, height: t.h,
-            background: t.color,
-            clipPath: TRAP_CLIP,
+            left: trap.left,
+            bottom: '-14vh',
+            width: trap.width,
+            height: trap.height,
+            background: index % 3 === 0 ? 'rgba(255, 247, 204, 0.8)' : 'rgba(233, 244, 255, 0.56)',
+            border: '1px solid rgba(255, 255, 255, 0.42)',
+            boxShadow: '0 0 30px rgba(255, 245, 187, 0.2)',
+            clipPath: TRAPEZOID_CLIP_PATH,
           }}
         />
       ))}

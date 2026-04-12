@@ -11,3 +11,5 @@ npm-debug.log*
 Thumbs.db
 
 .idea/
+.vercel
+.env*.local

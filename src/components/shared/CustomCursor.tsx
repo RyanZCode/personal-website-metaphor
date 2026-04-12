@@ -3,6 +3,8 @@ import { useEffect, useRef } from 'react';
 // Hotspot offset within the cursor image (where the tip is)
 const HOTSPOT_X = 37;
 const HOTSPOT_Y = 25;
+const BASE_VIEWPORT_WIDTH = 2560;
+const BASE_VIEWPORT_HEIGHT = 1440;
 
 interface CustomCursorProps {
   visible: boolean;
@@ -18,24 +20,35 @@ export default function CustomCursor({ visible }: CustomCursorProps) {
     if (!el) return;
 
     let positioned = false;
+    let scale = Math.min(window.innerWidth / BASE_VIEWPORT_WIDTH, window.innerHeight / BASE_VIEWPORT_HEIGHT);
+
+    const updateTransform = (x: number, y: number) => {
+      el.style.transform = `translate(${x - HOTSPOT_X * scale}px, ${y - HOTSPOT_Y * scale}px) scale(${scale})`;
+    };
 
     const onMove = (e: MouseEvent) => {
-      el.style.transform = `translate(${e.clientX - HOTSPOT_X}px, ${e.clientY - HOTSPOT_Y}px)`;
+      updateTransform(e.clientX, e.clientY);
       if (!positioned) {
         el.style.opacity = '1';
         positioned = true;
       }
     };
 
+    const onResize = () => {
+      scale = Math.min(window.innerWidth / BASE_VIEWPORT_WIDTH, window.innerHeight / BASE_VIEWPORT_HEIGHT);
+    };
+
     const onLeave = () => { el.style.opacity = '0'; };
     const onEnter = () => { if (positioned) el.style.opacity = '1'; };
 
     window.addEventListener('mousemove', onMove);
+    window.addEventListener('resize', onResize);
     document.documentElement.addEventListener('mouseleave', onLeave);
     document.documentElement.addEventListener('mouseenter', onEnter);
 
     return () => {
       window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('resize', onResize);
       document.documentElement.removeEventListener('mouseleave', onLeave);
       document.documentElement.removeEventListener('mouseenter', onEnter);
     };
@@ -57,6 +70,7 @@ export default function CustomCursor({ visible }: CustomCursorProps) {
         zIndex: 99999,
         userSelect: 'none',
         willChange: 'transform',
+        transformOrigin: 'top left',
       }}
     />
   );
