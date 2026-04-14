@@ -6,6 +6,7 @@ import SkillsBands from '../menu/splashEffects/SkillsBands';
 import { createSkillsEntryTimeline, createSkillsExitTimeline } from '../../lib/animations';
 import ScrollViewport from '../shared/ScrollViewport';
 import type { RegisterPageNavigation } from '../../lib/pageNavigation';
+import { rafThrottle } from '../../lib/rafThrottle';
 
 interface SkillsPageProps {
   isActive: boolean;
@@ -75,9 +76,9 @@ export default function SkillsPage({ isActive, animationsEnabled, registerNaviga
     const viewport = viewportRef.current;
     if (!viewport) return;
 
-    const updateScrollability = () => {
+    const updateScrollability = rafThrottle(() => {
       setIsScrollable(viewport.scrollHeight - viewport.clientHeight > 1);
-    };
+    });
 
     updateScrollability();
 
@@ -92,6 +93,7 @@ export default function SkillsPage({ isActive, animationsEnabled, registerNaviga
 
     window.addEventListener('resize', updateScrollability);
     return () => {
+      updateScrollability.cancel();
       resizeObserver?.disconnect();
       window.removeEventListener('resize', updateScrollability);
     };

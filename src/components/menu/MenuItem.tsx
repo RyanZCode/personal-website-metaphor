@@ -1,4 +1,4 @@
-import { forwardRef } from 'react';
+import { forwardRef, memo } from 'react';
 import type { MenuItemConfig } from '../../lib/menuConfig';
 import { ITEM_SCALES, ARC_CURVE_X, COLORS } from '../../lib/constants';
 
@@ -9,10 +9,10 @@ interface MenuItemProps {
   subtitle?: string;
   subtitleVisible: boolean;
   animationsEnabled: boolean;
-  onMouseEnter?: () => void;
+  onMouseEnter?: (index: number) => void;
 }
 
-const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
+const MenuItem = memo(forwardRef<HTMLDivElement, MenuItemProps>(
   ({ item, index, isSelected, subtitle, subtitleVisible, animationsEnabled, onMouseEnter }, ref) => {
     const scale = ITEM_SCALES[Math.min(index, ITEM_SCALES.length - 1)];
     const arcX = ARC_CURVE_X[Math.min(index, ARC_CURVE_X.length - 1)];
@@ -24,7 +24,7 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
       <div
         ref={ref}
         data-menu-item={item.id}
-        onMouseEnter={onMouseEnter}
+        onMouseEnter={() => onMouseEnter?.(index)}
         style={{
           position: 'relative',
           fontSize: scale.fontSize,
@@ -39,7 +39,6 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
           cursor: 'default',
           userSelect: 'none',
           whiteSpace: 'nowrap',
-          willChange: 'transform, opacity',
         }}
       >
         <span style={{
@@ -84,7 +83,7 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
       </div>
     );
   }
-);
+));
 
 MenuItem.displayName = 'MenuItem';
 export default MenuItem;

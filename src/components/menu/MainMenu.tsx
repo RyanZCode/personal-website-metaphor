@@ -20,6 +20,8 @@ import ControlHints from '../shared/ControlHints';
 import LoadingScreen from '../shared/LoadingScreen';
 import UnsupportedScreen from '../shared/UnsupportedScreen';
 import CustomCursor from '../shared/CustomCursor';
+import { createAssetPreloadManifest, preloadImages } from '../../lib/assetPreload';
+import { rafThrottle } from '../../lib/rafThrottle';
 import type { PageNavigationDirection, PageNavigationHandler } from '../../lib/pageNavigation';
 import { SOUND_EFFECT_SOURCES, type PlaySoundEffect, type SoundEffectId } from '../../lib/soundEffects';
 import AboutPage from '../pages/AboutPage';
@@ -44,6 +46,16 @@ interface MainMenuProps {
 }
 
 const VALID_PAGE_IDS = new Set(['about', 'skills', 'experience', 'contact', 'memorandum', 'system']);
+const MENU_SELECTED_OFFSET_VH = 1;
+const MENU_BELOW_SELECTED_OFFSET_VH = 2;
+type IdleDeadline = {
+  didTimeout: boolean;
+  timeRemaining: () => number;
+};
+type IdleWindow = Window & {
+  requestIdleCallback?: (callback: (deadline: IdleDeadline) => void, options?: { timeout: number }) => number;
+  cancelIdleCallback?: (handle: number) => void;
+};
 
 function getHashValue() {
   return window.location.hash.replace(/^#/, '');
@@ -59,6 +71,18 @@ function clearPageHash() {
   const url = new URL(window.location.href);
   url.hash = '';
   window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}`);
+}
+
+function createSoundEffectAudio(src: string) {
+  const audio = new Audio(src);
+  audio.preload = 'auto';
+  return audio;
+}
+
+function getMenuItemWrapOffsetYVh(index: number, selectedIndex: number) {
+  if (index === selectedIndex) return MENU_SELECTED_OFFSET_VH;
+  if (index > selectedIndex) return MENU_BELOW_SELECTED_OFFSET_VH;
+  return 0;
 }
 
 export default function MainMenu({ memorandumData }: MainMenuProps) {
@@ -93,11 +117,10 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
   const prevSelectedIndexRef = useRef(0);
   const selectedIndexRef = useRef(0);
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const itemWrapRefs = useRef<(HTMLDivElement | null)[]>([]);
   const lastScrollAt = useRef(0);
   const lastKeyNavAt = useRef(0);
   const initialHashChecked = useRef(false);
-  const keyHoldDelay = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const keyHoldInterval = useRef<ReturnType<typeof setInterval> | null>(null);
   const appStateRef = useRef<AppState>('preloading');
   const activePageRef = useRef<PageId>(null);
   const pendingLocationPageRef = useRef<string | null>(null);
@@ -107,10 +130,14 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
     exit: null,
     toggle: null,
   });
+  const soundWarmupStartedRef = useRef(false);
+  const soundWarmupTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const soundWarmupIdleCallbackRef = useRef<number | null>(null);
   const enterPageRef = useRef<(pageId: string, options?: PageTransitionOptions) => void>(() => {});
   const exitPageRef = useRef<(options?: PageTransitionOptions) => void>(() => {});
   const pageNavigationRef = useRef<PageNavigationHandler | null>(null);
   const [inputMode, setInputMode] = useState<'keyboard' | 'mouse'>('mouse');
+  const deferredImageWarmupStartedRef = useRef(false);
 
   useEffect(() => {
     appStateRef.current = appState;
@@ -124,19 +151,56 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
     selectedIndexRef.current = selectedIndex;
   }, [selectedIndex]);
 
+  const ensureSoundEffect = useCallback((id: SoundEffectId) => {
+    if (typeof Audio === 'undefined') return null;
+
+    const existing = soundRefs.current[id];
+    if (existing) return existing;
+
+    const audio = createSoundEffectAudio(SOUND_EFFECT_SOURCES[id]);
+    soundRefs.current[id] = audio;
+    return audio;
+  }, []);
+
+  const scheduleSoundWarmup = useCallback((priorityId?: SoundEffectId) => {
+    if (typeof Audio === 'undefined' || soundWarmupStartedRef.current) return;
+
+    soundWarmupStartedRef.current = true;
+    const idleWindow = window as IdleWindow;
+    const warmRemainingEffects = () => {
+      soundWarmupTimeoutRef.current = null;
+      soundWarmupIdleCallbackRef.current = null;
+
+      (Object.keys(SOUND_EFFECT_SOURCES) as SoundEffectId[]).forEach((soundId) => {
+        if (soundId === priorityId) return;
+        const audio = ensureSoundEffect(soundId);
+        if (!audio) return;
+        audio.load();
+      });
+    };
+
+    if (typeof idleWindow.requestIdleCallback === 'function') {
+      soundWarmupIdleCallbackRef.current = idleWindow.requestIdleCallback(warmRemainingEffects, { timeout: 1500 });
+      return;
+    }
+
+    soundWarmupTimeoutRef.current = window.setTimeout(warmRemainingEffects, 200);
+  }, [ensureSoundEffect]);
+
   useEffect(() => {
-    if (typeof Audio === 'undefined') return;
-
-    const entries = Object.entries(SOUND_EFFECT_SOURCES) as Array<[SoundEffectId, string]>;
-    entries.forEach(([id, src]) => {
-      const audio = new Audio(src);
-      audio.preload = 'auto';
-      soundRefs.current[id] = audio;
-      audio.load();
-    });
-
     return () => {
-      entries.forEach(([id]) => {
+      const idleWindow = window as IdleWindow;
+      if (soundWarmupTimeoutRef.current) {
+        clearTimeout(soundWarmupTimeoutRef.current);
+      }
+      if (
+        soundWarmupIdleCallbackRef.current !== null &&
+        typeof idleWindow.cancelIdleCallback === 'function'
+      ) {
+        idleWindow.cancelIdleCallback(soundWarmupIdleCallbackRef.current);
+      }
+
+      (Object.keys(SOUND_EFFECT_SOURCES) as SoundEffectId[]).forEach((id) => {
         const audio = soundRefs.current[id];
         if (!audio) return;
         audio.pause();
@@ -149,13 +213,14 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
   const playSoundEffect = useCallback<PlaySoundEffect>((id, options) => {
     if (!options?.force && !soundEnabled) return;
 
-    const audio = soundRefs.current[id];
+    const audio = ensureSoundEffect(id);
     if (!audio) return;
 
+    scheduleSoundWarmup(id);
     audio.pause();
     audio.currentTime = 0;
     void audio.play().catch(() => {});
-  }, [soundEnabled]);
+  }, [ensureSoundEffect, scheduleSoundWarmup, soundEnabled]);
 
   const handleAnimationsToggle = useCallback((options?: { playSound?: boolean }) => {
     if (options?.playSound !== false) {
@@ -188,22 +253,79 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
     setHintVariant(handler?.hintVariant);
   }, []);
 
+  const handleMenuItemMouseEnter = useCallback((index: number) => {
+    if (appState === 'idle' && Date.now() - lastKeyNavAt.current > 100) {
+      setInputMode('mouse');
+      selectMenuIndex(index);
+    }
+  }, [appState, selectMenuIndex]);
+
   useEffect(() => {
-    const load = (src: string) => {
-      const img = new Image();
-      img.src = src;
-      return img.decode().catch(() => {});
-    };
+    const manifest = createAssetPreloadManifest(memorandumData);
+    const preloadController = new AbortController();
+    let cancelled = false;
 
     Promise.all([
-      load('/assets/coby-main.png'),
+      preloadImages(manifest.blockingImageSrcs, {
+        concurrency: 4,
+        signal: preloadController.signal,
+      }),
       document.fonts.load('400 1em Cinzel'),
       document.fonts.load('700 1em Cinzel'),
       document.fonts.load('900 1em Cinzel'),
     ]).then(() => {
+      if (cancelled) return;
       requestAnimationFrame(() => requestAnimationFrame(() => setAppState('entry')));
     });
-  }, []);
+
+    return () => {
+      cancelled = true;
+      preloadController.abort();
+    };
+  }, [memorandumData]);
+
+  useEffect(() => {
+    if (appState === 'preloading' || deferredImageWarmupStartedRef.current) return;
+
+    const manifest = createAssetPreloadManifest(memorandumData);
+    if (!manifest.deferredImageSrcs.length) {
+      deferredImageWarmupStartedRef.current = true;
+      return;
+    }
+
+    deferredImageWarmupStartedRef.current = true;
+
+    const preloadController = new AbortController();
+    const idleWindow = window as IdleWindow;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let idleCallbackId: number | null = null;
+
+    const warmDeferredImages = () => {
+      if (preloadController.signal.aborted) return;
+      void preloadImages(manifest.deferredImageSrcs, {
+        concurrency: 2,
+        signal: preloadController.signal,
+      });
+    };
+
+    if (typeof idleWindow.requestIdleCallback === 'function') {
+      idleCallbackId = idleWindow.requestIdleCallback(() => {
+        warmDeferredImages();
+      }, { timeout: 1500 });
+    } else {
+      timeoutId = window.setTimeout(warmDeferredImages, 400);
+    }
+
+    return () => {
+      preloadController.abort();
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      if (idleCallbackId !== null && typeof idleWindow.cancelIdleCallback === 'function') {
+        idleWindow.cancelIdleCallback(idleCallbackId);
+      }
+    };
+  }, [appState, memorandumData]);
 
   // Initialized to true; corrected from OS preference on mount.
   // Safe to initialize this way since the menu is behind the loading screen.
@@ -277,6 +399,23 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
     const changed = prevIdx !== selectedIndex && appState === 'idle' && animationsEnabled;
     const newY = `${(2.5 - selectedIndex) * 1.5}vh`;
 
+    MENU_ITEMS.forEach((_, i) => {
+      const wrap = itemWrapRefs.current[i];
+      if (!wrap) return;
+
+      const nextOffset = `${getMenuItemWrapOffsetYVh(i, selectedIndex)}vh`;
+      if (changed) {
+        gsap.to(wrap, {
+          y: nextOffset,
+          duration: 0.2,
+          ease: 'power2.inOut',
+          overwrite: 'auto',
+        });
+      } else {
+        gsap.set(wrap, { y: nextOffset });
+      }
+    });
+
     if (menuLeftRef.current) {
       if (changed) {
         gsap.to(menuLeftRef.current, { y: newY, duration: 0.2, ease: 'power3.out' });
@@ -298,22 +437,30 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
     }
 
     if (changed) {
-      MENU_ITEMS.forEach((_, i) => {
-        const el = itemRefs.current[i];
-        if (!el) return;
-        const chars = Array.from(el.querySelectorAll('[data-char]')) as HTMLElement[];
-        chars.forEach((char, j) => {
-          const expanding = j === 0 || Math.random() < 0.1;
-          const mag = expanding
-            ? 0.08 + Math.random() * 0.12
-            : 0.08 + Math.random() * 0.2;
-          const scaleY = expanding ? 1 + mag : 1 - mag;
-          const scaleX = expanding ? 1 + mag * 0.4 : 1 - mag * 0.5;
-          gsap.timeline({ delay: j * 0.008 + Math.random() * 0.025 })
-            .to(char, { scaleX, scaleY, duration: 0.06, ease: 'power2.in' })
-            .to(char, { scaleX: 1, scaleY: 1, duration: 0.12, ease: 'power2.out' });
-        });
-      });
+      const activeItem = itemRefs.current[selectedIndex];
+      const activeChars = activeItem
+        ? Array.from(activeItem.querySelectorAll('[data-char]')) as HTMLElement[]
+        : [];
+
+      if (activeChars.length) {
+        gsap.killTweensOf(activeChars);
+        gsap.fromTo(
+          activeChars,
+          {
+            scaleX: 1.08,
+            scaleY: 0.9,
+            transformOrigin: '50% 100%',
+          },
+          {
+            scaleX: 1,
+            scaleY: 1,
+            duration: 0.18,
+            ease: 'power2.out',
+            stagger: 0.01,
+            overwrite: 'auto',
+          },
+        );
+      }
     }
   }, [selectedIndex, appState, animationsEnabled]);
 
@@ -374,11 +521,6 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
       return null;
     };
 
-    const clearHold = () => {
-      if (keyHoldDelay.current) { clearTimeout(keyHoldDelay.current); keyHoldDelay.current = null; }
-      if (keyHoldInterval.current) { clearInterval(keyHoldInterval.current); keyHoldInterval.current = null; }
-    };
-
     const isVerticalKey = (key: string) =>
       key === 'w' || key === 'W' || key === 'ArrowUp' || key === 's' || key === 'S' || key === 'ArrowDown';
 
@@ -417,27 +559,11 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
       return pageNavigationRef.current?.onDirection?.(direction, { isRepeat }) ?? false;
     };
 
-    const startHold = (repeatAction: () => boolean) => {
-      clearHold();
-      keyHoldDelay.current = setTimeout(() => {
-        keyHoldInterval.current = setInterval(() => {
-          if (!repeatAction()) {
-            clearHold();
-          }
-        }, 100);
-      }, 300);
-    };
-
     const onKey = (e: KeyboardEvent) => {
       const currentAppState = appStateRef.current;
 
       if (e.ctrlKey) {
-        clearHold();
         return;
-      }
-
-      if (!e.repeat) {
-        clearHold();
       }
 
       if (currentAppState === 'page-active') {
@@ -479,16 +605,16 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
 
         const direction = getDirectionForKey(e.key);
         if (direction) {
-          if (e.repeat) {
-            if (e.key.startsWith('Arrow')) e.preventDefault();
+          if (e.repeat && direction !== 'up' && direction !== 'down') {
+            if (e.key.startsWith('Arrow')) {
+              e.preventDefault();
+            }
             return;
           }
+
           setInputMode('keyboard');
-          const handled = applyPageDirection(direction);
+          const handled = applyPageDirection(direction, e.repeat);
           if (handled || e.key.startsWith('Arrow')) e.preventDefault();
-          if (handled && (direction === 'up' || direction === 'down')) {
-            startHold(() => appStateRef.current === 'page-active' && applyPageDirection(direction, true));
-          }
           return;
         }
 
@@ -516,37 +642,15 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
       }
       if (!isNav) return;
       if (e.key === 'ArrowUp' || e.key === 'ArrowDown') e.preventDefault();
-
-      // Ignore browser-generated repeat events - we manage our own hold timing
-      if (e.repeat) return;
+      if (e.repeat && !isVerticalKey(e.key)) return;
 
       setInputMode('keyboard');
-      const handled = applyMenuKey(e.key);
-      if (handled && isVerticalKey(e.key)) {
-        startHold(() => appStateRef.current === 'idle' && applyMenuKey(e.key, true));
-      }
-    };
-
-    const onKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'Control') {
-        clearHold();
-        return;
-      }
-
-      const isNav = ['w','W','s','S','a','A','d','D','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key);
-      if (isNav) clearHold();
+      applyMenuKey(e.key, e.repeat);
     };
 
     window.addEventListener('keydown', onKey);
-    window.addEventListener('keyup', onKeyUp);
-    window.addEventListener('blur', clearHold);
-    window.addEventListener('contextmenu', clearHold);
     return () => {
       window.removeEventListener('keydown', onKey);
-      window.removeEventListener('keyup', onKeyUp);
-      window.removeEventListener('blur', clearHold);
-      window.removeEventListener('contextmenu', clearHold);
-      clearHold();
     };
   }, [handleAnimationsToggle, selectMenuIndex]);
 
@@ -568,13 +672,16 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
   }, [appState, animationsEnabled]);
 
   useEffect(() => {
-    const check = () => {
+    const check = rafThrottle(() => {
       const ratio = window.innerWidth / window.innerHeight;
       setUnsupported(ratio < 1.3 || ratio > 2.3);
-    };
+    });
     check();
     window.addEventListener('resize', check);
-    return () => window.removeEventListener('resize', check);
+    return () => {
+      check.cancel();
+      window.removeEventListener('resize', check);
+    };
   }, []);
 
   useEffect(() => {
@@ -689,7 +796,7 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
   useEffect(() => {
     if (!menuRendered || !menuIndexRef.current) return;
 
-    const update = () => {
+    const update = rafThrottle(() => {
       const el = menuIndexRef.current;
       if (!el) return;
 
@@ -736,7 +843,7 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
       const lp2 = toLocal(p2);
 
       setClipPath(`polygon(${lp1.xp}% ${lp1.yp}%, ${lp2.xp}% ${lp2.yp}%, 100% 0%, 100% 100%)`);
-    };
+    });
 
     update();
 
@@ -744,6 +851,7 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
     ro.observe(menuIndexRef.current);
     window.addEventListener('resize', update);
     return () => {
+      update.cancel();
       ro.disconnect();
       window.removeEventListener('resize', update);
     };
@@ -934,6 +1042,7 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
           splashTipXPct={activeItem.splashTipXPct}
           splashTaperYPct={activeItem.splashTaperYPct}
           menuScrollYVh={(2.5 - selectedIndex) * 1.5}
+          selectedItemOffsetYVh={getMenuItemWrapOffsetYVh(selectedIndex, selectedIndex)}
           measureKey={splashMeasureKey}
         />
       </div>
@@ -942,15 +1051,14 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
         <div className="menu-splash-wrap">
           <div ref={menuStackRef} className="menu-stack">
             {MENU_ITEMS.map((item, i) => {
-              const sel = i === selectedIndex;
-              const norm = (v?: string) => (!v || v === '0') ? '0px' : v;
               return (
                 <div
                   key={item.id}
                   data-menu-item-wrap
+                  ref={(el) => { itemWrapRefs.current[i] = el; }}
                   style={{
-                    marginBottom: sel ? `calc(${norm(item.marginBottom)} + 1vh)` : item.marginBottom,
-                    marginTop: sel ? `calc(${norm(item.marginTop)} + 1vh)` : item.marginTop,
+                    marginBottom: item.marginBottom,
+                    marginTop: item.marginTop,
                   }}
                 >
                   <MenuItem
@@ -961,12 +1069,7 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
                     subtitle={item.subtitle}
                     subtitleVisible={subtitleVisible}
                     animationsEnabled={animationsEnabled}
-                    onMouseEnter={() => {
-                      if (appState === 'idle' && Date.now() - lastKeyNavAt.current > 100) {
-                        setInputMode('mouse');
-                        selectMenuIndex(i);
-                      }
-                    }}
+                    onMouseEnter={handleMenuItemMouseEnter}
                   />
                 </div>
               );

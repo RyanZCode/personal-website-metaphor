@@ -5,6 +5,7 @@ import { createExperienceEntryTimeline, createExperienceExitTimeline } from '../
 import type { RegisterPageNavigation } from '../../lib/pageNavigation';
 import PageBackground from '../background/PageBackground';
 import ExperienceRipples from '../menu/splashEffects/ExperienceRipples';
+import { rafThrottle } from '../../lib/rafThrottle';
 
 interface ExperiencePageProps {
   isActive: boolean;
@@ -114,6 +115,93 @@ interface RowLayout {
   contentInsetLeft: string;
 }
 
+interface RowMeasurement {
+  offsetTop: number;
+  height: number;
+}
+
+interface ExperienceLayoutMeasurement {
+  contentLeft: number;
+  contentTop: number;
+  contentWidth: number;
+  rootFontSize: number;
+  rows: RowMeasurement[];
+}
+
+function createDefaultRowLayout(): RowLayout {
+  return {
+    marginLeft: '0px',
+    width: '35vw',
+    bottomBorderInsetLeft: '0px',
+    bottomBorderInsetRight: '0px',
+    contentInsetLeft: '0px',
+  };
+}
+
+function haveRowLayoutsChanged(nextLayouts: RowLayout[], currentLayouts: RowLayout[]) {
+  return nextLayouts.some((layout, index) => (
+    layout.marginLeft !== currentLayouts[index]?.marginLeft ||
+    layout.width !== currentLayouts[index]?.width ||
+    layout.bottomBorderInsetLeft !== currentLayouts[index]?.bottomBorderInsetLeft ||
+    layout.bottomBorderInsetRight !== currentLayouts[index]?.bottomBorderInsetRight ||
+    layout.contentInsetLeft !== currentLayouts[index]?.contentInsetLeft
+  ));
+}
+
+function buildRowLayouts(
+  measurement: ExperienceLayoutMeasurement,
+  scrollOffset: number,
+  viewportWidth: number,
+  viewportHeight: number,
+): RowLayout[] {
+  if (viewportWidth <= 0 || viewportHeight <= 0) {
+    return JOBS.map(() => createDefaultRowLayout());
+  }
+
+  const rowPaddingLeftPx = (ROW_PADDING_L_VW / 100) * viewportWidth;
+  const logoOverhangPx = LOGO_OVERHANG_REM * measurement.rootFontSize;
+  const diagonalScrollX = scrollOffset * ((LEFT_TOP - LEFT_BOT) / 100) * (viewportWidth / viewportHeight);
+  const contentLeft = measurement.contentLeft + diagonalScrollX;
+  const contentRight = contentLeft + measurement.contentWidth;
+
+  return measurement.rows.map((row) => {
+    if (row.height <= 0) {
+      return createDefaultRowLayout();
+    }
+
+    const rowTopY = measurement.contentTop + row.offsetTop - scrollOffset;
+    const rowBottomY = rowTopY + row.height;
+    const rowLeftBorderPx = Math.max(
+      contentLeft,
+      getLeftStripX(rowTopY, viewportWidth, viewportHeight)
+    );
+    const rowRightBorderPx = Math.min(
+      contentRight,
+      getRightStripX(rowTopY, viewportWidth, viewportHeight)
+    );
+    const rowLeftPx = Math.max(
+      rowLeftBorderPx,
+      rowLeftBorderPx + logoOverhangPx - rowPaddingLeftPx
+    );
+    const bottomBorderLeftPx = Math.max(
+      contentLeft,
+      getLeftStripX(rowBottomY, viewportWidth, viewportHeight)
+    );
+    const bottomBorderRightPx = Math.min(
+      contentRight,
+      getRightStripX(rowBottomY, viewportWidth, viewportHeight)
+    );
+
+    return {
+      marginLeft: `${Math.max(0, rowLeftBorderPx - contentLeft)}px`,
+      width: `${Math.max(0, rowRightBorderPx - rowLeftBorderPx)}px`,
+      bottomBorderInsetLeft: `${bottomBorderLeftPx - rowLeftBorderPx}px`,
+      bottomBorderInsetRight: `${rowRightBorderPx - bottomBorderRightPx}px`,
+      contentInsetLeft: `${Math.max(0, rowLeftPx - rowLeftBorderPx)}px`,
+    };
+  });
+}
+
 function getLeftStripX(yPx: number, viewportWidth: number, viewportHeight: number): number {
   const progress = yPx / viewportHeight;
   return ((LEFT_TOP + (LEFT_BOT - LEFT_TOP) * progress) / 100) * viewportWidth;
@@ -128,6 +216,17 @@ function getRightStripX(yPx: number, viewportWidth: number, viewportHeight: numb
 
   const progress = (yPx - rightStartPx) / (viewportHeight - rightStartPx);
   return viewportWidth + ((((RIGHT_BOT / 100) * viewportWidth) - viewportWidth) * progress);
+}
+
+function getElementTranslate(target: Element | null): { x: number; y: number } {
+  if (!target) {
+    return { x: 0, y: 0 };
+  }
+
+  return {
+    x: Number(gsap.getProperty(target, 'x')) || 0,
+    y: Number(gsap.getProperty(target, 'y')) || 0,
+  };
 }
 
 // Dark strip right diagonal vector: (-27vw, 90vh). In pixels: angle from vertical = atan2(27W, 90H).
@@ -166,6 +265,9 @@ export default function ExperiencePage({ isActive, animationsEnabled, registerNa
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const rowRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const scrollOffsetRef = useRef(0);
+  const rowMeasurementRef = useRef<ExperienceLayoutMeasurement | null>(null);
+  const measureRowLayoutsRef = useRef<(() => void) | null>(null);
 
   // 16:9 fallbacks (θ≈28°, ar≈1.778, W2≈40): updated after mount and on resize
   const [ripple, setRipple] = useState({ angleDeg: 28, rightVw: -63, bottomVh: -57, sideVw: 80 });
@@ -177,14 +279,12 @@ export default function ExperiencePage({ isActive, animationsEnabled, registerNa
   const [maxScrollOffset, setMaxScrollOffset] = useState(0);
   const [scrollMetrics, setScrollMetrics] = useState({ viewportWidth: 1, viewportHeight: 1, contentHeight: 1 });
   const [rowLayouts, setRowLayouts] = useState<RowLayout[]>(
-    () => JOBS.map(() => ({
-      marginLeft: '0px',
-      width: '35vw',
-      bottomBorderInsetLeft: '0px',
-      bottomBorderInsetRight: '0px',
-      contentInsetLeft: '0px',
-    }))
+    () => JOBS.map(() => createDefaultRowLayout())
   );
+
+  useEffect(() => {
+    scrollOffsetRef.current = scrollOffset;
+  }, [scrollOffset]);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useLayoutEffect(() => {
@@ -229,20 +329,23 @@ export default function ExperiencePage({ isActive, animationsEnabled, registerNa
   }, []);
 
   useEffect(() => {
-    const update = () => {
+    const update = rafThrottle(() => {
       setRipple(computeRippleLayout());
       setViewportSize({
         width: window.innerWidth,
         height: window.innerHeight,
       });
-    };
+    });
     update();
     window.addEventListener('resize', update);
-    return () => window.removeEventListener('resize', update);
+    return () => {
+      update.cancel();
+      window.removeEventListener('resize', update);
+    };
   }, []);
 
   useLayoutEffect(() => {
-    const updateScrollMetrics = () => {
+    const updateScrollMetrics = rafThrottle(() => {
       const viewport = viewportRef.current;
       const content = contentRef.current;
 
@@ -256,7 +359,7 @@ export default function ExperiencePage({ isActive, animationsEnabled, registerNa
         viewportHeight: viewport.clientHeight,
         contentHeight: content.scrollHeight,
       });
-    };
+    });
 
     updateScrollMetrics();
 
@@ -271,119 +374,102 @@ export default function ExperiencePage({ isActive, animationsEnabled, registerNa
 
     window.addEventListener('resize', updateScrollMetrics);
     return () => {
+      updateScrollMetrics.cancel();
       resizeObserver?.disconnect();
       window.removeEventListener('resize', updateScrollMetrics);
     };
   }, []);
 
   useEffect(() => {
-    const updateRowLayouts = () => {
+    const measureRowLayouts = rafThrottle(() => {
+      const viewport = viewportRef.current;
       const content = contentRef.current;
-      const panelGroup = containerRef.current?.querySelector('[data-experience-panel-group]') as HTMLElement | null;
-
-      if (!content) {
+      if (!viewport || !content) {
         return;
       }
 
-      const previousTransform = panelGroup?.style.transform ?? '';
-      if (panelGroup) {
-        panelGroup.style.transform = 'none';
-      }
+      const panelGroup = containerRef.current?.querySelector('[data-experience-panel-group]');
+      const panelTranslate = getElementTranslate(panelGroup);
+      const viewportRect = viewport.getBoundingClientRect();
+      const measurement: ExperienceLayoutMeasurement = {
+        contentLeft: viewportRect.left + content.offsetLeft - panelTranslate.x,
+        contentTop: viewportRect.top + content.offsetTop - panelTranslate.y,
+        contentWidth: content.clientWidth,
+        rootFontSize: Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16,
+        rows: JOBS.map((_, index) => {
+          const row = rowRefs.current[index];
+          return row
+            ? { offsetTop: row.offsetTop, height: row.offsetHeight }
+            : { offsetTop: 0, height: 0 };
+        }),
+      };
 
-      const contentRect = content.getBoundingClientRect();
-      const viewportWidth = window.innerWidth;
-      const viewportHeight = window.innerHeight;
-      const rootFontSize = Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-      const rowPaddingLeftPx = (ROW_PADDING_L_VW / 100) * viewportWidth;
-      const logoOverhangPx = LOGO_OVERHANG_REM * rootFontSize;
-      const nextLayouts = JOBS.map((_, index) => {
-        const row = rowRefs.current[index];
-
-        if (!row) {
-          return {
-            marginLeft: '0px',
-            width: '35vw',
-            bottomBorderInsetLeft: '0px',
-            bottomBorderInsetRight: '0px',
-            contentInsetLeft: '0px',
-          };
-        }
-
-        const rowRect = row.getBoundingClientRect();
-        const rowTopY = rowRect.top;
-        const rowBottomY = rowRect.bottom;
-        const rowLeftBorderPx = Math.max(
-          contentRect.left,
-          getLeftStripX(rowTopY, viewportWidth, viewportHeight)
-        );
-        const rowRightBorderPx = Math.min(
-          contentRect.right,
-          getRightStripX(rowTopY, viewportWidth, viewportHeight)
-        );
-        const rowLeftPx = Math.max(
-          rowLeftBorderPx,
-          rowLeftBorderPx + logoOverhangPx - rowPaddingLeftPx
-        );
-        const bottomBorderLeftPx = Math.max(
-          contentRect.left,
-          getLeftStripX(rowBottomY, viewportWidth, viewportHeight)
-        );
-        const bottomBorderRightPx = Math.min(
-          contentRect.right,
-          getRightStripX(rowBottomY, viewportWidth, viewportHeight)
-        );
-
-        return {
-          marginLeft: `${Math.max(0, rowLeftBorderPx - contentRect.left)}px`,
-          width: `${Math.max(0, rowRightBorderPx - rowLeftBorderPx)}px`,
-          bottomBorderInsetLeft: `${bottomBorderLeftPx - rowLeftBorderPx}px`,
-          bottomBorderInsetRight: `${rowRightBorderPx - bottomBorderRightPx}px`,
-          contentInsetLeft: `${Math.max(0, rowLeftPx - rowLeftBorderPx)}px`,
-        };
-      });
-
+      rowMeasurementRef.current = measurement;
+      const nextLayouts = buildRowLayouts(
+        measurement,
+        scrollOffsetRef.current,
+        window.innerWidth,
+        window.innerHeight,
+      );
       setRowLayouts((currentLayouts) => {
-        const hasChanged = nextLayouts.some((layout, index) => (
-          layout.marginLeft !== currentLayouts[index]?.marginLeft ||
-          layout.width !== currentLayouts[index]?.width ||
-          layout.bottomBorderInsetLeft !== currentLayouts[index]?.bottomBorderInsetLeft ||
-          layout.bottomBorderInsetRight !== currentLayouts[index]?.bottomBorderInsetRight ||
-          layout.contentInsetLeft !== currentLayouts[index]?.contentInsetLeft
-        ));
-
-        return hasChanged ? nextLayouts : currentLayouts;
+        return haveRowLayoutsChanged(nextLayouts, currentLayouts) ? nextLayouts : currentLayouts;
       });
+    });
 
-      if (panelGroup) {
-        panelGroup.style.transform = previousTransform;
-      }
+    measureRowLayoutsRef.current = measureRowLayouts;
+
+    measureRowLayouts();
+
+    const container = containerRef.current;
+    const handleEntryComplete = () => {
+      measureRowLayouts();
     };
-
-    updateRowLayouts();
+    container?.addEventListener('experience-entry-complete', handleEntryComplete);
 
     const resizeObserver = typeof ResizeObserver === 'undefined'
       ? null
-      : new ResizeObserver(updateRowLayouts);
+      : new ResizeObserver(measureRowLayouts);
 
     if (resizeObserver) {
+      if (viewportRef.current) {
+        resizeObserver.observe(viewportRef.current);
+      }
       if (contentRef.current) {
         resizeObserver.observe(contentRef.current);
       }
-
-      rowRefs.current.forEach((row) => {
-        if (row) {
-          resizeObserver.observe(row);
-        }
-      });
     }
 
-    window.addEventListener('resize', updateRowLayouts);
+    window.addEventListener('resize', measureRowLayouts);
 
     return () => {
+      if (measureRowLayoutsRef.current === measureRowLayouts) {
+        measureRowLayoutsRef.current = null;
+      }
+      container?.removeEventListener('experience-entry-complete', handleEntryComplete);
+      measureRowLayouts.cancel();
       resizeObserver?.disconnect();
-      window.removeEventListener('resize', updateRowLayouts);
+      window.removeEventListener('resize', measureRowLayouts);
     };
-  }, [isActive, scrollOffset]);
+  }, []);
+
+  useEffect(() => {
+    measureRowLayoutsRef.current?.();
+  }, [isActive]);
+
+  useEffect(() => {
+    const measurement = rowMeasurementRef.current;
+    if (!measurement) return;
+
+    const nextLayouts = buildRowLayouts(
+      measurement,
+      scrollOffset,
+      viewportSize.width,
+      viewportSize.height,
+    );
+    setRowLayouts((currentLayouts) => (
+      haveRowLayoutsChanged(nextLayouts, currentLayouts) ? nextLayouts : currentLayouts
+    ));
+  }, [scrollOffset, viewportSize.height, viewportSize.width]);
 
   useLayoutEffect(() => {
     if (!isActive) {

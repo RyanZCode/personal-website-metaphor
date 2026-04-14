@@ -7,6 +7,7 @@ import SystemGlitch from '../menu/splashEffects/SystemGlitch';
 import PageBackground from '../background/PageBackground';
 import ScrollViewport from '../shared/ScrollViewport';
 import { createSystemEntryTimeline, createSystemExitTimeline } from '../../lib/animations';
+import { rafThrottle } from '../../lib/rafThrottle';
 
 interface SystemPageProps {
   isActive: boolean;
@@ -341,7 +342,7 @@ export default function SystemPage({
     const panel = panelFrameRef.current;
     if (!panelSlot || !panel) return;
 
-    const updateVisibleRows = () => {
+    const updateVisibleRows = rafThrottle(() => {
       const availableHeight = panelSlot.clientHeight;
       const availableForRows = availableHeight - PANEL_TOP_PADDING - PANEL_BOTTOM_PADDING;
       const nextVisibleRows = Math.max(
@@ -349,7 +350,7 @@ export default function SystemPage({
         Math.min(4, Math.floor(availableForRows / SYSTEM_ROW_HEIGHT))
       );
       setVisibleRows(nextVisibleRows);
-    };
+    });
 
     const resizeObserver = new ResizeObserver(updateVisibleRows);
     resizeObserver.observe(panelSlot);
@@ -358,23 +359,25 @@ export default function SystemPage({
     updateVisibleRows();
 
     return () => {
+      updateVisibleRows.cancel();
       resizeObserver.disconnect();
       window.removeEventListener('resize', updateVisibleRows);
     };
   }, []);
 
   useEffect(() => {
-    const updateViewportSize = () => {
+    const updateViewportSize = rafThrottle(() => {
       setViewportSize({
         width: window.innerWidth,
         height: window.innerHeight,
       });
-    };
+    });
 
     window.addEventListener('resize', updateViewportSize);
     updateViewportSize();
 
     return () => {
+      updateViewportSize.cancel();
       window.removeEventListener('resize', updateViewportSize);
     };
   }, []);

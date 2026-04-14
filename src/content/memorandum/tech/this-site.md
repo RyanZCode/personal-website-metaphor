@@ -8,7 +8,7 @@
 title: This Website
 date: 2026-04-11
 pinned: true
-subtitle: Website Info
+subtitle: Meta
 pages:
   - imageSrc: /assets/memorandum-images/metaphor-main-menu.png
     imageAlt: 'Metaphor: Refantazio Main Menu'

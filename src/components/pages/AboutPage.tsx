@@ -8,6 +8,7 @@ import ScrollViewport from '../shared/ScrollViewport';
 import { createAboutEntryTimeline } from '../../lib/animations';
 import type { RegisterPageNavigation } from '../../lib/pageNavigation';
 import type { PlaySoundEffect } from '../../lib/soundEffects';
+import { rafThrottle } from '../../lib/rafThrottle';
 
 interface AboutPageProps {
   isActive: boolean;
@@ -57,9 +58,9 @@ export default function AboutPage({ isActive, animationsEnabled, registerNavigat
     const viewport = viewportRef.current;
     if (!viewport) return;
 
-    const updateScrollability = () => {
+    const updateScrollability = rafThrottle(() => {
       setIsScrollable(viewport.scrollHeight - viewport.clientHeight > 1);
-    };
+    });
 
     updateScrollability();
 
@@ -74,6 +75,7 @@ export default function AboutPage({ isActive, animationsEnabled, registerNavigat
 
     window.addEventListener('resize', updateScrollability);
     return () => {
+      updateScrollability.cancel();
       resizeObserver?.disconnect();
       window.removeEventListener('resize', updateScrollability);
     };

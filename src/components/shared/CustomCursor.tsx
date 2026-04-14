@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { rafThrottle } from '../../lib/rafThrottle';
 
 // Hotspot offset within the cursor image (where the tip is)
 const HOTSPOT_X = 37;
@@ -20,14 +21,18 @@ export default function CustomCursor({ visible }: CustomCursorProps) {
     if (!el) return;
 
     let positioned = false;
+    let lastX = 0;
+    let lastY = 0;
     let scale = Math.min(window.innerWidth / BASE_VIEWPORT_WIDTH, window.innerHeight / BASE_VIEWPORT_HEIGHT);
 
-    const updateTransform = (x: number, y: number) => {
+    const updateTransform = rafThrottle((x: number, y: number) => {
       el.style.transform = `translate(${x - HOTSPOT_X * scale}px, ${y - HOTSPOT_Y * scale}px) scale(${scale})`;
-    };
+    });
 
     const onMove = (e: MouseEvent) => {
-      updateTransform(e.clientX, e.clientY);
+      lastX = e.clientX;
+      lastY = e.clientY;
+      updateTransform(lastX, lastY);
       if (!positioned) {
         el.style.opacity = '1';
         positioned = true;
@@ -36,6 +41,9 @@ export default function CustomCursor({ visible }: CustomCursorProps) {
 
     const onResize = () => {
       scale = Math.min(window.innerWidth / BASE_VIEWPORT_WIDTH, window.innerHeight / BASE_VIEWPORT_HEIGHT);
+      if (positioned) {
+        updateTransform(lastX, lastY);
+      }
     };
 
     const onLeave = () => { el.style.opacity = '0'; };
@@ -47,6 +55,7 @@ export default function CustomCursor({ visible }: CustomCursorProps) {
     document.documentElement.addEventListener('mouseenter', onEnter);
 
     return () => {
+      updateTransform.cancel();
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('resize', onResize);
       document.documentElement.removeEventListener('mouseleave', onLeave);
