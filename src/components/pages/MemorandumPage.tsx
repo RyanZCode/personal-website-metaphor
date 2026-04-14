@@ -1,6 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import gsap from 'gsap';
-import { flushSync } from 'react-dom';
 import { COLORS } from '../../lib/constants';
 import { MENU_ITEMS } from '../../lib/menuConfig';
 import {
@@ -24,6 +23,7 @@ import type { PlaySoundEffect } from '../../lib/soundEffects';
 import PageBackground from '../background/PageBackground';
 import MemorandumTrapezoids from '../menu/splashEffects/MemorandumTrapezoids';
 import ScrollViewport from '../shared/ScrollViewport';
+import { rafThrottle } from '../../lib/rafThrottle';
 
 interface MemorandumPageProps {
   memorandumData: MemorandumData;
@@ -870,18 +870,16 @@ export default function MemorandumPage({
     appendTimelineCallback(detailTlRef.current, 'onComplete', () => {
       if (!mountedRef.current) return;
       detailTlRef.current = null;
-      flushSync(() => {
-        setEntryIndexForColumn(selectedColumnIndexRef.current, nextIndex);
-        setDetailEntryId(nextEntry.slug);
-        detailEntryIdRef.current = nextEntry.slug;
-        setDetailPageIndex(0);
-        detailPageIndexRef.current = 0;
-        setDisplayedDetail({
-          entryId: nextEntry.slug,
-          pageIndex: 0,
-        });
-        setDetailContentEnterPending(direction);
+      setEntryIndexForColumn(selectedColumnIndexRef.current, nextIndex);
+      setDetailEntryId(nextEntry.slug);
+      detailEntryIdRef.current = nextEntry.slug;
+      setDetailPageIndex(0);
+      detailPageIndexRef.current = 0;
+      setDisplayedDetail({
+        entryId: nextEntry.slug,
+        pageIndex: 0,
       });
+      setDetailContentEnterPending(direction);
       if (!readSet.has(nextEntry.id)) {
         onEntryReadRef.current(nextEntry.id);
       }
@@ -919,15 +917,13 @@ export default function MemorandumPage({
     appendTimelineCallback(detailTlRef.current, 'onComplete', () => {
       if (!mountedRef.current) return;
       detailTlRef.current = null;
-      flushSync(() => {
-        setDetailPageIndex(nextPageIndex);
-        detailPageIndexRef.current = nextPageIndex;
-        setDisplayedDetail({
-          entryId: detailEntry.slug,
-          pageIndex: nextPageIndex,
-        });
-        setDetailContentEnterPending(direction);
+      setDetailPageIndex(nextPageIndex);
+      detailPageIndexRef.current = nextPageIndex;
+      setDisplayedDetail({
+        entryId: detailEntry.slug,
+        pageIndex: nextPageIndex,
       });
+      setDetailContentEnterPending(direction);
     });
     appendTimelineCallback(detailTlRef.current, 'onInterrupt', () => {
       detailTlRef.current = null;
@@ -1019,9 +1015,7 @@ export default function MemorandumPage({
     appendTimelineCallback(detailTlRef.current, 'onComplete', () => {
       if (!mountedRef.current) return;
       detailTlRef.current = null;
-      flushSync(() => {
-        setDisplayedDetail(null);
-      });
+      setDisplayedDetail(null);
 
       requestAnimationFrame(() => requestAnimationFrame(() => {
         if (!mountedRef.current || !containerRef.current) {
@@ -1093,9 +1087,7 @@ export default function MemorandumPage({
     appendTimelineCallback(detailTlRef.current, 'onComplete', () => {
       if (!mountedRef.current) return;
       detailTlRef.current = null;
-      flushSync(() => {
-        setDisplayedDetail(null);
-      });
+      setDisplayedDetail(null);
 
       requestAnimationFrame(() => requestAnimationFrame(() => {
         if (!mountedRef.current || !containerRef.current) {
@@ -1330,9 +1322,9 @@ export default function MemorandumPage({
       return;
     }
 
-    const updateScrollability = () => {
+    const updateScrollability = rafThrottle(() => {
       setIsDetailBodyScrollable(viewport.scrollHeight - viewport.clientHeight > 1);
-    };
+    });
 
     viewport.scrollTop = 0;
     updateScrollability();
@@ -1348,6 +1340,7 @@ export default function MemorandumPage({
 
     window.addEventListener('resize', updateScrollability);
     return () => {
+      updateScrollability.cancel();
       resizeObserver?.disconnect();
       window.removeEventListener('resize', updateScrollability);
     };

@@ -8,6 +8,7 @@ import type { PlaySoundEffect } from '../../lib/soundEffects';
 import ContactRings from '../menu/splashEffects/ContactRings';
 import PageBackground from '../background/PageBackground';
 import ScrollViewport from '../shared/ScrollViewport';
+import { rafThrottle } from '../../lib/rafThrottle';
 
 interface ContactPageProps {
   isActive: boolean;
@@ -294,7 +295,7 @@ export default function ContactPage({
     const panel = panelFrameRef.current;
     if (!panelSlot || !panel) return;
 
-    const updateVisibleRows = () => {
+    const updateVisibleRows = rafThrottle(() => {
       const availableHeight = panelSlot.clientHeight;
       const availableForRows = availableHeight - PANEL_TOP_PADDING - PANEL_BOTTOM_PADDING;
       const nextVisibleRows = Math.max(
@@ -302,7 +303,7 @@ export default function ContactPage({
         Math.min(CONTACTS.length, Math.floor(availableForRows / CONTACT_ROW_HEIGHT))
       );
       setVisibleRows(nextVisibleRows);
-    };
+    });
 
     const resizeObserver = new ResizeObserver(updateVisibleRows);
     resizeObserver.observe(panelSlot);
@@ -311,6 +312,7 @@ export default function ContactPage({
     updateVisibleRows();
 
     return () => {
+      updateVisibleRows.cancel();
       resizeObserver.disconnect();
       window.removeEventListener('resize', updateVisibleRows);
     };

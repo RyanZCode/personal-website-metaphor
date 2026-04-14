@@ -8,6 +8,7 @@ import ExperienceRipples  from './splashEffects/ExperienceRipples';
 import ContactRings   from './splashEffects/ContactRings';
 import MemorandumTrapezoids from './splashEffects/MemorandumTrapezoids';
 import SystemGlitch   from './splashEffects/SystemGlitch';
+import { rafThrottle } from '../../lib/rafThrottle';
 
 interface MenuItemBackgroundProps {
   itemRefs: React.RefObject<(HTMLDivElement | null)[]>;
@@ -23,6 +24,7 @@ interface MenuItemBackgroundProps {
   splashTipXPct: number;
   splashTaperYPct: number;
   menuScrollYVh: number;
+  selectedItemOffsetYVh: number;
   measureKey: number;
 }
 
@@ -35,8 +37,16 @@ interface SplashPos {
 }
 
 const SPLASH_LEFT_VH = -17.78;
+const EFFECT_COMPONENTS = [
+  AboutTriangles,
+  SkillsBands,
+  ExperienceRipples,
+  ContactRings,
+  MemorandumTrapezoids,
+  SystemGlitch,
+] as const;
 
-export default function MenuItemBackground({ itemRefs, menuStackRef, selectedIndex, animationsEnabled, accentH, accentS, accentL, splashHeightVh, splashWidthVh, splashOffsetY, splashTipXPct, splashTaperYPct, menuScrollYVh, measureKey }: MenuItemBackgroundProps) {
+export default function MenuItemBackground({ itemRefs, menuStackRef, selectedIndex, animationsEnabled, accentH, accentS, accentL, splashHeightVh, splashWidthVh, splashOffsetY, splashTipXPct, splashTaperYPct, menuScrollYVh, selectedItemOffsetYVh, measureKey }: MenuItemBackgroundProps) {
   const [pos, setPos] = useState<SplashPos | null>(null);
 
   // Layer refs
@@ -46,7 +56,7 @@ export default function MenuItemBackground({ itemRefs, menuStackRef, selectedInd
   const effectsInnerRef = useRef<HTMLDivElement>(null); // counter-scales to keep effect content positions stable
 
   useEffect(() => {
-    const compute = () => {
+    const compute = rafThrottle(() => {
       const el = itemRefs.current[selectedIndex];
       if (!el) return;
       const menuStack = menuStackRef.current;
@@ -72,7 +82,12 @@ export default function MenuItemBackground({ itemRefs, menuStackRef, selectedInd
       // Use layout offsetTop (unaffected by GSAP) + the final target scroll position.
       // getBoundingClientRect().top sees the mid-animation position; offsetTop does not.
       // menu-left has top:0vh in CSS, so menuStack.offsetTop is its natural viewport Y.
-      const pivotY = menuStack.offsetTop + menuScrollYVh * vh + layoutTop + el.offsetHeight / 2;
+      const pivotY =
+        menuStack.offsetTop +
+        menuScrollYVh * vh +
+        layoutTop +
+        el.offsetHeight / 2 +
+        selectedItemOffsetYVh * vh;
 
       const T_px = (arcX * 16 / 9) * vh;
       const leftEdgeScreen = menuStackRect.left + layoutLeft + T_px;
@@ -88,14 +103,29 @@ export default function MenuItemBackground({ itemRefs, menuStackRef, selectedInd
       const elementCenterX = elementLeftPx + elementWidthPx / 2;
       const splashVerticalShift = (elementCenterX - leftEdgeScreen) * Math.sin(rotateRad);
 
-      setPos({
+      const nextPos = {
         top: textCenterY - splashH / 2 - splashVerticalShift + splashOffsetY * vh,
         height: splashH,
         pivotX,
         rotate: scale.rotate,
         rotateY: scale.rotateY,
+      };
+
+      setPos((current) => {
+        if (
+          current &&
+          Math.abs(current.top - nextPos.top) < 0.5 &&
+          Math.abs(current.height - nextPos.height) < 0.5 &&
+          Math.abs(current.pivotX - nextPos.pivotX) < 0.5 &&
+          current.rotate === nextPos.rotate &&
+          current.rotateY === nextPos.rotateY
+        ) {
+          return current;
+        }
+
+        return nextPos;
       });
-    };
+    });
 
     // Defer the initial measurement by one frame so the browser has finished
     // laying out with the correct font metrics before we read offsetWidth/offsetHeight.
@@ -109,10 +139,11 @@ export default function MenuItemBackground({ itemRefs, menuStackRef, selectedInd
     window.addEventListener('resize', compute);
     return () => {
       cancelAnimationFrame(rafId);
+      compute.cancel();
       ro?.disconnect();
       window.removeEventListener('resize', compute);
     };
-  }, [selectedIndex, splashHeightVh, splashWidthVh, splashOffsetY, splashTipXPct, splashTaperYPct, menuScrollYVh, measureKey]);
+  }, [selectedIndex, splashHeightVh, splashWidthVh, splashOffsetY, splashTipXPct, splashTaperYPct, menuScrollYVh, selectedItemOffsetYVh, measureKey]);
 
   useGSAP(() => {
     if (!backRef.current || !frontRef.current || !effectsWrapRef.current || !effectsInnerRef.current) return;
@@ -201,12 +232,13 @@ export default function MenuItemBackground({ itemRefs, menuStackRef, selectedInd
         style={{ position: 'absolute', inset: 0, clipPath, pointerEvents: 'none', transformOrigin: 'left center' }}
       >
         <div ref={effectsInnerRef} style={{ position: 'absolute', inset: 0, transformOrigin: 'left center' }}>
-          <AboutTriangles isActive={selectedIndex === 0} animationsEnabled={animationsEnabled} />
-          <SkillsBands isActive={selectedIndex === 1} animationsEnabled={animationsEnabled} />
-          <ExperienceRipples isActive={selectedIndex === 2} animationsEnabled={animationsEnabled} />
-          <ContactRings isActive={selectedIndex === 3} animationsEnabled={animationsEnabled} />
-          <MemorandumTrapezoids isActive={selectedIndex === 4} animationsEnabled={animationsEnabled} />
-          <SystemGlitch isActive={selectedIndex === 5} animationsEnabled={animationsEnabled} />
+          {EFFECT_COMPONENTS.map((EffectComponent, index) => (
+            <EffectComponent
+              key={index}
+              isActive={selectedIndex === index}
+              animationsEnabled={animationsEnabled}
+            />
+          ))}
         </div>
       </div>
 

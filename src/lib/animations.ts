@@ -11,17 +11,20 @@ function collectAndDisplaceChars(
   originY: number,
 ): CharEntry[] {
   const charEntries: CharEntry[] = [];
+  const entriesByItem: CharEntry[][] = menuItemEls.map(() => []);
   menuItemEls.forEach((itemEl, itemIdx) => {
     const chars = Array.from(itemEl.querySelectorAll('[data-char]')) as HTMLElement[];
     [...chars].sort(() => Math.random() - 0.5).forEach((char, j) => {
-      charEntries.push({ char, withinItemIdx: j, itemIdx });
+      const entry = { char, withinItemIdx: j, itemIdx };
+      charEntries.push(entry);
+      entriesByItem[itemIdx].push(entry);
     });
   });
 
   // Probe each item's local->screen transform matrix, then invert to get the
   // local displacement needed to move each char to the shared screen origin.
   menuItemEls.forEach((_, i) => {
-    const items = charEntries.filter(e => e.itemIdx === i);
+    const items = entriesByItem[i];
     if (!items.length) return;
 
     const probe = items[0].char;
@@ -61,12 +64,31 @@ function appendCharFlyTweens(
   itemStagger: number,
   charStagger: number,
 ): void {
-  charEntries.forEach(({ char, withinItemIdx: j, itemIdx: i }) => {
-    const start = firstStart + i * itemStagger + j * charStagger;
-    tl.to(char, { x: 0, duration: flyXDur, ease: 'power3.out'   }, start);
-    tl.to(char, { y: 0, duration: flyYDur, ease: 'power2.inOut' }, start);
-    tl.to(char, { opacity: 1, duration: 0.1, ease: 'none'       }, start);
-  });
+  const chars = charEntries.map(({ char }) => char);
+  const getDelay = (index: number) => (
+    firstStart +
+    charEntries[index].itemIdx * itemStagger +
+    charEntries[index].withinItemIdx * charStagger
+  );
+
+  tl.to(chars, {
+    x: 0,
+    duration: flyXDur,
+    ease: 'power3.out',
+    stagger: (index) => getDelay(index),
+  }, 0);
+  tl.to(chars, {
+    y: 0,
+    duration: flyYDur,
+    ease: 'power2.inOut',
+    stagger: (index) => getDelay(index),
+  }, 0);
+  tl.to(chars, {
+    opacity: 1,
+    duration: 0.1,
+    ease: 'none',
+    stagger: (index) => getDelay(index),
+  }, 0);
 }
 
 export function setEntryInitialStates(container: Element): void {
@@ -207,11 +229,21 @@ export function createPageEnterTimeline(
   const DONE_AT    = MOUNT_AT + 0.40;
 
   const tl = gsap.timeline();
+  const chars = charExits.map(({ char }) => char);
 
-  charExits.forEach(({ char, localX, localY, startTime }) => {
-    tl.to(char, { x: localX, y: localY, duration: FLY_DUR, ease: 'power2.in' }, startTime);
-    tl.to(char, { opacity: 0, duration: FADE_DUR, ease: 'power1.in'          }, startTime + FADE_DELAY);
-  });
+  tl.to(chars, {
+    x: (index) => charExits[index].localX,
+    y: (index) => charExits[index].localY,
+    duration: FLY_DUR,
+    ease: 'power2.in',
+    stagger: (index) => charExits[index].startTime,
+  }, 0);
+  tl.to(chars, {
+    opacity: 0,
+    duration: FADE_DUR,
+    ease: 'power1.in',
+    stagger: (index) => charExits[index].startTime + FADE_DELAY,
+  }, 0);
 
   tl.to([menuIndex, statsHints], { y: '1.5vh', opacity: 0, duration: 0.18, ease: 'power2.in' }, 0.24)
     .call(onSubtitleHide, [], 0.20)

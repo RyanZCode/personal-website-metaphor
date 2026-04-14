@@ -1,4 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type CSSProperties, type HTMLAttributes, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
+import { rafThrottle, type RafThrottledCallback } from '../../lib/rafThrottle';
 
 interface ScrollViewportProps {
   children: ReactNode;
@@ -36,6 +37,8 @@ const ScrollViewport = forwardRef<HTMLDivElement, ScrollViewportProps>(function 
 ) {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
+  const updateMetricsRef = useRef<RafThrottledCallback<[]> | null>(null);
+  const observedContentRef = useRef<HTMLElement | null>(null);
   const [hovered, setHovered] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [metrics, setMetrics] = useState<ScrollMetrics>({
@@ -50,7 +53,7 @@ const ScrollViewport = forwardRef<HTMLDivElement, ScrollViewportProps>(function 
     const viewport = viewportRef.current;
     if (!viewport) return;
 
-    const updateMetrics = () => {
+    const updateMetrics = rafThrottle(() => {
       const { clientHeight, scrollHeight, scrollTop } = viewport;
       const scrollRange = scrollHeight - clientHeight;
 
@@ -72,23 +75,48 @@ const ScrollViewport = forwardRef<HTMLDivElement, ScrollViewportProps>(function 
         thumbHeight,
         thumbTop,
       });
-    };
+    });
 
     const resizeObserver = new ResizeObserver(updateMetrics);
-    resizeObserver.observe(viewport);
-    if (viewport.firstElementChild instanceof HTMLElement) {
-      resizeObserver.observe(viewport.firstElementChild);
-    }
+    const syncObservedContent = () => {
+      const nextContent = viewport.firstElementChild instanceof HTMLElement
+        ? viewport.firstElementChild
+        : null;
 
+      if (observedContentRef.current && observedContentRef.current !== nextContent) {
+        resizeObserver.unobserve(observedContentRef.current);
+      }
+
+      if (nextContent && observedContentRef.current !== nextContent) {
+        resizeObserver.observe(nextContent);
+      }
+
+      observedContentRef.current = nextContent;
+      updateMetrics();
+    };
+    const mutationObserver = new MutationObserver(syncObservedContent);
+
+    updateMetricsRef.current = updateMetrics;
+    resizeObserver.observe(viewport);
+    syncObservedContent();
+    mutationObserver.observe(viewport, { childList: true });
     viewport.addEventListener('scroll', updateMetrics, { passive: true });
     window.addEventListener('resize', updateMetrics);
     updateMetrics();
 
     return () => {
+      updateMetricsRef.current = null;
+      observedContentRef.current = null;
+      updateMetrics.cancel();
+      mutationObserver.disconnect();
       resizeObserver.disconnect();
       viewport.removeEventListener('scroll', updateMetrics);
       window.removeEventListener('resize', updateMetrics);
     };
+  }, []);
+
+  useEffect(() => {
+    updateMetricsRef.current?.();
   }, [children]);
 
   const startDrag = (event: ReactMouseEvent<HTMLDivElement>, dragFromThumb: boolean) => {

@@ -36,7 +36,7 @@ export default function MemorandumTrapezoids({ isActive, animationsEnabled }: Pr
   }, { scope: containerRef });
 
   useEffect(() => {
-    const shouldRun = animationsEnabled;
+    const shouldRun = isActive && animationsEnabled;
     const willChange = shouldRun ? 'transform, opacity' : 'auto';
 
     trapRefs.current.forEach((trap) => {
