@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type TouchEvent as ReactTouchEvent } from 'react';
 import gsap from 'gsap';
 import { COLORS } from '../../lib/constants';
 import { createExperienceEntryTimeline, createExperienceExitTimeline } from '../../lib/animations';
@@ -268,6 +268,7 @@ export default function ExperiencePage({ isActive, animationsEnabled, registerNa
   const scrollOffsetRef = useRef(0);
   const rowMeasurementRef = useRef<ExperienceLayoutMeasurement | null>(null);
   const measureRowLayoutsRef = useRef<(() => void) | null>(null);
+  const touchScrollRef = useRef<{ startY: number; startOffset: number } | null>(null);
 
   // 16:9 fallbacks (θ≈28°, ar≈1.778, W2≈40): updated after mount and on resize
   const [ripple, setRipple] = useState({ angleDeg: 28, rightVw: -63, bottomVh: -57, sideVw: 80 });
@@ -285,6 +286,24 @@ export default function ExperiencePage({ isActive, animationsEnabled, registerNa
   useEffect(() => {
     scrollOffsetRef.current = scrollOffset;
   }, [scrollOffset]);
+
+  const scrollExperienceTo = useCallback((nextOffset: number) => {
+    const clampedOffset = Math.max(0, Math.min(nextOffset, maxScrollOffset));
+    if (Math.abs(clampedOffset - scrollOffsetRef.current) < 0.5) {
+      return false;
+    }
+
+    setScrollOffset(clampedOffset);
+    return true;
+  }, [maxScrollOffset]);
+
+  const scrollExperienceBy = useCallback((delta: number) => {
+    if (maxScrollOffset <= 1) {
+      return false;
+    }
+
+    return scrollExperienceTo(scrollOffsetRef.current + delta);
+  }, [maxScrollOffset, scrollExperienceTo]);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useLayoutEffect(() => {
@@ -457,6 +476,12 @@ export default function ExperiencePage({ isActive, animationsEnabled, registerNa
   }, [isActive]);
 
   useEffect(() => {
+    if (!isActive) {
+      touchScrollRef.current = null;
+    }
+  }, [isActive]);
+
+  useEffect(() => {
     const measurement = rowMeasurementRef.current;
     if (!measurement) return;
 
@@ -482,16 +507,41 @@ export default function ExperiencePage({ isActive, animationsEnabled, registerNa
       captureWheel: true,
       onDirection: (direction) => {
         if (direction !== 'up' && direction !== 'down') return false;
-        if (maxScrollOffset <= 1) return false;
-
         const delta = direction === 'down' ? EXPERIENCE_SCROLL_STEP : -EXPERIENCE_SCROLL_STEP;
-        setScrollOffset((current) => Math.max(0, Math.min(current + delta, maxScrollOffset)));
-        return true;
+        return scrollExperienceBy(delta);
       },
     });
 
     return () => registerNavigation(null);
-  }, [isActive, maxScrollOffset, registerNavigation]);
+  }, [isActive, maxScrollOffset, registerNavigation, scrollExperienceBy]);
+
+  const handleViewportTouchStart = useCallback((event: ReactTouchEvent<HTMLDivElement>) => {
+    if (!isActive || maxScrollOffset <= 1 || event.touches.length !== 1) {
+      touchScrollRef.current = null;
+      return;
+    }
+
+    const touch = event.touches[0];
+    touchScrollRef.current = {
+      startY: touch.clientY,
+      startOffset: scrollOffsetRef.current,
+    };
+  }, [isActive, maxScrollOffset]);
+
+  const handleViewportTouchMove = useCallback((event: ReactTouchEvent<HTMLDivElement>) => {
+    const touchSession = touchScrollRef.current;
+    if (!touchSession || event.touches.length !== 1) {
+      return;
+    }
+
+    const touch = event.touches[0];
+    const delta = touchSession.startY - touch.clientY;
+    scrollExperienceTo(touchSession.startOffset + delta);
+  }, [scrollExperienceTo]);
+
+  const handleViewportTouchEnd = useCallback(() => {
+    touchScrollRef.current = null;
+  }, []);
 
   const diagonalScrollX = scrollOffset * ((LEFT_TOP - LEFT_BOT) / 100) * (viewportSize.width / viewportSize.height);
   const scrollbarThumbFraction = Math.min(
@@ -740,19 +790,25 @@ export default function ExperiencePage({ isActive, animationsEnabled, registerNa
               alignItems: maxScrollOffset > 1 ? 'stretch' : 'center',
             }}
           >
-            <div
-              ref={viewportRef}
-              style={{
-                width: '100%',
-                height: '100%',
-                minHeight: 0,
-                overflow: 'hidden',
-                position: 'relative',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: maxScrollOffset > 1 ? 'flex-start' : 'center',
-              }}
-            >
+              <div
+                ref={viewportRef}
+                onTouchStart={handleViewportTouchStart}
+                onTouchMove={handleViewportTouchMove}
+                onTouchEnd={handleViewportTouchEnd}
+                onTouchCancel={handleViewportTouchEnd}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  minHeight: 0,
+                  overflow: 'hidden',
+                  position: 'relative',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: maxScrollOffset > 1 ? 'flex-start' : 'center',
+                  overscrollBehavior: 'contain',
+                  touchAction: maxScrollOffset > 1 ? 'none' : 'auto',
+                }}
+              >
               {maxScrollOffset > 1 ? (
                 <div
                   aria-hidden="true"

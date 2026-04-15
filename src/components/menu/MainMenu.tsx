@@ -98,6 +98,7 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
   const [cursorStyle, setCursorStyle] = useState<CursorStyle>('metaphor');
   const [bgInverted, setBgInverted] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [supportsHoverPointer, setSupportsHoverPointer] = useState(false);
   const [splashMeasureKey, setSplashMeasureKey] = useState(0);
   const [hintsMode, setHintsMode] = useState<'menu' | 'page'>('menu');
   const [showScrollHint, setShowScrollHint] = useState(false);
@@ -133,11 +134,13 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
   const soundWarmupStartedRef = useRef(false);
   const soundWarmupTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const soundWarmupIdleCallbackRef = useRef<number | null>(null);
+  const touchEnterDelayRef = useRef<gsap.core.Tween | null>(null);
   const enterPageRef = useRef<(pageId: string, options?: PageTransitionOptions) => void>(() => {});
   const exitPageRef = useRef<(options?: PageTransitionOptions) => void>(() => {});
   const pageNavigationRef = useRef<PageNavigationHandler | null>(null);
-  const [inputMode, setInputMode] = useState<'keyboard' | 'mouse'>('mouse');
+  const [inputMode, setInputMode] = useState<'keyboard' | 'mouse' | 'touch'>('mouse');
   const deferredImageWarmupStartedRef = useRef(false);
+  const lastTouchInputAt = useRef(0);
 
   useEffect(() => {
     appStateRef.current = appState;
@@ -254,11 +257,12 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
   }, []);
 
   const handleMenuItemMouseEnter = useCallback((index: number) => {
+    if (!supportsHoverPointer || Date.now() - lastTouchInputAt.current < 800) return;
     if (appState === 'idle' && Date.now() - lastKeyNavAt.current > 100) {
       setInputMode('mouse');
       selectMenuIndex(index);
     }
-  }, [appState, selectMenuIndex]);
+  }, [appState, selectMenuIndex, supportsHoverPointer]);
 
   useEffect(() => {
     const manifest = createAssetPreloadManifest(memorandumData);
@@ -339,8 +343,28 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
   }, []);
 
   useEffect(() => {
-    document.body.classList.toggle('cursor-metaphor', cursorStyle === 'metaphor');
-  }, [cursorStyle]);
+    document.body.classList.toggle(
+      'cursor-metaphor',
+      cursorStyle === 'metaphor' && supportsHoverPointer && inputMode === 'mouse'
+    );
+  }, [cursorStyle, inputMode, supportsHoverPointer]);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(any-hover: hover) and (any-pointer: fine)');
+    const update = () => {
+      setSupportsHoverPointer(mediaQuery.matches);
+    };
+
+    update();
+
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', update);
+      return () => mediaQuery.removeEventListener('change', update);
+    }
+
+    mediaQuery.addListener(update);
+    return () => mediaQuery.removeListener(update);
+  }, []);
 
   useEffect(() => {
     document.body.classList.toggle('bg-inverted', bgInverted);
@@ -466,13 +490,35 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
 
 
   useEffect(() => {
+    const markTouchInput = () => {
+      lastTouchInputAt.current = Date.now();
+      setInputMode('touch');
+    };
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.pointerType === 'touch') {
+        markTouchInput();
+      }
+    };
+
+    window.addEventListener('touchstart', markTouchInput, { passive: true });
+    window.addEventListener('pointerdown', onPointerDown, { passive: true });
+    return () => {
+      window.removeEventListener('touchstart', markTouchInput);
+      window.removeEventListener('pointerdown', onPointerDown);
+    };
+  }, []);
+
+  useEffect(() => {
     const onMove = () => {
+      if (!supportsHoverPointer) return;
+      if (Date.now() - lastTouchInputAt.current < 800) return;
       if (Date.now() - lastKeyNavAt.current < 600) return;
       setInputMode('mouse');
     };
     window.addEventListener('mousemove', onMove);
     return () => window.removeEventListener('mousemove', onMove);
-  }, []);
+  }, [supportsHoverPointer]);
 
   // Scroll wheel navigation - no wraparound, cooldown to handle trackpad micro-events
   useEffect(() => {
@@ -656,6 +702,7 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
 
   useEffect(() => {
     return () => {
+      touchEnterDelayRef.current?.kill();
       pageTlRef.current?.kill();
     };
   }, []);
@@ -1001,7 +1048,7 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
   if (appState === 'preloading') return <LoadingScreen />;
   if (unsupported) return <UnsupportedScreen />;
 
-  const cursorActive = cursorStyle === 'metaphor' && inputMode !== 'keyboard';
+  const cursorActive = cursorStyle === 'metaphor' && supportsHoverPointer && inputMode === 'mouse';
 
   return (
     <>
@@ -1012,7 +1059,31 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
       onClick={(e) => {
         if (appState !== 'idle') return;
         if ((e.target as Element).closest('[data-control-hints-fixed]')) return;
-        enterPage(MENU_ITEMS[selectedIndex].id, { playSound: true });
+        const tappedMenuItem = (e.target as Element).closest<HTMLElement>('[data-menu-item]');
+        const tappedPageId = tappedMenuItem?.dataset.menuItem;
+
+        if (inputMode === 'touch') {
+          if (!tappedPageId || !VALID_PAGE_IDS.has(tappedPageId)) return;
+          const tappedIndex = MENU_ITEMS.findIndex((item) => item.id === tappedPageId);
+          if (tappedIndex !== -1) {
+            selectMenuIndex(tappedIndex);
+          }
+          touchEnterDelayRef.current?.kill();
+          touchEnterDelayRef.current = gsap.delayedCall(0.1, () => {
+            touchEnterDelayRef.current = null;
+            enterPageRef.current(tappedPageId, { playSound: true });
+          });
+          return;
+        }
+
+        touchEnterDelayRef.current?.kill();
+        touchEnterDelayRef.current = null;
+        enterPage(
+          tappedPageId && VALID_PAGE_IDS.has(tappedPageId)
+            ? tappedPageId
+            : MENU_ITEMS[selectedIndex].id,
+          { playSound: true }
+        );
       }}
     >
       <BackgroundLayers />
