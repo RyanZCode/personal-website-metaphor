@@ -3,7 +3,10 @@ import gsap from 'gsap';
 import { COLORS } from '../../lib/constants';
 import PageBackground from '../background/PageBackground';
 import SkillsBands from '../menu/splashEffects/SkillsBands';
-import { createSkillsEntryTimeline, createSkillsExitTimeline } from '../../lib/animations';
+import {
+  createSkillsEntryTimeline,
+  createSkillsExitTimeline,
+} from '../../lib/animations';
 import ScrollViewport from '../shared/ScrollViewport';
 import type { RegisterPageNavigation } from '../../lib/pageNavigation';
 import { rafThrottle } from '../../lib/rafThrottle';
@@ -11,7 +14,10 @@ import { rafThrottle } from '../../lib/rafThrottle';
 interface SkillsPageProps {
   isActive: boolean;
   animationsEnabled: boolean;
+  initialEntryDelaySeconds: number;
+  pageState: 'entering-page' | 'page-active' | 'exiting-page';
   registerNavigation: RegisterPageNavigation;
+  onEntryAnimationComplete?: () => void;
 }
 
 interface SkillGroup {
@@ -29,12 +35,20 @@ const SKILL_GROUPS: SkillGroup[] = [
 const accent = 'hsl(335, 75%, 50%)';
 const BOTTOM_DIAGONAL_WEDGE_CLIP_PATH = 'polygon(0 100%, 100% 0, 100% 100%)';
 
-export default function SkillsPage({ isActive, animationsEnabled, registerNavigation }: SkillsPageProps) {
+export default function SkillsPage({
+  isActive,
+  animationsEnabled,
+  initialEntryDelaySeconds,
+  pageState,
+  registerNavigation,
+  onEntryAnimationComplete,
+}: SkillsPageProps) {
   const containerRef  = useRef<HTMLElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const entryTlRef    = useRef<gsap.core.Timeline | null>(null);
+  const entryDelayRef = useRef<gsap.core.Tween | null>(null);
   const exitTlRef     = useRef<gsap.core.Timeline | null>(null);
-  const prevIsActive  = useRef(isActive);
+  const prevIsActive = useRef(isActive);
   const [isScrollable, setIsScrollable] = useState(false);
 
   const bobAnim  = animationsEnabled ? 'portrait-bob 4s ease-in-out infinite' : 'none';
@@ -42,9 +56,37 @@ export default function SkillsPage({ isActive, animationsEnabled, registerNaviga
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useLayoutEffect(() => {
-    if (!containerRef.current || !animationsEnabled) return;
-    entryTlRef.current = createSkillsEntryTimeline(containerRef.current);
+    if (!containerRef.current) return;
+    if (!animationsEnabled) return;
+    const shouldDelayDirectMountPlayback = pageState === 'page-active';
+    let rafId: number | null = null;
+    let nestedRafId: number | null = null;
+    entryTlRef.current = createSkillsEntryTimeline(containerRef.current, {
+      paused: initialEntryDelaySeconds > 0 || shouldDelayDirectMountPlayback,
+    });
+    if (onEntryAnimationComplete) {
+      entryTlRef.current.add(() => {
+        onEntryAnimationComplete();
+      });
+    }
+    if (initialEntryDelaySeconds > 0) {
+      entryDelayRef.current = gsap.delayedCall(entryDelaySeconds, () => {
+        entryDelayRef.current = null;
+        entryTlRef.current?.play(0);
+      });
+    } else if (shouldDelayDirectMountPlayback) {
+      rafId = requestAnimationFrame(() => {
+        nestedRafId = requestAnimationFrame(() => {
+          nestedRafId = null;
+          entryTlRef.current?.play(0);
+        });
+      });
+    }
     return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      if (nestedRafId !== null) cancelAnimationFrame(nestedRafId);
+      entryDelayRef.current?.kill();
+      entryDelayRef.current = null;
       entryTlRef.current?.kill();
       entryTlRef.current = null;
     };
@@ -59,14 +101,15 @@ export default function SkillsPage({ isActive, animationsEnabled, registerNaviga
   }, [animationsEnabled]);
 
   // Exit: drift watermark and content downward; parent shell opacity handles the fade
-  useEffect(() => {
+  useLayoutEffect(() => {
     const wasActive = prevIsActive.current;
     prevIsActive.current = isActive;
-    if (wasActive && !isActive && containerRef.current && animationsEnabled) {
-      exitTlRef.current?.kill();
-      exitTlRef.current = createSkillsExitTimeline(containerRef.current);
-    }
-  }, [isActive, animationsEnabled]);
+
+    if (!wasActive || isActive || !containerRef.current || !animationsEnabled) return;
+
+    exitTlRef.current?.kill();
+    exitTlRef.current = createSkillsExitTimeline(containerRef.current);
+  }, [animationsEnabled, isActive]);
 
   useEffect(() => {
     return () => { exitTlRef.current?.kill(); };

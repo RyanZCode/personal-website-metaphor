@@ -23,6 +23,16 @@ import CustomCursor from '../shared/CustomCursor';
 import { createAssetPreloadManifest, preloadImages } from '../../lib/assetPreload';
 import { rafThrottle } from '../../lib/rafThrottle';
 import type { PageNavigationDirection, PageNavigationHandler } from '../../lib/pageNavigation';
+import {
+  APP_PAGE_IDS,
+  buildPagePath,
+  getCurrentPathname,
+  normalizePathname,
+  pushPathname,
+  replacePathname,
+  resolveAppRoute,
+  type AppPageId,
+} from '../../lib/routes';
 import { SOUND_EFFECT_SOURCES, type PlaySoundEffect, type SoundEffectId } from '../../lib/soundEffects';
 import AboutPage from '../pages/AboutPage';
 import SkillsPage from '../pages/SkillsPage';
@@ -33,8 +43,9 @@ import SystemPage from '../pages/SystemPage';
 import type { MemorandumData } from '../../lib/memorandum';
 
 type AppState = 'preloading' | 'entry' | 'idle' | 'entering-page' | 'page-active' | 'exiting-page';
-type PageId = 'about' | 'skills' | 'experience' | 'contact' | 'memorandum' | 'system' | null;
+type PageId = AppPageId | null;
 type CursorStyle = 'default' | 'metaphor';
+type TransitionPhase = 'menu' | 'entering-page' | 'page-active' | 'exiting-page';
 
 interface PageTransitionOptions {
   fromPopState?: boolean;
@@ -43,9 +54,9 @@ interface PageTransitionOptions {
 
 interface MainMenuProps {
   memorandumData: MemorandumData;
+  initialPathname: string;
 }
 
-const VALID_PAGE_IDS = new Set(['about', 'skills', 'experience', 'contact', 'memorandum', 'system']);
 const MENU_SELECTED_OFFSET_VH = 1;
 const MENU_BELOW_SELECTED_OFFSET_VH = 2;
 type IdleDeadline = {
@@ -56,21 +67,43 @@ type IdleWindow = Window & {
   requestIdleCallback?: (callback: (deadline: IdleDeadline) => void, options?: { timeout: number }) => number;
   cancelIdleCallback?: (handle: number) => void;
 };
+type NavigationDestination = {
+  url: string;
+};
+type AppNavigateEvent = Event & {
+  canIntercept?: boolean;
+  downloadRequest?: string | null;
+  formData?: FormData | null;
+  hashChange?: boolean;
+  intercept?: (options: {
+    focusReset?: 'manual' | 'after-transition';
+    scroll?: 'manual' | 'after-transition';
+    handler?: () => void | Promise<void>;
+  }) => void;
+  navigationType?: 'push' | 'replace' | 'reload' | 'traverse';
+  destination: NavigationDestination;
+};
+type AppNavigation = EventTarget;
+type WindowWithNavigation = Window & {
+  navigation?: AppNavigation;
+};
 
-function getHashValue() {
-  return window.location.hash.replace(/^#/, '');
+function setDirectPageInitialStates(container: Element): void {
+  gsap.set(container.querySelectorAll('[data-char]'), { x: 0, y: 0, opacity: 0 });
+  gsap.set(container.querySelector('[data-menu-left]'), { x: 0, opacity: 0 });
+  gsap.set(container.querySelector('[data-menu-index]'), { y: '1.5vh', opacity: 0 });
+  gsap.set(container.querySelector('[data-paint-splash-wrap]'), {
+    opacity: 0,
+    clipPath: 'inset(0 0 0 0%)',
+  });
+  gsap.set(container.querySelector('[data-stats-hints]'), { y: '1.5vh', opacity: 0 });
+  gsap.set(container.querySelector('[data-control-hints-fixed]'), { y: '1vh', opacity: 0 });
+  gsap.set(container.querySelector('[data-portrait-wrap]'), { opacity: 0 });
 }
 
-function getPageIdFromHash(hash: string): PageId {
-  if (!hash) return null;
-  const [pageId] = hash.split('/');
-  return VALID_PAGE_IDS.has(pageId) ? (pageId as PageId) : null;
-}
-
-function clearPageHash() {
-  const url = new URL(window.location.href);
-  url.hash = '';
-  window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}`);
+function clearBootMode() {
+  if (typeof document === 'undefined') return;
+  delete document.documentElement.dataset.bootMode;
 }
 
 function createSoundEffectAudio(src: string) {
@@ -85,27 +118,67 @@ function getMenuItemWrapOffsetYVh(index: number, selectedIndex: number) {
   return 0;
 }
 
-export default function MainMenu({ memorandumData }: MainMenuProps) {
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  const [appState, setAppState] = useState<AppState>('preloading');
-  const [animationsEnabled, setAnimationsEnabled] = useState(true);
+export default function MainMenu({ memorandumData, initialPathname }: MainMenuProps) {
+  const initialNormalizedPathRef = useRef(normalizePathname(initialPathname));
+  const initialTargetPathRef = useRef(
+    initialNormalizedPathRef.current
+  );
+  const initialTargetRouteRef = useRef(
+    resolveAppRoute(initialTargetPathRef.current, memorandumData)
+  );
+  const initialDirectMountPageId = initialTargetRouteRef.current?.pageId ?? null;
+  const initialSelectedIndex = (() => {
+    const targetPageId = initialTargetRouteRef.current?.pageId ?? null;
+    const targetIndex = targetPageId
+      ? MENU_ITEMS.findIndex((item) => item.id === targetPageId)
+      : -1;
+    return targetIndex >= 0 ? targetIndex : 0;
+  })();
+  const initialPendingMenuSelectionIndex = (() => {
+    return null;
+  })();
+  const [selectedIndex, setSelectedIndex] = useState(initialSelectedIndex);
+  const shouldMountPageDirectOnLoadRef = useRef(
+    initialTargetRouteRef.current.pageId !== null
+  );
+  const shouldSkipBlockingPreloadRef = useRef(
+    initialTargetRouteRef.current.pageId !== null
+  );
+  const [appState, setAppState] = useState<AppState>(
+    shouldMountPageDirectOnLoadRef.current && initialTargetRouteRef.current?.pageId
+      ? 'entering-page'
+      : shouldSkipBlockingPreloadRef.current
+        ? 'idle'
+        : 'preloading'
+  );
+  const [animationsEnabled, setAnimationsEnabled] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    const stored = localStorage.getItem('animationsEnabled');
+    return stored !== null ? stored === 'true' : !prefersReducedMotion();
+  });
   const [clipPath, setClipPath] = useState('polygon(2% 100%, 99% 0%, 100% 0%, 100% 100%)');
   const [unsupported, setUnsupported] = useState(false);
-  const [displayIndex, setDisplayIndex] = useState(0);
+  const [displayIndex, setDisplayIndex] = useState(initialSelectedIndex);
   const [subtitleVisible, setSubtitleVisible] = useState(false);
-  const [activePage, setActivePage] = useState<PageId>(null);
-  const [hintsPage, setHintsPage] = useState<PageId>(null);
+  const [activePage, setActivePage] = useState<PageId>(
+    shouldMountPageDirectOnLoadRef.current ? initialDirectMountPageId : null
+  );
+  const [hintsPage, setHintsPage] = useState<PageId>(
+    shouldMountPageDirectOnLoadRef.current ? initialDirectMountPageId : null
+  );
   const [cursorStyle, setCursorStyle] = useState<CursorStyle>('metaphor');
   const [bgInverted, setBgInverted] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [supportsHoverPointer, setSupportsHoverPointer] = useState(false);
   const [splashMeasureKey, setSplashMeasureKey] = useState(0);
-  const [hintsMode, setHintsMode] = useState<'menu' | 'page'>('menu');
+  const [hintsMode, setHintsMode] = useState<'menu' | 'page'>(
+    shouldMountPageDirectOnLoadRef.current ? 'page' : 'menu'
+  );
   const [showScrollHint, setShowScrollHint] = useState(false);
   const [hintVariant, setHintVariant] = useState<'memorandum-detail' | undefined>(undefined);
   const [readMemorandumEntryIds, setReadMemorandumEntryIds] = useState<string[]>([]);
-  const [currentLocationHash, setCurrentLocationHash] = useState(() =>
-    typeof window === 'undefined' ? '' : getHashValue()
+  const [currentLocationPath, setCurrentLocationPath] = useState(() =>
+    initialTargetPathRef.current
   );
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -115,16 +188,34 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
   const entryTlRef = useRef<gsap.core.Timeline | null>(null);
   const indexAnimTlRef = useRef<gsap.core.Timeline | null>(null);
   const pageTlRef = useRef<gsap.core.Timeline | null>(null);
-  const prevSelectedIndexRef = useRef(0);
-  const selectedIndexRef = useRef(0);
+  const prevSelectedIndexRef = useRef(initialSelectedIndex);
+  const selectedIndexRef = useRef(initialSelectedIndex);
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
   const itemWrapRefs = useRef<(HTMLDivElement | null)[]>([]);
   const lastScrollAt = useRef(0);
   const lastKeyNavAt = useRef(0);
-  const initialHashChecked = useRef(false);
-  const appStateRef = useRef<AppState>('preloading');
-  const activePageRef = useRef<PageId>(null);
-  const pendingLocationPageRef = useRef<string | null>(null);
+  const appStateRef = useRef<AppState>(
+    shouldMountPageDirectOnLoadRef.current && initialTargetRouteRef.current?.pageId
+      ? 'entering-page'
+      : shouldSkipBlockingPreloadRef.current
+        ? 'idle'
+        : 'preloading'
+  );
+  const activePageRef = useRef<PageId>(
+    shouldMountPageDirectOnLoadRef.current ? initialDirectMountPageId : null
+  );
+  const transitionPhaseRef = useRef<TransitionPhase>(
+    shouldMountPageDirectOnLoadRef.current && initialTargetRouteRef.current?.pageId
+      ? 'entering-page'
+      : 'menu'
+  );
+  const currentLocationPathRef = useRef(
+    initialTargetPathRef.current
+  );
+  const pendingLocationPageRef = useRef<string | null>(
+    null
+  );
+  const pendingMenuSelectionIndexRef = useRef<number | null>(initialPendingMenuSelectionIndex);
   const soundRefs = useRef<Record<SoundEffectId, HTMLAudioElement | null>>({
     switch: null,
     enter: null,
@@ -135,12 +226,51 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
   const soundWarmupTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const soundWarmupIdleCallbackRef = useRef<number | null>(null);
   const touchEnterDelayRef = useRef<gsap.core.Tween | null>(null);
-  const enterPageRef = useRef<(pageId: string, options?: PageTransitionOptions) => void>(() => {});
+  const menuReEntryDelayRef = useRef<gsap.core.Tween | null>(null);
+  const hoverSyncRafRef = useRef<number | null>(null);
+  const interceptedNavigationPathRef = useRef<string | null>(null);
+  const interceptedNavigationResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const initialDirectMountAppliedRef = useRef(false);
+  const initialDirectPageEntryInProgressRef = useRef(shouldMountPageDirectOnLoadRef.current);
+  const enterPageRef = useRef<(pageId: AppPageId, options?: PageTransitionOptions) => void>(() => {});
   const exitPageRef = useRef<(options?: PageTransitionOptions) => void>(() => {});
   const pageNavigationRef = useRef<PageNavigationHandler | null>(null);
   const [inputMode, setInputMode] = useState<'keyboard' | 'mouse' | 'touch'>('mouse');
   const deferredImageWarmupStartedRef = useRef(false);
   const lastTouchInputAt = useRef(0);
+  const pageShellRevealRafRef = useRef<number | null>(null);
+  const pageShellRevealNestedRafRef = useRef<number | null>(null);
+  const pageShellRevealTokenRef = useRef(0);
+
+  const cancelPendingPageShellReveal = useCallback(() => {
+    pageShellRevealTokenRef.current += 1;
+    if (pageShellRevealRafRef.current !== null) {
+      cancelAnimationFrame(pageShellRevealRafRef.current);
+      pageShellRevealRafRef.current = null;
+    }
+    if (pageShellRevealNestedRafRef.current !== null) {
+      cancelAnimationFrame(pageShellRevealNestedRafRef.current);
+      pageShellRevealNestedRafRef.current = null;
+    }
+  }, []);
+
+  const revealPageShellSoon = useCallback(() => {
+    cancelPendingPageShellReveal();
+    const revealToken = pageShellRevealTokenRef.current;
+
+    pageShellRevealRafRef.current = requestAnimationFrame(() => {
+      pageShellRevealRafRef.current = null;
+
+      pageShellRevealNestedRafRef.current = requestAnimationFrame(() => {
+        pageShellRevealNestedRafRef.current = null;
+        if (pageShellRevealTokenRef.current !== revealToken) return;
+
+        const shell = containerRef.current?.querySelector('[data-page-shell]');
+        if (!shell) return;
+        gsap.set(shell, { opacity: 1 });
+      });
+    });
+  }, [cancelPendingPageShellReveal]);
 
   useEffect(() => {
     appStateRef.current = appState;
@@ -151,8 +281,23 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
   }, [activePage]);
 
   useEffect(() => {
+    currentLocationPathRef.current = currentLocationPath;
+  }, [currentLocationPath]);
+
+  useEffect(() => {
     selectedIndexRef.current = selectedIndex;
   }, [selectedIndex]);
+
+  const handleDirectPageEntryComplete = useCallback(() => {
+    if (!initialDirectPageEntryInProgressRef.current) return;
+    initialDirectPageEntryInProgressRef.current = false;
+    appStateRef.current = 'page-active';
+    transitionPhaseRef.current = 'page-active';
+    if (containerRef.current) {
+      gsap.set(containerRef.current.querySelector('[data-control-hints-fixed]'), { y: 0, opacity: 1 });
+    }
+    setAppState('page-active');
+  }, []);
 
   const ensureSoundEffect = useCallback((id: SoundEffectId) => {
     if (typeof Audio === 'undefined') return null;
@@ -264,6 +409,68 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
     }
   }, [appState, selectMenuIndex, supportsHoverPointer]);
 
+  const syncHoveredMenuItemSelection = useCallback(() => {
+    hoverSyncRafRef.current = null;
+
+    if (!supportsHoverPointer || appStateRef.current !== 'idle' || activePageRef.current) return;
+    if (Date.now() - lastTouchInputAt.current < 800) return;
+
+    const hoveredIndex = itemRefs.current.findIndex((itemRef, index) => (
+      Boolean(itemRef?.matches(':hover') || itemWrapRefs.current[index]?.matches(':hover'))
+    ));
+
+    if (hoveredIndex === -1) return;
+
+    setInputMode('mouse');
+    selectMenuIndex(hoveredIndex);
+  }, [selectMenuIndex, supportsHoverPointer]);
+
+  const queueHoveredMenuItemSelectionSync = useCallback(() => {
+    if (hoverSyncRafRef.current !== null) {
+      cancelAnimationFrame(hoverSyncRafRef.current);
+    }
+
+    hoverSyncRafRef.current = requestAnimationFrame(() => {
+      syncHoveredMenuItemSelection();
+    });
+  }, [syncHoveredMenuItemSelection]);
+
+  const syncRouteFromPath = useCallback((pathname: string) => {
+    const nextPath = normalizePathname(pathname);
+    const nextRoute = resolveAppRoute(nextPath, memorandumData);
+    const nextPage = nextRoute.pageId ?? null;
+    const canonicalPath = nextRoute.pathname;
+    const nextItemIndex = nextPage
+      ? MENU_ITEMS.findIndex((item) => item.id === nextPage)
+      : -1;
+
+    setCurrentLocationPath(canonicalPath);
+    pendingLocationPageRef.current = nextPage ? canonicalPath : null;
+
+    if (nextPage) {
+      if (appStateRef.current === 'idle' && activePageRef.current !== nextPage) {
+        if (nextItemIndex !== -1) {
+          selectMenuIndex(nextItemIndex, { playSound: false });
+        }
+        enterPageRef.current(nextPage, { fromPopState: true });
+        return;
+      }
+
+      if (appStateRef.current === 'page-active' && activePageRef.current !== nextPage) {
+        pendingMenuSelectionIndexRef.current = nextItemIndex >= 0 ? nextItemIndex : null;
+        if (activePageRef.current === 'memorandum') return;
+        exitPageRef.current({ fromPopState: true });
+      }
+      return;
+    }
+
+    pendingMenuSelectionIndexRef.current = null;
+    if (activePageRef.current && appStateRef.current === 'page-active') {
+      if (activePageRef.current === 'memorandum') return;
+      exitPageRef.current({ fromPopState: true });
+    }
+  }, [memorandumData, selectMenuIndex]);
+
   useEffect(() => {
     const manifest = createAssetPreloadManifest(memorandumData);
     const preloadController = new AbortController();
@@ -279,6 +486,7 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
       document.fonts.load('900 1em Cinzel'),
     ]).then(() => {
       if (cancelled) return;
+      if (appStateRef.current !== 'preloading') return;
       requestAnimationFrame(() => requestAnimationFrame(() => setAppState('entry')));
     });
 
@@ -370,45 +578,60 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
     document.body.classList.toggle('bg-inverted', bgInverted);
   }, [bgInverted]);
 
-  // Set initial GSAP positions before the first paint of the menu.
-  // If a valid hash is present on load, skip the entry animation and go straight to the page.
   useLayoutEffect(() => {
-    if (appState !== 'entry' || !containerRef.current) return;
-
-    const hashValue = getHashValue();
-    const hashPageId = getPageIdFromHash(hashValue);
-    if (hashPageId) {
-      initialHashChecked.current = true;
-      const container = containerRef.current;
-      // Put menu elements in the same hidden state as after createPageEnterTimeline,
-      // so createMenuReEntryTimeline works correctly if the user navigates back.
-      gsap.set(container.querySelectorAll('[data-char]'), { x: 0, y: 0, opacity: 0 });
-      gsap.set(container.querySelector('[data-menu-index]'), { y: '1.5vh', opacity: 0 });
-      gsap.set(container.querySelector('[data-paint-splash-wrap]'), { opacity: 0 });
-      gsap.set(container.querySelector('[data-stats-hints]'), { y: '1.5vh', opacity: 0 });
-      const itemIndex = MENU_ITEMS.findIndex(item => item.id === hashPageId);
-      if (itemIndex !== -1) selectMenuIndex(itemIndex, { playSound: false });
-      setActivePage(hashPageId);
-      setHintsPage(hashPageId);
-      setHintsMode('page');
-      setAppState('page-active');
+    if (
+      !shouldMountPageDirectOnLoadRef.current ||
+      initialDirectMountAppliedRef.current ||
+      !containerRef.current ||
+      appState !== 'entering-page'
+    ) {
       return;
     }
 
+    initialDirectMountAppliedRef.current = true;
+    setDirectPageInitialStates(containerRef.current);
     if (!animationsEnabled) {
+      initialDirectPageEntryInProgressRef.current = false;
+      appStateRef.current = 'page-active';
+      transitionPhaseRef.current = 'page-active';
+      gsap.set(containerRef.current.querySelector('[data-control-hints-fixed]'), { y: 0, opacity: 1 });
+      setAppState('page-active');
+    }
+    clearBootMode();
+  }, [appState, animationsEnabled]);
+
+  useLayoutEffect(() => {
+    if (appState !== 'entry' || !containerRef.current) return;
+
+    const initialRoute = resolveAppRoute(currentLocationPath, memorandumData);
+    if (initialRoute.pageId) {
+      const itemIndex = MENU_ITEMS.findIndex((item) => item.id === initialRoute.pageId);
+      if (itemIndex !== -1) selectMenuIndex(itemIndex, { playSound: false });
+    }
+
+    if (!animationsEnabled) {
+      clearBootMode();
       setAppState('idle');
       setSubtitleVisible(true);
       return;
     }
+
     setEntryInitialStates(containerRef.current);
-  }, [appState, animationsEnabled, selectMenuIndex]);
+    clearBootMode();
+  }, [appState, animationsEnabled, currentLocationPath, memorandumData, selectMenuIndex]);
 
   // Start entry animation after initial states are applied.
-  // activePage check guards against running when direct hash entry already switched state.
+  // activePage check guards against running when a page transition starts before cleanup.
   useEffect(() => {
     if (appState !== 'entry' || !containerRef.current || !animationsEnabled || activePage) return;
 
-    entryTlRef.current = createEntryTimeline(containerRef.current, () => setAppState('idle'), () => setSubtitleVisible(true));
+    entryTlRef.current = createEntryTimeline(
+      containerRef.current,
+      () => {
+        setAppState('idle');
+      },
+      () => setSubtitleVisible(true)
+    );
 
     return () => {
       entryTlRef.current?.kill();
@@ -631,6 +854,7 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
 
         if (e.key === 'Escape' || e.key === 'c' || e.key === 'C') {
           e.preventDefault();
+          if (e.repeat) return;
           if (pageNavigationRef.current?.onBack?.()) return;
           exitPageRef.current({ playSound: true });
           return;
@@ -702,10 +926,18 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
 
   useEffect(() => {
     return () => {
+      if (interceptedNavigationResetTimeoutRef.current) {
+        clearTimeout(interceptedNavigationResetTimeoutRef.current);
+      }
+      if (hoverSyncRafRef.current !== null) {
+        cancelAnimationFrame(hoverSyncRafRef.current);
+      }
+      cancelPendingPageShellReveal();
+      menuReEntryDelayRef.current?.kill();
       touchEnterDelayRef.current?.kill();
       pageTlRef.current?.kill();
     };
-  }, []);
+  }, [cancelPendingPageShellReveal]);
 
   // When animations are off, snap hints visible whenever the app reaches a stable state.
   // With animations on, the timelines handle their own hint fade-ins directly.
@@ -733,110 +965,154 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
 
   useEffect(() => {
     if (appState === 'page-active' && activePage) {
-      if (activePage === 'memorandum' && currentLocationHash && !currentLocationHash.startsWith('memorandum/')) {
+      const pendingPath = pendingLocationPageRef.current;
+      const resolvedCurrentRoute = resolveAppRoute(currentLocationPath, memorandumData);
+      const desiredPath = activePage === 'memorandum'
+        ? (resolvedCurrentRoute.pageId === 'memorandum'
+            ? resolvedCurrentRoute.pathname
+            : buildPagePath('memorandum'))
+        : buildPagePath(activePage);
+
+      if (pendingPath && pendingPath !== desiredPath) {
         return;
       }
 
-      const desiredHash = activePage === 'memorandum'
-        ? (currentLocationHash && currentLocationHash.startsWith('memorandum/')
-            ? currentLocationHash
-            : `memorandum/${memorandumData.defaultColumnId}`)
-        : activePage;
-      const nextHash = `#${desiredHash}`;
-      if (window.location.hash !== nextHash) {
-        window.history.replaceState(window.history.state, '', nextHash);
+      if (getCurrentPathname() !== desiredPath) {
+        replacePathname(desiredPath);
+      }
+
+      if (currentLocationPath !== desiredPath) {
+        setCurrentLocationPath(desiredPath);
       }
       return;
     }
 
-    if (appState === 'exiting-page' && window.location.hash) {
+    if (appState === 'exiting-page' && getCurrentPathname() !== '/') {
       if (pendingLocationPageRef.current) return;
-      clearPageHash();
+      replacePathname('/');
       return;
     }
 
-    if (appState === 'idle' && !activePage && window.location.hash) {
-      if (pendingLocationPageRef.current === getHashValue()) return;
-      clearPageHash();
-    }
-  }, [appState, activePage, currentLocationHash]);
+    if (appState === 'idle' && !activePage && getCurrentPathname() !== '/') {
+      const currentPath = getCurrentPathname();
+      const currentRoute = resolveAppRoute(currentPath, memorandumData);
 
-  // Auto-enter a page on first load if a valid hash is present
-  useEffect(() => {
-    if (appState !== 'idle' || initialHashChecked.current) return;
-    initialHashChecked.current = true;
-    const id = getPageIdFromHash(getHashValue());
-    if (!id) return;
-    const itemIndex = MENU_ITEMS.findIndex(item => item.id === id);
-    if (itemIndex !== -1) selectMenuIndex(itemIndex, { playSound: false });
-    // Small delay so the index animation can settle before entering
-    const t = setTimeout(() => enterPage(id), 80);
-    return () => clearTimeout(t);
-  // enterPage is stable across renders (defined in component body without useCallback,
-  // but all its dependencies are captured via closure at call time - safe to omit)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appState, enterPage, selectMenuIndex]);
-
-  // Keep the URL hash in sync with browser back/forward
-  useEffect(() => {
-    const syncPageWithLocation = () => {
-      const hashValue = getHashValue();
-      const nextPage = getPageIdFromHash(hashValue) as Exclude<PageId, null> | null;
-
-      setCurrentLocationHash(hashValue);
-
-      pendingLocationPageRef.current = hashValue || nextPage;
-
-      if (nextPage) {
-        const itemIndex = MENU_ITEMS.findIndex(item => item.id === nextPage);
-        if (itemIndex !== -1) selectMenuIndex(itemIndex, { playSound: false });
-
-        if (appStateRef.current === 'idle' && activePageRef.current !== nextPage) {
-          enterPageRef.current(nextPage, { fromPopState: true });
-          return;
+      if (currentRoute.pageId) {
+        if (pendingLocationPageRef.current !== currentRoute.pathname) {
+          pendingLocationPageRef.current = currentRoute.pathname;
         }
-
-        if (appStateRef.current === 'page-active' && activePageRef.current !== nextPage) {
-          if (activePageRef.current === 'memorandum') return;
-          exitPageRef.current({ fromPopState: true });
+        if (currentLocationPath !== currentRoute.pathname) {
+          setCurrentLocationPath(currentRoute.pathname);
         }
-      } else {
-        if (activePageRef.current && appStateRef.current === 'page-active') {
-          if (activePageRef.current === 'memorandum') return;
-          exitPageRef.current({ fromPopState: true });
-        }
+        return;
       }
-    };
 
-    window.addEventListener('popstate', syncPageWithLocation);
-    window.addEventListener('hashchange', syncPageWithLocation);
-    return () => {
-      window.removeEventListener('popstate', syncPageWithLocation);
-      window.removeEventListener('hashchange', syncPageWithLocation);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectMenuIndex]);
+      if (currentPath !== currentRoute.pathname) {
+        replacePathname(currentRoute.pathname);
+        return;
+      }
+
+      replacePathname('/');
+    }
+  }, [appState, activePage, currentLocationPath, memorandumData]);
 
   useEffect(() => {
-    const pendingPage = pendingLocationPageRef.current;
-    if (appState !== 'idle' || activePage || !pendingPage) return;
-    if (getHashValue() !== pendingPage) return;
+    const onPopState = () => {
+      const nextPath = getCurrentPathname();
+      if (interceptedNavigationPathRef.current === nextPath) {
+        interceptedNavigationPathRef.current = null;
+        if (interceptedNavigationResetTimeoutRef.current) {
+          clearTimeout(interceptedNavigationResetTimeoutRef.current);
+          interceptedNavigationResetTimeoutRef.current = null;
+        }
+        return;
+      }
 
-    const pageId = getPageIdFromHash(pendingPage);
+      syncRouteFromPath(nextPath);
+    };
+
+    window.addEventListener('popstate', onPopState);
+    return () => {
+      window.removeEventListener('popstate', onPopState);
+    };
+  }, [syncRouteFromPath]);
+
+  useEffect(() => {
+    const navigation = (window as WindowWithNavigation).navigation;
+    if (!navigation) return;
+
+    const onNavigate = (event: Event) => {
+      const navigateEvent = event as AppNavigateEvent;
+      if (navigateEvent.hashChange || navigateEvent.downloadRequest || navigateEvent.formData) return;
+
+      const destinationUrl = new URL(navigateEvent.destination.url);
+      if (destinationUrl.origin !== window.location.origin) return;
+
+      const destinationPath = normalizePathname(destinationUrl.pathname);
+      if (destinationPath === getCurrentPathname()) return;
+
+      if (navigateEvent.navigationType === 'reload') {
+        // Some browsers report address-bar same-origin navigations as reloads.
+        // If the destination path actually changed, keep it in-app.
+      }
+
+      const destinationRoute = resolveAppRoute(destinationPath, memorandumData);
+      if (!destinationRoute.pathname) return;
+
+      if (!navigateEvent.canIntercept || typeof navigateEvent.intercept !== 'function') return;
+
+      navigateEvent.intercept({
+        focusReset: 'manual',
+        scroll: 'manual',
+        handler: () => {
+          if (interceptedNavigationResetTimeoutRef.current) {
+            clearTimeout(interceptedNavigationResetTimeoutRef.current);
+          }
+          interceptedNavigationPathRef.current = destinationPath;
+          interceptedNavigationResetTimeoutRef.current = window.setTimeout(() => {
+            if (interceptedNavigationPathRef.current === destinationPath) {
+              interceptedNavigationPathRef.current = null;
+            }
+            interceptedNavigationResetTimeoutRef.current = null;
+          }, 500);
+          syncRouteFromPath(destinationPath);
+        },
+      });
+    };
+
+    navigation.addEventListener('navigate', onNavigate as EventListener);
+    return () => {
+      navigation.removeEventListener('navigate', onNavigate as EventListener);
+    };
+  }, [memorandumData, syncRouteFromPath]);
+
+  useEffect(() => {
+    const pendingPath = pendingLocationPageRef.current;
+    if (appState !== 'idle' || activePage || !pendingPath) return;
+    if (currentLocationPath !== pendingPath) {
+      setCurrentLocationPath(pendingPath);
+      return;
+    }
+
+    const pageId = resolveAppRoute(pendingPath, memorandumData).pageId ?? null;
     if (!pageId) return;
     enterPage(pageId, { fromPopState: true });
-  }, [appState, activePage, enterPage]);
+  }, [appState, activePage, currentLocationPath, enterPage, memorandumData]);
 
   useEffect(() => {
-    if (appState === 'page-active' && activePage && getPageIdFromHash(pendingLocationPageRef.current ?? '') === activePage) {
+    if (
+      appState === 'page-active' &&
+      activePage &&
+      resolveAppRoute(pendingLocationPageRef.current ?? '/', memorandumData).pageId === activePage
+    ) {
       pendingLocationPageRef.current = null;
       return;
     }
 
-    if (appState === 'idle' && !activePage && !window.location.hash) {
+    if (appState === 'idle' && !activePage && getCurrentPathname() === '/') {
       pendingLocationPageRef.current = null;
     }
-  }, [appState, activePage]);
+  }, [appState, activePage, memorandumData]);
 
   // Keep the red/white split on the menu index aligned with the diagonal line
   const menuRendered = appState !== 'preloading';
@@ -905,7 +1181,13 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
   }, [menuRendered]);
 
   const activeItem = MENU_ITEMS[selectedIndex];
-  const pageVisible = appState === 'page-active' || appState === 'exiting-page';
+  const pageVisible = appState === 'page-active' ||
+    appState === 'exiting-page' ||
+    (appState === 'entering-page' && initialDirectPageEntryInProgressRef.current);
+  const directPageEntryCompleteHandler = appState === 'entering-page' &&
+    initialDirectPageEntryInProgressRef.current
+    ? handleDirectPageEntryComplete
+    : undefined;
 
   function handleCursorChange(style: CursorStyle, options?: { playSound?: boolean }) {
     if (cursorStyle === style) return;
@@ -943,31 +1225,76 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
     );
   }, []);
 
-  const handleMemorandumLocationChange = useCallback((nextHash: string) => {
-    setCurrentLocationHash(nextHash);
-    if (window.location.hash !== `#${nextHash}`) {
-      window.history.replaceState(window.history.state, '', `#${nextHash}`);
+  const handleMemorandumPathChange = useCallback((
+    nextPath: string,
+    options?: { replace?: boolean }
+  ) => {
+    const normalizedPath = normalizePathname(nextPath);
+    setCurrentLocationPath(normalizedPath);
+    if (getCurrentPathname() === normalizedPath) return;
+
+    if (options?.replace) {
+      replacePathname(normalizedPath);
+      return;
     }
+
+    pushPathname(normalizedPath);
   }, []);
 
-  function enterPage(pageId: string, options: PageTransitionOptions = {}) {
+  const navigateToPage = useCallback((pageId: AppPageId, options?: { playSound?: boolean }) => {
+    if (activePage === pageId && appState === 'page-active') return;
+
+    const nextPath = buildPagePath(pageId);
+    const itemIndex = MENU_ITEMS.findIndex((item) => item.id === pageId);
+
+    if (appState === 'idle') {
+      if (itemIndex !== -1) {
+        selectMenuIndex(itemIndex, { playSound: false });
+      }
+      enterPageRef.current(pageId, options);
+      return;
+    }
+
+    if (appState !== 'page-active' || !activePage) return;
+
+    pendingMenuSelectionIndexRef.current = itemIndex >= 0 ? itemIndex : null;
+    pushPathname(nextPath);
+    pendingLocationPageRef.current = nextPath;
+    setCurrentLocationPath(nextPath);
+    exitPageRef.current({ fromPopState: true, playSound: options?.playSound });
+  }, [activePage, appState, selectMenuIndex]);
+
+  function enterPage(pageId: AppPageId, options: PageTransitionOptions = {}) {
     const { fromPopState = false, playSound = false } = options;
-    if (!VALID_PAGE_IDS.has(pageId) || activePage || appState !== 'idle') return;
+    if (
+      !APP_PAGE_IDS.includes(pageId) ||
+      activePageRef.current ||
+      appStateRef.current !== 'idle' ||
+      transitionPhaseRef.current !== 'menu'
+    ) {
+      return;
+    }
     if (playSound) playSoundEffect('enter');
 
-    const nextHash = pageId === 'memorandum'
-      ? `memorandum/${memorandumData.defaultColumnId}`
-      : pageId;
-    const resolvedHash = fromPopState ? getHashValue() || nextHash : nextHash;
+    const nextPath = buildPagePath(pageId);
+    const resolvedPath = fromPopState
+      ? resolveAppRoute(getCurrentPathname(), memorandumData).pathname
+      : nextPath;
 
-    if (!fromPopState) history.pushState(null, '', `#${nextHash}`);
-    setCurrentLocationHash(resolvedHash);
+    if (!fromPopState) {
+      pushPathname(nextPath);
+    }
+    setCurrentLocationPath(resolvedPath);
+    cancelPendingPageShellReveal();
     pageTlRef.current?.kill();
 
     if (!animationsEnabled) {
       setSubtitleVisible(false);
-      setActivePage(pageId as PageId);
-      setHintsPage(pageId as PageId);
+      activePageRef.current = pageId;
+      appStateRef.current = 'page-active';
+      transitionPhaseRef.current = 'page-active';
+      setActivePage(pageId);
+      setHintsPage(pageId);
       setHintsMode('page');
       setAppState('page-active');
       return;
@@ -975,28 +1302,53 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
 
     // Don't mount the page yet - let the exit animation play first.
     // onMountPage fires mid-timeline so the page appears after ~0.28s.
-    setHintsPage(pageId as PageId);
+    setHintsPage(pageId);
+    appStateRef.current = 'entering-page';
+    transitionPhaseRef.current = 'entering-page';
     setAppState('entering-page');
     pageTlRef.current = createPageEnterTimeline(
       containerRef.current!,
-      () => { pageTlRef.current = null; setAppState('page-active'); },
+      () => {
+        pageTlRef.current = null;
+        appStateRef.current = 'page-active';
+        transitionPhaseRef.current = 'page-active';
+        setAppState('page-active');
+      },
       () => setHintsMode('page'),
-      () => setActivePage(pageId as PageId),
+      () => {
+        activePageRef.current = pageId;
+        setActivePage(pageId);
+      },
       () => setSubtitleVisible(false),
+      revealPageShellSoon,
     );
   }
 
   function exitPage(options: PageTransitionOptions = {}) {
     const { fromPopState = false, playSound = false } = options;
-    if (!activePage || appState !== 'page-active') return;
+    const currentActivePage = activePageRef.current;
+    if (
+      !currentActivePage ||
+      appStateRef.current !== 'page-active' ||
+      transitionPhaseRef.current !== 'page-active'
+    ) {
+      return;
+    }
+    appStateRef.current = animationsEnabled ? 'exiting-page' : 'idle';
+    transitionPhaseRef.current = animationsEnabled ? 'exiting-page' : 'menu';
     if (playSound) playSoundEffect('exit');
-    const shouldPreserveLocationHash = fromPopState || Boolean(pendingLocationPageRef.current);
+    const shouldPreserveLocationPath = fromPopState || Boolean(pendingLocationPageRef.current);
 
-    if (!fromPopState) clearPageHash();
+    if (!fromPopState) {
+      pushPathname('/');
+    }
+    menuReEntryDelayRef.current?.kill();
+    menuReEntryDelayRef.current = null;
+    cancelPendingPageShellReveal();
     pageTlRef.current?.kill();
 
     if (!animationsEnabled) {
-      // Snap menu elements back - may have GSAP inline styles from page enter animation or hash entry.
+      // Snap menu elements back - may have GSAP inline styles from page enter animation.
       if (containerRef.current) {
         const c = containerRef.current;
         gsap.set(c.querySelector('[data-menu-left]'),           { x: 0, opacity: 1 });
@@ -1009,31 +1361,51 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
       }
       setSubtitleVisible(true);
       setHintsMode('menu');
+      activePageRef.current = null;
+      appStateRef.current = 'idle';
+      transitionPhaseRef.current = 'menu';
       setActivePage(null);
       setHintsPage(null);
       setAppState('idle');
-      if (!shouldPreserveLocationHash) {
-        setCurrentLocationHash('');
+      if (shouldPreserveLocationPath) {
+        const pendingPath = pendingLocationPageRef.current;
+        if (pendingPath && currentLocationPathRef.current !== pendingPath) {
+          setCurrentLocationPath(pendingPath);
+        }
+      } else {
+        setCurrentLocationPath('/');
       }
       setSplashMeasureKey(k => k + 1);
+      queueHoveredMenuItemSelectionSync();
       return;
     }
 
-    // Increment before createMenuReEntryTimeline so the batched re-render fires its RAF
-    // after gsap.set(menuLeft, { x: 0 }) has already run inside that function.
     setSubtitleVisible(false);
     setAppState('exiting-page');
     setSplashMeasureKey(k => k + 1);
+    if (pendingMenuSelectionIndexRef.current !== null) {
+      selectMenuIndex(pendingMenuSelectionIndexRef.current, { playSound: false });
+      pendingMenuSelectionIndexRef.current = null;
+    }
     pageTlRef.current = createMenuReEntryTimeline(
       containerRef.current!,
       () => {
         pageTlRef.current = null;
+        activePageRef.current = null;
+        appStateRef.current = 'idle';
+        transitionPhaseRef.current = 'menu';
         setActivePage(null);
         setHintsPage(null);
         setAppState('idle');
-        if (!shouldPreserveLocationHash) {
-          setCurrentLocationHash('');
+        if (shouldPreserveLocationPath) {
+          const pendingPath = pendingLocationPageRef.current;
+          if (pendingPath && currentLocationPathRef.current !== pendingPath) {
+            setCurrentLocationPath(pendingPath);
+          }
+        } else {
+          setCurrentLocationPath('/');
         }
+        queueHoveredMenuItemSelectionSync();
       },
       () => setSubtitleVisible(true),
       () => setHintsMode('menu'),
@@ -1045,16 +1417,24 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
     exitPageRef.current = exitPage;
   }, [enterPage, exitPage]);
 
-  if (appState === 'preloading') return <LoadingScreen />;
   if (unsupported) return <UnsupportedScreen />;
 
   const cursorActive = cursorStyle === 'metaphor' && supportsHoverPointer && inputMode === 'mouse';
+  const pageAnimationState =
+    appState === 'entering-page'
+      ? 'entering-page'
+      : appState === 'exiting-page'
+        ? 'exiting-page'
+        : 'page-active';
+  const initialEntryDelaySeconds = 0;
 
   return (
     <>
+    {appState === 'preloading' && <LoadingScreen />}
     <CustomCursor visible={cursorActive} />
     <div
       ref={containerRef}
+      data-app-root
       className={`menu-root${inputMode === 'keyboard' ? ' keyboard-mode' : ''}`}
       onClick={(e) => {
         if (appState !== 'idle') return;
@@ -1063,7 +1443,7 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
         const tappedPageId = tappedMenuItem?.dataset.menuItem;
 
         if (inputMode === 'touch') {
-          if (!tappedPageId || !VALID_PAGE_IDS.has(tappedPageId)) return;
+          if (!tappedPageId || !APP_PAGE_IDS.includes(tappedPageId as AppPageId)) return;
           const tappedIndex = MENU_ITEMS.findIndex((item) => item.id === tappedPageId);
           if (tappedIndex !== -1) {
             selectMenuIndex(tappedIndex);
@@ -1071,7 +1451,7 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
           touchEnterDelayRef.current?.kill();
           touchEnterDelayRef.current = gsap.delayedCall(0.1, () => {
             touchEnterDelayRef.current = null;
-            enterPageRef.current(tappedPageId, { playSound: true });
+            enterPageRef.current(tappedPageId as AppPageId, { playSound: true });
           });
           return;
         }
@@ -1079,8 +1459,8 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
         touchEnterDelayRef.current?.kill();
         touchEnterDelayRef.current = null;
         enterPage(
-          tappedPageId && VALID_PAGE_IDS.has(tappedPageId)
-            ? tappedPageId
+          tappedPageId && APP_PAGE_IDS.includes(tappedPageId as AppPageId)
+            ? tappedPageId as AppPageId
             : MENU_ITEMS[selectedIndex].id,
           { playSound: true }
         );
@@ -1245,38 +1625,54 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
             inset: 0,
             zIndex: 11,
             opacity: pageVisible ? 1 : 0,
+            isolation: 'isolate',
             pointerEvents: appState === 'page-active' ? 'auto' : 'none',
+            willChange: appState === 'entering-page' || appState === 'exiting-page'
+              ? 'opacity'
+              : undefined,
           }}
         >
           {activePage === 'about' && (
             <AboutPage
               isActive={appState === 'page-active'}
               animationsEnabled={animationsEnabled}
+              initialEntryDelaySeconds={initialEntryDelaySeconds}
+              pageState={pageAnimationState}
               registerNavigation={setPageNavigation}
               playSoundEffect={playSoundEffect}
+              onMemorandumNavigate={() => navigateToPage('memorandum', { playSound: false })}
+              onEntryAnimationComplete={directPageEntryCompleteHandler}
             />
           )}
           {activePage === 'skills' && (
             <SkillsPage
               isActive={appState === 'page-active'}
               animationsEnabled={animationsEnabled}
+              initialEntryDelaySeconds={initialEntryDelaySeconds}
+              pageState={pageAnimationState}
               registerNavigation={setPageNavigation}
+              onEntryAnimationComplete={directPageEntryCompleteHandler}
             />
           )}
           {activePage === 'experience' && (
             <ExperiencePage
               isActive={appState === 'page-active'}
               animationsEnabled={animationsEnabled}
+              initialEntryDelaySeconds={initialEntryDelaySeconds}
+              pageState={pageAnimationState}
               registerNavigation={setPageNavigation}
+              onEntryAnimationComplete={directPageEntryCompleteHandler}
             />
           )}
           {activePage === 'contact' && (
             <ContactPage
               isActive={appState === 'page-active'}
               animationsEnabled={animationsEnabled}
-              pageState={appState === 'entering-page' ? 'entering-page' : appState === 'exiting-page' ? 'exiting-page' : 'page-active'}
+              initialEntryDelaySeconds={initialEntryDelaySeconds}
+              pageState={pageAnimationState}
               registerNavigation={setPageNavigation}
               playSoundEffect={playSoundEffect}
+              onEntryAnimationComplete={directPageEntryCompleteHandler}
             />
           )}
           {activePage === 'memorandum' && (
@@ -1284,20 +1680,23 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
               memorandumData={memorandumData}
               isActive={appState === 'page-active'}
               animationsEnabled={animationsEnabled}
-              pageState={appState === 'entering-page' ? 'entering-page' : appState === 'exiting-page' ? 'exiting-page' : 'page-active'}
+              initialEntryDelaySeconds={initialEntryDelaySeconds}
+              pageState={pageAnimationState}
               registerNavigation={setPageNavigation}
               requestPageExit={exitPage}
               readEntryIds={readMemorandumEntryIds}
               onEntryRead={handleMemorandumEntryRead}
-              locationHash={currentLocationHash}
-              onLocationChange={handleMemorandumLocationChange}
+              locationPath={currentLocationPath}
+              onPathChange={handleMemorandumPathChange}
               playSoundEffect={playSoundEffect}
+              onEntryAnimationComplete={directPageEntryCompleteHandler}
             />
           )}
           {activePage === 'system' && (
             <SystemPage
               isActive={appState === 'page-active'}
-              pageState={appState === 'entering-page' ? 'entering-page' : appState === 'exiting-page' ? 'exiting-page' : 'page-active'}
+              initialEntryDelaySeconds={initialEntryDelaySeconds}
+              pageState={pageAnimationState}
               cursorStyle={cursorStyle}
               onCursorChange={handleCursorChange}
               bgInverted={bgInverted}
@@ -1308,6 +1707,7 @@ export default function MainMenu({ memorandumData }: MainMenuProps) {
               onSoundToggle={handleSoundToggle}
               registerNavigation={setPageNavigation}
               playSoundEffect={playSoundEffect}
+              onEntryAnimationComplete={directPageEntryCompleteHandler}
             />
           )}
         </div>

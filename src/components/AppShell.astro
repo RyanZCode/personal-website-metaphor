@@ -1,0 +1,83 @@
+---
+import Layout from '../layouts/Layout.astro';
+import MainMenu from './menu/MainMenu';
+import { loadMemorandumData } from '../lib/memorandumContent';
+
+interface Props {
+  pathname: string;
+}
+
+const { pathname } = Astro.props;
+const memorandumData = await loadMemorandumData();
+---
+
+<Layout>
+  <style is:inline>
+    html[data-boot-mode] [data-app-root] {
+      opacity: 0 !important;
+      visibility: hidden !important;
+      pointer-events: none !important;
+    }
+
+    html:not([data-boot-mode="transition"]) [data-boot-loading-screen] {
+      opacity: 0 !important;
+      visibility: hidden !important;
+      pointer-events: none !important;
+    }
+
+    html:not([data-boot-mode="blocking-preload"]) [data-loading-screen] {
+      opacity: 0 !important;
+      visibility: hidden !important;
+      pointer-events: none !important;
+    }
+  </style>
+  <script is:inline>
+    (() => {
+      const normalizePath = (value) => {
+        const withLeadingSlash = value.startsWith('/') ? value : `/${value}`;
+        const collapsed = withLeadingSlash.replace(/\/{2,}/g, '/');
+        if (collapsed === '/') return '/';
+        return collapsed.replace(/\/+$/, '') || '/';
+      };
+
+      const path = normalizePath(window.location.pathname);
+      const shouldSkipBlockingPreload = path !== '/';
+
+      document.documentElement.dataset.bootMode = shouldSkipBlockingPreload
+        ? 'transition'
+        : 'blocking-preload';
+    })();
+  </script>
+  <div
+    data-boot-loading-screen
+    aria-hidden="true"
+    style="
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: #0a0608;
+      gap: 2rem;
+    "
+  >
+    <img
+      src="/assets/take-your-time.png"
+      alt=""
+      draggable="false"
+      style="
+        height: 40vh;
+        width: auto;
+        object-fit: contain;
+        user-select: none;
+        -webkit-user-select: none;
+      "
+    />
+    <div class="loading-bar-track" aria-hidden="true">
+      <div class="loading-bar-fill" />
+    </div>
+  </div>
+  <MainMenu client:load memorandumData={memorandumData} initialPathname={pathname} />
+</Layout>

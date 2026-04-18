@@ -1,0 +1,26 @@
+---
+import AppShell from '../components/AppShell.astro';
+import { loadMemorandumData } from '../lib/memorandumContent';
+import { getStaticAppPathnames } from '../lib/routes';
+
+export async function getStaticPaths() {
+  const memorandumData = await loadMemorandumData();
+
+  return getStaticAppPathnames(memorandumData).map((pathname) => ({
+    params: {
+      route: pathname.replace(/^\//, ''),
+    },
+    props: {
+      pathname,
+    },
+  }));
+}
+
+interface Props {
+  pathname: string;
+}
+
+const { pathname } = Astro.props;
+---
+
+<AppShell pathname={pathname} />

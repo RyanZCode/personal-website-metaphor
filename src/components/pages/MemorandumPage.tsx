@@ -19,6 +19,11 @@ import type {
   MemorandumEntry,
 } from '../../lib/memorandum';
 import type { RegisterPageNavigation } from '../../lib/pageNavigation';
+import {
+  buildMemorandumPath,
+  parseMemorandumRoute,
+  resolveAppRoute,
+} from '../../lib/routes';
 import type { PlaySoundEffect } from '../../lib/soundEffects';
 import PageBackground from '../background/PageBackground';
 import MemorandumTrapezoids from '../menu/splashEffects/MemorandumTrapezoids';
@@ -29,14 +34,16 @@ interface MemorandumPageProps {
   memorandumData: MemorandumData;
   isActive: boolean;
   animationsEnabled: boolean;
+  initialEntryDelaySeconds: number;
   pageState: 'entering-page' | 'page-active' | 'exiting-page';
   registerNavigation: RegisterPageNavigation;
   requestPageExit: (options?: { fromPopState?: boolean; playSound?: boolean }) => void;
   readEntryIds: string[];
   onEntryRead: (entryId: string) => void;
-  locationHash: string;
-  onLocationChange: (nextHash: string) => void;
+  locationPath: string;
+  onPathChange: (nextPath: string, options?: { replace?: boolean }) => void;
   playSoundEffect: PlaySoundEffect;
+  onEntryAnimationComplete?: () => void;
 }
 
 type TimelineCallbackEvent = 'onComplete' | 'onInterrupt';
@@ -137,31 +144,9 @@ function formatMemorandumDate(date: string) {
   return MEMORANDUM_DATE_FORMATTER.format(new Date(Date.UTC(year, month - 1, day))).toUpperCase();
 }
 
-function parseMemorandumHash(hash: string, columns: MemorandumColumn[]) {
-  const segments = hash.replace(/^#/, '').split('/').filter(Boolean);
-  if (segments[0] !== 'memorandum') return null;
-
-  const matchedColumnIndex = columns.findIndex((column) => column.id === segments[1]);
-  const columnIndex = matchedColumnIndex >= 0 ? matchedColumnIndex : 0;
-  const column = columns[columnIndex];
-  const entrySlug = segments[2];
-  const entry = entrySlug
-    ? column.entries.find((candidate) => candidate.slug === entrySlug) ?? null
-    : null;
-  const rawPage = Number(segments[3] ?? '1');
-  const pageIndex = entry
-    ? Math.min(entry.pages.length - 1, Math.max(0, Number.isFinite(rawPage) ? rawPage - 1 : 0))
-    : 0;
-
-  return {
-    columnIndex,
-    entrySlug: entry?.slug ?? null,
-    pageIndex,
-  };
-}
-
-function getInitialMemorandumState(hash: string, columns: MemorandumColumn[]) {
-  const parsed = parseMemorandumHash(hash, columns);
+function getInitialMemorandumState(locationPath: string, memorandumData: MemorandumData) {
+  const parsed = parseMemorandumRoute(locationPath, memorandumData);
+  const columns = memorandumData.columns;
   const columnIndex = parsed?.columnIndex ?? 0;
   const selectedEntryIndices = columns.map(() => 0);
 
@@ -178,7 +163,7 @@ function getInitialMemorandumState(hash: string, columns: MemorandumColumn[]) {
     columnIndex,
     selectedEntryIndices,
     detailEntrySlug: parsed?.entrySlug ?? null,
-    detailPageIndex: parsed?.pageIndex ?? 0,
+    detailPageIndex: parsed?.pageNumber ? parsed.pageNumber - 1 : 0,
   };
 }
 
@@ -460,23 +445,26 @@ export default function MemorandumPage({
   memorandumData,
   isActive,
   animationsEnabled,
+  initialEntryDelaySeconds,
   pageState,
   registerNavigation,
   requestPageExit,
   readEntryIds,
   onEntryRead,
-  locationHash,
-  onLocationChange,
+  locationPath,
+  onPathChange,
   playSoundEffect,
+  onEntryAnimationComplete,
 }: MemorandumPageProps) {
   const bobAnim = isActive && animationsEnabled ? 'portrait-bob 4s ease-in-out infinite' : 'none';
   const columns = memorandumData.columns;
-  const initialState = getInitialMemorandumState(locationHash, columns);
+  const initialState = getInitialMemorandumState(locationPath, memorandumData);
   const containerRef = useRef<HTMLElement>(null);
   const listViewportRef = useRef<HTMLDivElement>(null);
   const detailViewportRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const entryTlRef = useRef<gsap.core.Timeline | null>(null);
+  const entryDelayRef = useRef<gsap.core.Tween | null>(null);
   const exitTlRef = useRef<gsap.core.Timeline | null>(null);
   const detailTlRef = useRef<gsap.core.Timeline | null>(null);
   const categoryTlRef = useRef<gsap.core.Timeline | null>(null);
@@ -489,8 +477,10 @@ export default function MemorandumPage({
   const previousColumnIndexRef = useRef(initialState.columnIndex);
   const initialCategoryPaintRef = useRef(false);
   const pageEntryReadyRef = useRef(!animationsEnabled);
-  const pendingDetailRouteRef = useRef<ReturnType<typeof parseMemorandumHash> | null>(
-    initialState.detailEntrySlug ? parseMemorandumHash(locationHash, columns) : null
+  const pendingDetailRouteRef = useRef<ReturnType<typeof parseMemorandumRoute> | null>(
+    initialState.detailEntrySlug
+      ? parseMemorandumRoute(locationPath, memorandumData)
+      : null
   );
   const selectedColumnIndexRef = useRef(initialState.columnIndex);
   const selectedEntryIndicesRef = useRef(initialState.selectedEntryIndices);
@@ -503,9 +493,7 @@ export default function MemorandumPage({
   const [selectedEntryIndices, setSelectedEntryIndices] = useState(initialState.selectedEntryIndices);
   const [detailEntryId, setDetailEntryId] = useState<string | null>(null);
   const [detailPageIndex, setDetailPageIndex] = useState(0);
-  const [displayedDetail, setDisplayedDetail] = useState<{ entryId: string; pageIndex: number } | null>(
-    null
-  );
+  const [displayedDetail, setDisplayedDetail] = useState<{ entryId: string; pageIndex: number } | null>(null);
   const [detailEnterPending, setDetailEnterPending] = useState(false);
   const [detailContentEnterPending, setDetailContentEnterPending] = useState<MemorandumDetailPageTurnDirection | null>(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
@@ -945,7 +933,7 @@ export default function MemorandumPage({
     if (entryIndex < 0) return false;
 
     openEntry(column.entries[entryIndex], entryIndex, {
-      pageIndex: pendingRoute.pageIndex,
+      pageIndex: (pendingRoute.pageNumber ?? 1) - 1,
       playSound: false,
     });
     return true;
@@ -1129,12 +1117,35 @@ export default function MemorandumPage({
     setPageEntryReady(!animationsEnabled);
 
     if (!animationsEnabled) {
+      setIsTransitioning(false);
+      flushPendingReadEntry();
       flushPendingDetailRoute();
       return;
     }
 
     setIsTransitioning(Boolean(pendingDetailRouteRef.current?.entrySlug));
-    entryTlRef.current = createMemorandumEntryTimeline(containerRef.current);
+    const shouldDelayDirectMountPlayback = pageState === 'page-active';
+    let rafId: number | null = null;
+    let nestedRafId: number | null = null;
+    entryTlRef.current = createMemorandumEntryTimeline(containerRef.current, {
+      paused: initialEntryDelaySeconds > 0 || shouldDelayDirectMountPlayback,
+    });
+    if (onEntryAnimationComplete) {
+      appendTimelineCallback(entryTlRef.current, 'onComplete', onEntryAnimationComplete);
+    }
+    if (initialEntryDelaySeconds > 0) {
+      entryDelayRef.current = gsap.delayedCall(entryDelaySeconds, () => {
+        entryDelayRef.current = null;
+        entryTlRef.current?.play(0);
+      });
+    } else if (shouldDelayDirectMountPlayback) {
+      rafId = requestAnimationFrame(() => {
+        nestedRafId = requestAnimationFrame(() => {
+          nestedRafId = null;
+          entryTlRef.current?.play(0);
+        });
+      });
+    }
     appendTimelineCallback(entryTlRef.current, 'onComplete', () => {
       if (!mountedRef.current) return;
       entryTlRef.current = null;
@@ -1155,7 +1166,11 @@ export default function MemorandumPage({
     });
 
     return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      if (nestedRafId !== null) cancelAnimationFrame(nestedRafId);
       mountedRef.current = false;
+      entryDelayRef.current?.kill();
+      entryDelayRef.current = null;
       entryTlRef.current?.kill();
       entryTlRef.current = null;
     };
@@ -1266,7 +1281,7 @@ export default function MemorandumPage({
     categoryTlRef.current = createMemorandumCategoryTimeline(background, whiteLabel, darkLabel);
   }, [animationsEnabled, isTransitioning, selectedColumnIndex]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const wasActive = prevIsActive.current;
     prevIsActive.current = isActive;
 
@@ -1350,10 +1365,10 @@ export default function MemorandumPage({
     hasDisplayedDetail,
   ]);
 
-  useEffect(() => {
-    const parsed = parseMemorandumHash(locationHash, columns);
+  useLayoutEffect(() => {
+    const parsed = parseMemorandumRoute(locationPath, memorandumData);
     if (!parsed) {
-      const targetPageId = locationHash.replace(/^#/, '').split('/').filter(Boolean)[0] ?? null;
+      const targetPageId = resolveAppRoute(locationPath, memorandumData).pageId ?? null;
 
       pendingDetailRouteRef.current = null;
       if (targetPageId !== 'memorandum' && isActive) {
@@ -1380,11 +1395,12 @@ export default function MemorandumPage({
       const entry = column.entries[entryIndex];
 
       if (detailEntryIdRef.current === entry.slug) {
-        setDetailPageIndex(parsed.pageIndex);
-        detailPageIndexRef.current = parsed.pageIndex;
+        const nextPageIndex = (parsed.pageNumber ?? 1) - 1;
+        setDetailPageIndex(nextPageIndex);
+        detailPageIndexRef.current = nextPageIndex;
         setDisplayedDetail({
           entryId: entry.slug,
-          pageIndex: parsed.pageIndex,
+          pageIndex: nextPageIndex,
         });
         if (!readSet.has(entry.id)) {
           onEntryReadRef.current(entry.id);
@@ -1406,29 +1422,40 @@ export default function MemorandumPage({
 
       pendingDetailRouteRef.current = null;
       openEntry(entry, entryIndex, {
-        pageIndex: parsed.pageIndex,
+        pageIndex: (parsed.pageNumber ?? 1) - 1,
         playSound: false,
       });
       return;
     }
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [columns, isActive, locationHash]);
+  }, [columns, isActive, locationPath, memorandumData]);
 
   useEffect(() => {
     if (!isActive || isTransitioning || pendingExternalExitRef.current) return;
 
-    const parsed = parseMemorandumHash(locationHash, columns);
+    const parsed = parseMemorandumRoute(locationPath, memorandumData);
     if (!parsed) return;
 
-    const nextHash = detailEntry
-      ? `memorandum/${currentColumn.id}/${detailEntry.slug}/${detailPageIndex + 1}`
-      : `memorandum/${currentColumn.id}`;
+    const nextPath = detailEntry
+      ? buildMemorandumPath(currentColumn.id, detailEntry.slug, detailPageIndex + 1)
+      : (!parsed.hasExplicitCategory && currentColumn.id === memorandumData.defaultColumnId
+          ? buildMemorandumPath()
+          : buildMemorandumPath(currentColumn.id));
 
-    if (nextHash !== locationHash) {
-      onLocationChange(nextHash);
+    if (nextPath !== locationPath) {
+      onPathChange(nextPath);
     }
-  }, [columns, currentColumn.id, detailEntry, detailPageIndex, isActive, isTransitioning, locationHash, onLocationChange]);
+  }, [
+    currentColumn.id,
+    detailEntry,
+    detailPageIndex,
+    isActive,
+    isTransitioning,
+    locationPath,
+    memorandumData,
+    onPathChange,
+  ]);
 
   useLayoutEffect(() => {
     if (!isActive) {

@@ -2,7 +2,10 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import gsap from 'gsap';
 import { COLORS } from '../../lib/constants';
 import { MENU_ITEMS } from '../../lib/menuConfig';
-import { createContactEntryTimeline, createContactExitTimeline } from '../../lib/animations';
+import {
+  createContactEntryTimeline,
+  createContactExitTimeline,
+} from '../../lib/animations';
 import type { RegisterPageNavigation } from '../../lib/pageNavigation';
 import type { PlaySoundEffect } from '../../lib/soundEffects';
 import ContactRings from '../menu/splashEffects/ContactRings';
@@ -13,9 +16,11 @@ import { rafThrottle } from '../../lib/rafThrottle';
 interface ContactPageProps {
   isActive: boolean;
   animationsEnabled: boolean;
+  initialEntryDelaySeconds: number;
   pageState: 'entering-page' | 'page-active' | 'exiting-page';
   registerNavigation: RegisterPageNavigation;
   playSoundEffect: PlaySoundEffect;
+  onEntryAnimationComplete?: () => void;
 }
 
 interface ContactMethod {
@@ -219,15 +224,18 @@ function ContactPortraitRing({ animationsEnabled }: { animationsEnabled: boolean
 export default function ContactPage({
   isActive,
   animationsEnabled,
+  initialEntryDelaySeconds,
   pageState,
   registerNavigation,
   playSoundEffect,
+  onEntryAnimationComplete,
 }: ContactPageProps) {
   const containerRef = useRef<HTMLElement>(null);
   const panelSlotRef = useRef<HTMLDivElement>(null);
   const panelFrameRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef<Array<HTMLAnchorElement | null>>([]);
   const entryTlRef = useRef<gsap.core.Timeline | null>(null);
+  const entryDelayRef = useRef<gsap.core.Tween | null>(null);
   const exitTlRef = useRef<gsap.core.Timeline | null>(null);
   const prevIsActive = useRef(isActive);
   const selectedIndexRef = useRef(0);
@@ -254,9 +262,37 @@ export default function ContactPage({
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useLayoutEffect(() => {
-    if (!containerRef.current || !animationsEnabled) return;
-    entryTlRef.current = createContactEntryTimeline(containerRef.current);
+    if (!containerRef.current) return;
+    if (!animationsEnabled) return;
+    const shouldDelayDirectMountPlayback = pageState === 'page-active';
+    let rafId: number | null = null;
+    let nestedRafId: number | null = null;
+    entryTlRef.current = createContactEntryTimeline(containerRef.current, {
+      paused: initialEntryDelaySeconds > 0 || shouldDelayDirectMountPlayback,
+    });
+    if (onEntryAnimationComplete) {
+      entryTlRef.current.add(() => {
+        onEntryAnimationComplete();
+      });
+    }
+    if (initialEntryDelaySeconds > 0) {
+      entryDelayRef.current = gsap.delayedCall(entryDelaySeconds, () => {
+        entryDelayRef.current = null;
+        entryTlRef.current?.play(0);
+      });
+    } else if (shouldDelayDirectMountPlayback) {
+      rafId = requestAnimationFrame(() => {
+        nestedRafId = requestAnimationFrame(() => {
+          nestedRafId = null;
+          entryTlRef.current?.play(0);
+        });
+      });
+    }
     return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      if (nestedRafId !== null) cancelAnimationFrame(nestedRafId);
+      entryDelayRef.current?.kill();
+      entryDelayRef.current = null;
       entryTlRef.current?.kill();
       entryTlRef.current = null;
     };
@@ -269,15 +305,15 @@ export default function ContactPage({
     gsap.set(wipeLine, { autoAlpha: 0 });
   }, [animationsEnabled]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const wasActive = prevIsActive.current;
     prevIsActive.current = isActive;
 
-    if (wasActive && !isActive && containerRef.current && animationsEnabled) {
-      exitTlRef.current?.kill();
-      exitTlRef.current = createContactExitTimeline(containerRef.current);
-    }
-  }, [isActive, animationsEnabled]);
+    if (!wasActive || isActive || !containerRef.current || !animationsEnabled) return;
+
+    exitTlRef.current?.kill();
+    exitTlRef.current = createContactExitTimeline(containerRef.current);
+  }, [animationsEnabled, isActive]);
 
   useEffect(() => {
     return () => {
