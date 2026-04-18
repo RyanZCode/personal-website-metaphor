@@ -6,11 +6,15 @@ import type { PlaySoundEffect } from '../../lib/soundEffects';
 import SystemGlitch from '../menu/splashEffects/SystemGlitch';
 import PageBackground from '../background/PageBackground';
 import ScrollViewport from '../shared/ScrollViewport';
-import { createSystemEntryTimeline, createSystemExitTimeline } from '../../lib/animations';
+import {
+  createSystemEntryTimeline,
+  createSystemExitTimeline,
+} from '../../lib/animations';
 import { rafThrottle } from '../../lib/rafThrottle';
 
 interface SystemPageProps {
   isActive: boolean;
+  initialEntryDelaySeconds: number;
   pageState: 'entering-page' | 'page-active' | 'exiting-page';
   cursorStyle: 'default' | 'metaphor';
   onCursorChange: (style: 'default' | 'metaphor') => void;
@@ -22,6 +26,7 @@ interface SystemPageProps {
   onSoundToggle: () => void;
   registerNavigation: RegisterPageNavigation;
   playSoundEffect: PlaySoundEffect;
+  onEntryAnimationComplete?: () => void;
 }
 
 interface SystemOption {
@@ -260,6 +265,7 @@ function SystemRow({ title, detail, controls, bordered = true, selected = false,
 
 export default function SystemPage({
   isActive,
+  initialEntryDelaySeconds,
   pageState,
   cursorStyle,
   onCursorChange,
@@ -271,12 +277,14 @@ export default function SystemPage({
   onSoundToggle,
   registerNavigation,
   playSoundEffect,
+  onEntryAnimationComplete,
 }: SystemPageProps) {
   const containerRef = useRef<HTMLElement>(null);
   const panelSlotRef = useRef<HTMLDivElement>(null);
   const panelFrameRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef<Array<HTMLDivElement | null>>([]);
   const entryTlRef = useRef<gsap.core.Timeline | null>(null);
+  const entryDelayRef = useRef<gsap.core.Tween | null>(null);
   const exitTlRef = useRef<gsap.core.Timeline | null>(null);
   const prevIsActive = useRef(isActive);
   const selectedRowIndexRef = useRef(0);
@@ -306,9 +314,37 @@ export default function SystemPage({
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useLayoutEffect(() => {
-    if (!containerRef.current || !animationsEnabled) return;
-    entryTlRef.current = createSystemEntryTimeline(containerRef.current);
+    if (!containerRef.current) return;
+    if (!animationsEnabled) return;
+    const shouldDelayDirectMountPlayback = pageState === 'page-active';
+    let rafId: number | null = null;
+    let nestedRafId: number | null = null;
+    entryTlRef.current = createSystemEntryTimeline(containerRef.current, {
+      paused: initialEntryDelaySeconds > 0 || shouldDelayDirectMountPlayback,
+    });
+    if (onEntryAnimationComplete) {
+      entryTlRef.current.add(() => {
+        onEntryAnimationComplete();
+      });
+    }
+    if (initialEntryDelaySeconds > 0) {
+      entryDelayRef.current = gsap.delayedCall(entryDelaySeconds, () => {
+        entryDelayRef.current = null;
+        entryTlRef.current?.play(0);
+      });
+    } else if (shouldDelayDirectMountPlayback) {
+      rafId = requestAnimationFrame(() => {
+        nestedRafId = requestAnimationFrame(() => {
+          nestedRafId = null;
+          entryTlRef.current?.play(0);
+        });
+      });
+    }
     return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      if (nestedRafId !== null) cancelAnimationFrame(nestedRafId);
+      entryDelayRef.current?.kill();
+      entryDelayRef.current = null;
       entryTlRef.current?.kill();
       entryTlRef.current = null;
     };
@@ -321,15 +357,15 @@ export default function SystemPage({
     gsap.set(wipeLine, { autoAlpha: 0 });
   }, [animationsEnabled]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const wasActive = prevIsActive.current;
     prevIsActive.current = isActive;
 
-    if (wasActive && !isActive && containerRef.current && animationsEnabled) {
-      exitTlRef.current?.kill();
-      exitTlRef.current = createSystemExitTimeline(containerRef.current);
-    }
-  }, [isActive, animationsEnabled]);
+    if (!wasActive || isActive || !containerRef.current || !animationsEnabled) return;
+
+    exitTlRef.current?.kill();
+    exitTlRef.current = createSystemExitTimeline(containerRef.current);
+  }, [animationsEnabled, isActive]);
 
   useEffect(() => {
     return () => {

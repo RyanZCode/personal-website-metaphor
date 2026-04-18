@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type TouchEvent as ReactTouchEvent } from 'react';
 import gsap from 'gsap';
 import { COLORS } from '../../lib/constants';
-import { createExperienceEntryTimeline, createExperienceExitTimeline } from '../../lib/animations';
+import {
+  createExperienceEntryTimeline,
+  createExperienceExitTimeline,
+} from '../../lib/animations';
 import type { RegisterPageNavigation } from '../../lib/pageNavigation';
 import PageBackground from '../background/PageBackground';
 import ExperienceRipples from '../menu/splashEffects/ExperienceRipples';
@@ -10,7 +13,10 @@ import { rafThrottle } from '../../lib/rafThrottle';
 interface ExperiencePageProps {
   isActive: boolean;
   animationsEnabled: boolean;
+  initialEntryDelaySeconds: number;
+  pageState: 'entering-page' | 'page-active' | 'exiting-page';
   registerNavigation: RegisterPageNavigation;
+  onEntryAnimationComplete?: () => void;
 }
 
 interface Job {
@@ -255,9 +261,17 @@ function computeRippleLayout(): { angleDeg: number; rightVw: number; bottomVh: n
   };
 }
 
-export default function ExperiencePage({ isActive, animationsEnabled, registerNavigation }: ExperiencePageProps) {
+export default function ExperiencePage({
+  isActive,
+  animationsEnabled,
+  initialEntryDelaySeconds,
+  pageState,
+  registerNavigation,
+  onEntryAnimationComplete,
+}: ExperiencePageProps) {
   const containerRef = useRef<HTMLElement | null>(null);
   const entryTlRef = useRef<gsap.core.Timeline | null>(null);
+  const entryDelayRef = useRef<gsap.core.Tween | null>(null);
   const exitTlRef = useRef<gsap.core.Timeline | null>(null);
   const prevIsActive = useRef(isActive);
   const bobAnim  = animationsEnabled ? 'portrait-bob 4s ease-in-out infinite' : 'none';
@@ -307,12 +321,43 @@ export default function ExperiencePage({ isActive, animationsEnabled, registerNa
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useLayoutEffect(() => {
-    if (!containerRef.current || !animationsEnabled) {
+    if (!containerRef.current) {
       return;
     }
 
-    entryTlRef.current = createExperienceEntryTimeline(containerRef.current);
+    if (!animationsEnabled) {
+      return;
+    }
+
+    const shouldDelayDirectMountPlayback = pageState === 'page-active';
+    let rafId: number | null = null;
+    let nestedRafId: number | null = null;
+    entryTlRef.current = createExperienceEntryTimeline(containerRef.current, {
+      paused: initialEntryDelaySeconds > 0 || shouldDelayDirectMountPlayback,
+    });
+    if (onEntryAnimationComplete) {
+      entryTlRef.current.add(() => {
+        onEntryAnimationComplete();
+      });
+    }
+    if (initialEntryDelaySeconds > 0) {
+      entryDelayRef.current = gsap.delayedCall(entryDelaySeconds, () => {
+        entryDelayRef.current = null;
+        entryTlRef.current?.play(0);
+      });
+    } else if (shouldDelayDirectMountPlayback) {
+      rafId = requestAnimationFrame(() => {
+        nestedRafId = requestAnimationFrame(() => {
+          nestedRafId = null;
+          entryTlRef.current?.play(0);
+        });
+      });
+    }
     return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      if (nestedRafId !== null) cancelAnimationFrame(nestedRafId);
+      entryDelayRef.current?.kill();
+      entryDelayRef.current = null;
       entryTlRef.current?.kill();
       entryTlRef.current = null;
     };
@@ -331,15 +376,15 @@ export default function ExperiencePage({ isActive, animationsEnabled, registerNa
     gsap.set(wipeLine, { autoAlpha: 0 });
   }, [animationsEnabled]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const wasActive = prevIsActive.current;
     prevIsActive.current = isActive;
 
-    if (wasActive && !isActive && containerRef.current && animationsEnabled) {
-      exitTlRef.current?.kill();
-      exitTlRef.current = createExperienceExitTimeline(containerRef.current);
-    }
-  }, [isActive, animationsEnabled]);
+    if (!wasActive || isActive || !containerRef.current || !animationsEnabled) return;
+
+    exitTlRef.current?.kill();
+    exitTlRef.current = createExperienceExitTimeline(containerRef.current);
+  }, [animationsEnabled, isActive]);
 
   useEffect(() => {
     return () => {

@@ -6,6 +6,7 @@ export default function LoadingScreen() {
 
   return (
     <div
+      data-loading-screen
       style={{
         position: 'fixed',
         inset: 0,

@@ -140,6 +140,40 @@ export function createEntryTimeline(
   return tl;
 }
 
+export function prepareMenuReEntryInitialStates(container: Element): void {
+  const menuLeft = container.querySelector('[data-menu-left]');
+  const menuIndex = container.querySelector('[data-menu-index]');
+  const paintSplash = container.querySelector('[data-paint-splash-wrap]');
+  const statsHints = container.querySelector('[data-stats-hints]');
+  const controlHints = container.querySelector('[data-control-hints-fixed]');
+  const portraitWrap = container.querySelector('[data-portrait-wrap]');
+  const menuItemEls = Array.from(container.querySelectorAll('[data-menu-item]')) as HTMLElement[];
+  const allChars = Array.from(container.querySelectorAll('[data-char]')) as HTMLElement[];
+
+  gsap.set(menuLeft, { x: 0, opacity: 1 });
+  gsap.killTweensOf(allChars);
+  gsap.set(allChars, { x: 0, y: 0, opacity: 0 });
+  gsap.set(menuIndex, { y: '1.5vh', opacity: 0 });
+  gsap.set(paintSplash, { clipPath: 'inset(0 0 0 0%)', opacity: 0 });
+  gsap.set(statsHints, { y: '1.5vh', opacity: 0 });
+  gsap.set(controlHints, { y: '1vh', opacity: 0 });
+  gsap.set(portraitWrap, { opacity: 0 });
+
+  const anchorEl = menuItemEls[2] ?? menuItemEls[Math.floor(menuItemEls.length / 2)];
+  let originX: number;
+  let originY: number;
+  if (anchorEl) {
+    const rect = anchorEl.getBoundingClientRect();
+    originX = rect.left + rect.width / 2;
+    originY = rect.top + rect.height / 2;
+  } else {
+    originX = window.innerWidth * 0.25;
+    originY = window.innerHeight * 0.5;
+  }
+
+  collectAndDisplaceChars(menuItemEls, originX, originY);
+}
+
 export function prefersReducedMotion(): boolean {
   return typeof window !== 'undefined' &&
     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -203,12 +237,15 @@ function computeCharExitPositions(menuItemEls: HTMLElement[]): CharExitEntry[] {
 // onMountPage fires mid-animation to trigger React rendering the page content.
 // Delaying this is what makes the exit animation visible - otherwise the page
 // appears in the first frame and covers everything.
+export const PAGE_ENTER_MOUNT_AT = 0.42;
+
 export function createPageEnterTimeline(
   container: Element,
   onComplete: () => void,
   onSwitchToPageMode: () => void,
   onMountPage: () => void,
   onSubtitleHide: () => void,
+  onRevealPageShell: () => void,
 ): gsap.core.Timeline {
   const menuIndex    = container.querySelector('[data-menu-index]');
   const statsHints   = container.querySelector('[data-stats-hints]');
@@ -225,8 +262,12 @@ export function createPageEnterTimeline(
   const FLY_DUR    = 0.55;
   const FADE_DELAY = 0.08;
   const FADE_DUR   = 0.20;
-  const MOUNT_AT   = 0.42;
+  const MOUNT_AT   = PAGE_ENTER_MOUNT_AT;
   const DONE_AT    = MOUNT_AT + 0.40;
+  const CONTROL_HINTS_OUT_AT = 0.20;
+  const CONTROL_HINTS_OUT_DUR = 0.12;
+  const CONTROL_HINTS_SWITCH_AT = CONTROL_HINTS_OUT_AT + CONTROL_HINTS_OUT_DUR;
+  const CONTROL_HINTS_IN_AT = 0.36;
 
   const tl = gsap.timeline();
   const chars = charExits.map(({ char }) => char);
@@ -249,17 +290,12 @@ export function createPageEnterTimeline(
     .call(onSubtitleHide, [], 0.20)
     .to(paintSplash,  { clipPath: 'inset(0 0 0 100%)', duration: 0.26, ease: 'power2.inOut' }, 0.20)
     .to(portraitWrap, { opacity: 0, duration: 0.22, ease: 'power2.in' }, 0.22)
-    .to(controlHints, { y: '1vh', opacity: 0, duration: 0.12, ease: 'power2.in' }, 0.20)
-    .call(onSwitchToPageMode, [], 0.34)
-    .to(controlHints, { y: 0, opacity: 1, duration: 0.14, ease: 'power2.out' }, 0.36)
+    .to(controlHints, { y: '1vh', opacity: 0, duration: CONTROL_HINTS_OUT_DUR, ease: 'power2.in' }, CONTROL_HINTS_OUT_AT)
+    .call(onSwitchToPageMode, [], CONTROL_HINTS_SWITCH_AT)
+    .to(controlHints, { y: 0, opacity: 1, duration: 0.14, ease: 'power2.out' }, CONTROL_HINTS_IN_AT)
     .call(() => {
       onMountPage();
-      // Double RAF so React has rendered the page shell before we touch it
-      requestAnimationFrame(() => requestAnimationFrame(() => {
-        const shell = container.querySelector('[data-page-shell]');
-        if (!shell) return;
-        gsap.set(shell, { opacity: 1 });
-      }));
+      onRevealPageShell();
     }, [], MOUNT_AT)
     .call(onComplete, [], DONE_AT);
 
@@ -268,7 +304,10 @@ export function createPageEnterTimeline(
 
 // White vertical line sweeps left-to-right, content zooms out behind it.
 // Called from useLayoutEffect in AboutPage so gsap.set runs before first paint.
-export function createAboutEntryTimeline(container: Element): gsap.core.Timeline {
+export function createAboutEntryTimeline(
+  container: Element,
+  options?: { paused?: boolean }
+): gsap.core.Timeline {
   const panel     = container.querySelector('[data-about-panel]');
   const portrait  = container.querySelector('[data-about-portrait-anim]');
   const watermark = container.querySelector('[data-about-watermark]');
@@ -288,7 +327,7 @@ export function createAboutEntryTimeline(container: Element): gsap.core.Timeline
   gsap.set(portrait, { scale: 1.10, opacity: 0, transformOrigin: '50% 100%' });
 
   const WIPE_DUR = 0.35;
-  const tl = gsap.timeline();
+  const tl = gsap.timeline({ paused: options?.paused ?? false });
 
   // Wipe line sweeps across full width
   tl.to(wipeLine, { x: vw + lineW, duration: WIPE_DUR, ease: 'power1.inOut' }, 0);
@@ -304,6 +343,40 @@ export function createAboutEntryTimeline(container: Element): gsap.core.Timeline
   tl.set(wipeLine, { autoAlpha: 0 }, WIPE_DUR);
 
   return tl;
+}
+
+export function createAboutExitTimeline(container: Element): gsap.core.Timeline {
+  const panel = container.querySelector('[data-about-panel]');
+  const portrait = container.querySelector('[data-about-portrait-anim]');
+  const watermark = container.querySelector('[data-about-watermark]');
+  const geoLines = container.querySelector('[data-about-geo-lines]');
+  const triangles = container.querySelector('[data-about-triangles]');
+
+  const tl = gsap.timeline();
+
+  tl.to([watermark, geoLines, panel, triangles, portrait], {
+    opacity: 0,
+    duration: 0.18,
+    ease: 'power2.in',
+    stagger: 0,
+  }, 0);
+
+  return tl;
+}
+
+export function setAboutEnteredState(container: Element): void {
+  const panel = container.querySelector('[data-about-panel]');
+  const portrait = container.querySelector('[data-about-portrait-anim]');
+  const watermark = container.querySelector('[data-about-watermark]');
+  const geoLines = container.querySelector('[data-about-geo-lines]');
+  const triangles = container.querySelector('[data-about-triangles]');
+  const wipeLine = container.querySelector('[data-about-wipe]');
+
+  gsap.set([geoLines, panel], { x: 0, y: 0, scale: 1, opacity: 1, clearProps: 'willChange' });
+  gsap.set(watermark, { x: 0, y: 0, scale: 1, opacity: 0.75, clearProps: 'willChange' });
+  gsap.set(triangles, { x: 0, y: 0, opacity: 1, clearProps: 'willChange' });
+  gsap.set(portrait, { x: 0, y: 0, scale: 1, opacity: 1, clearProps: 'willChange' });
+  gsap.set(wipeLine, { autoAlpha: 0, clearProps: 'x,scaleX,willChange' });
 }
 
 // Fast re-entry: fades page out and flies chars in from the center of the Experience item.
@@ -351,16 +424,17 @@ export function createMenuReEntryTimeline(
     charEntries.forEach(({ char }) => gsap.set(char, { x: 0, y: 0, opacity: 1 }));
   };
 
-  const FADE_DUR = 0.22;
-  const REENTRY_START = FADE_DUR + 0.02;
+  const PAGE_FADE_DUR = 0.3;
+  const REENTRY_START = 0.08;
+  const CONTROL_HINTS_OUT_DUR = 0.12;
+  const CONTROL_HINTS_SWITCH_AT = CONTROL_HINTS_OUT_DUR;
 
   const tl = gsap.timeline({ onInterrupt: snapAll });
 
-  // Fade the page content out
   if (pageShell) {
-    tl.to(pageShell, { opacity: 0, duration: FADE_DUR, ease: 'power2.in' }, 0);
+    tl.to(pageShell, { opacity: 0, duration: PAGE_FADE_DUR, ease: 'power2.inOut' }, 0);
   }
-  tl.to(controlHints, { y: '1vh', opacity: 0, duration: 0.12, ease: 'power2.in' }, 0);
+  tl.to(controlHints, { y: '1vh', opacity: 0, duration: CONTROL_HINTS_OUT_DUR, ease: 'power2.in' }, 0);
 
   // Re-entry starts once the page is gone
   // Portrait fades in over the background
@@ -370,13 +444,13 @@ export function createMenuReEntryTimeline(
   // Last char finishes at roughly REENTRY_START + 5*0.02 + 9*0.016 + 0.18 ≈ REENTRY_START + 0.47
   appendCharFlyTweens(tl, charEntries, 0.14, 0.18, REENTRY_START, 0.02, 0.016);
 
-  const CHROME_IN = REENTRY_START + 0.2;
+  const CHROME_IN = Math.max(REENTRY_START + 0.2, CONTROL_HINTS_SWITCH_AT + 0.02);
 
-  tl.call(onSwitchToMenuMode, [], REENTRY_START - 0.02)
+  tl.call(onSwitchToMenuMode, [], CONTROL_HINTS_SWITCH_AT)
     .to(controlHints,            { y: 0, opacity: 1, duration: 0.14, ease: 'power2.out' }, CHROME_IN)
     .call(onSubtitleVisible, [], REENTRY_START + 0.12)
     .to([menuIndex, statsHints], { y: 0, x: 0, opacity: 1, duration: 0.15, ease: 'power2.out' }, CHROME_IN)
-    .to(paintSplash, { opacity: 1, duration: 0.2 }, REENTRY_START + 0.12)
+    .to(paintSplash, { opacity: 1, duration: 0.2 }, REENTRY_START + 0.08)
     .call(onComplete, [], CHROME_IN + 0.15);
 
   return tl;
@@ -385,7 +459,10 @@ export function createMenuReEntryTimeline(
 // Top-to-bottom vertical wipe reveal for the Skills page.
 // Elements with movement start slightly above their final position (negative y) and
 // settle into place while fading in. Background lines and portrait just fade in.
-export function createSkillsEntryTimeline(container: Element): gsap.core.Timeline {
+export function createSkillsEntryTimeline(
+  container: Element,
+  options?: { paused?: boolean }
+): gsap.core.Timeline {
   const watermark = container.querySelector('[data-skills-watermark]');
   const geoLines  = container.querySelector('[data-skills-geo-lines]');
   const content   = container.querySelector('[data-skills-content]');
@@ -402,7 +479,7 @@ export function createSkillsEntryTimeline(container: Element): gsap.core.Timelin
   gsap.set([geoLines, portrait, bands], { opacity: 0 });
 
   const WIPE_DUR = 0.32;
-  const tl = gsap.timeline();
+  const tl = gsap.timeline({ paused: options?.paused ?? false });
 
   tl.to(wipeLine,  { y: vh + lineH, duration: WIPE_DUR, ease: 'power1.inOut' }, 0);
   tl.to(geoLines,  { opacity: 1, duration: 0.35, ease: 'power2.out' }, 0.22);
@@ -427,6 +504,20 @@ export function createSkillsExitTimeline(container: Element): gsap.core.Timeline
   return tl;
 }
 
+export function setSkillsEnteredState(container: Element): void {
+  const watermark = container.querySelector('[data-skills-watermark]');
+  const geoLines = container.querySelector('[data-skills-geo-lines]');
+  const content = container.querySelector('[data-skills-content]');
+  const portrait = container.querySelector('[data-skills-portrait]');
+  const bands = container.querySelector('[data-skills-bands]');
+  const wipeLine = container.querySelector('[data-skills-wipe]');
+
+  gsap.set(watermark, { y: 0, opacity: 0.75, clearProps: 'willChange' });
+  gsap.set(content, { y: 0, opacity: 1, clearProps: 'willChange' });
+  gsap.set([geoLines, portrait, bands], { opacity: 1, clearProps: 'willChange' });
+  gsap.set(wipeLine, { autoAlpha: 0, clearProps: 'y,willChange' });
+}
+
 function withWillChange(targets: gsap.TweenTarget): gsap.TweenTarget[] {
   return gsap.utils.toArray(targets);
 }
@@ -437,7 +528,10 @@ function getExperiencePanelAngle(): number {
   return Math.atan2(dx, dy) * 180 / Math.PI;
 }
 
-export function createExperienceEntryTimeline(container: Element): gsap.core.Timeline {
+export function createExperienceEntryTimeline(
+  container: Element,
+  options?: { paused?: boolean }
+): gsap.core.Timeline {
   const portrait = container.querySelector('[data-experience-portrait]');
   const watermark = container.querySelector('[data-experience-watermark]');
   const panelGroup = container.querySelector('[data-experience-panel-group]');
@@ -483,6 +577,7 @@ export function createExperienceEntryTimeline(container: Element): gsap.core.Tim
   });
 
   const tl = gsap.timeline({
+    paused: options?.paused ?? false,
     onStart: () => {
       gsap.set(animated, { willChange: 'transform, opacity' });
     },
@@ -615,7 +710,28 @@ export function createExperienceExitTimeline(container: Element): gsap.core.Time
   return tl;
 }
 
-export function createContactEntryTimeline(container: Element): gsap.core.Timeline {
+export function setExperienceEnteredState(container: Element): void {
+  const portrait = container.querySelector('[data-experience-portrait]');
+  const watermark = container.querySelector('[data-experience-watermark]');
+  const panelGroup = container.querySelector('[data-experience-panel-group]');
+  const geoLines = container.querySelector('[data-experience-geo-lines]');
+  const wipeLine = container.querySelector('[data-experience-wipe]');
+  const wipeLineInner = container.querySelector('[data-experience-wipe-line]');
+  const rippleFade = container.querySelector('[data-experience-ripples-fade]');
+
+  gsap.set(watermark, { opacity: 0.75, scale: 1, clearProps: 'willChange' });
+  gsap.set(portrait, { x: 0, opacity: 1, scale: 1, clearProps: 'willChange' });
+  gsap.set(panelGroup, { x: 0, y: 0, opacity: 1, clearProps: 'willChange' });
+  gsap.set(geoLines, { opacity: 1, clearProps: 'willChange' });
+  gsap.set(rippleFade, { opacity: 1, clearProps: 'willChange' });
+  gsap.set(wipeLineInner, { clearProps: 'scaleX,scaleY,willChange' });
+  gsap.set(wipeLine, { autoAlpha: 0, clearProps: 'x,y,rotation,willChange' });
+}
+
+export function createContactEntryTimeline(
+  container: Element,
+  options?: { paused?: boolean }
+): gsap.core.Timeline {
   const geoLines = container.querySelector('[data-contact-geo-lines]');
   const watermark = container.querySelector('[data-contact-watermark]');
   const content = container.querySelector('[data-contact-content]');
@@ -644,6 +760,7 @@ export function createContactEntryTimeline(container: Element): gsap.core.Timeli
   });
 
   const tl = gsap.timeline({
+    paused: options?.paused ?? false,
     onStart: () => {
       gsap.set(animated, { willChange: 'transform, opacity' });
     },
@@ -746,6 +863,28 @@ export function createContactExitTimeline(container: Element): gsap.core.Timelin
   return tl;
 }
 
+export function setContactEnteredState(container: Element): void {
+  const geoLines = container.querySelector('[data-contact-geo-lines]');
+  const watermark = container.querySelector('[data-contact-watermark]');
+  const content = container.querySelector('[data-contact-content]');
+  const portrait = container.querySelector('[data-contact-portrait]');
+  const rings = container.querySelector('[data-contact-rings]');
+  const divider = container.querySelector('[data-contact-divider-line]');
+  const portraitCircle = container.querySelector('[data-contact-portrait-circle]');
+  const rotatingRing = container.querySelector('[data-contact-rotating-ring]');
+  const wipeLine = container.querySelector('[data-contact-wipe]');
+
+  gsap.set([geoLines, watermark, content, portrait], {
+    opacity: 1,
+    scale: 1,
+    clearProps: 'willChange',
+  });
+  gsap.set(rings, { opacity: 0.9, scale: 1, clearProps: 'willChange' });
+  gsap.set(divider, { opacity: 1, clearProps: 'willChange' });
+  gsap.set([portraitCircle, rotatingRing], { opacity: 1, scale: 1, clearProps: 'willChange' });
+  gsap.set(wipeLine, { autoAlpha: 0, clearProps: 'scaleX,scaleY,rotation,willChange' });
+}
+
 function clearMemorandumBrowserProps(
   watermark: Element | null,
   prompt: Element | null,
@@ -768,7 +907,10 @@ function clearMemorandumBrowserProps(
   });
 }
 
-export function createMemorandumEntryTimeline(container: Element): gsap.core.Timeline {
+export function createMemorandumEntryTimeline(
+  container: Element,
+  options?: { paused?: boolean }
+): gsap.core.Timeline {
   const watermark = container.querySelector('[data-memorandum-watermark]');
   const prompt = container.querySelector('[data-memorandum-prompt]');
   const controls = container.querySelector('[data-memorandum-tab-controls]');
@@ -822,6 +964,7 @@ export function createMemorandumEntryTimeline(container: Element): gsap.core.Tim
   });
 
   const tl = gsap.timeline({
+    paused: options?.paused ?? false,
     onStart: () => {
       gsap.set(animated, { willChange: 'transform, opacity' });
     },
@@ -890,6 +1033,34 @@ export function createMemorandumEntryTimeline(container: Element): gsap.core.Tim
     .set(wipeLine, { autoAlpha: 0 }, 0.44);
 
   return tl;
+}
+
+export function setMemorandumBrowserEnteredState(container: Element): void {
+  const watermark = container.querySelector('[data-memorandum-watermark]');
+  const prompt = container.querySelector('[data-memorandum-prompt]');
+  const controls = container.querySelector('[data-memorandum-tab-controls]');
+  const shelfMotion = container.querySelector('[data-memorandum-shelf-motion]');
+  const collection = container.querySelector('[data-memorandum-collection]');
+  const listShell = container.querySelector('[data-memorandum-list-shell]');
+  const rightPanel = container.querySelector('[data-memorandum-right-panel]');
+  const bookSpines = container.querySelector('[data-memorandum-book-spines]');
+  const bgLines = container.querySelector('[data-memorandum-background-lines]');
+  const trapezoids = container.querySelector('[data-memorandum-trapezoids]');
+  const wipeLine = container.querySelector('[data-memorandum-wipe-line]');
+
+  clearMemorandumBrowserProps(
+    watermark,
+    prompt,
+    controls,
+    listShell,
+    rightPanel,
+    shelfMotion,
+    collection,
+    bookSpines,
+    bgLines,
+    trapezoids,
+    wipeLine,
+  );
 }
 
 export function createMemorandumExitTimeline(container: Element): gsap.core.Timeline {
@@ -1314,7 +1485,10 @@ export function createMemorandumCategoryTimeline(
   return tl;
 }
 
-export function createSystemEntryTimeline(container: Element): gsap.core.Timeline {
+export function createSystemEntryTimeline(
+  container: Element,
+  options?: { paused?: boolean }
+): gsap.core.Timeline {
   const watermark = container.querySelector('[data-system-watermark]');
   const background = container.querySelector('[data-system-background]');
   const portrait = container.querySelector('[data-system-portrait]');
@@ -1344,6 +1518,7 @@ export function createSystemEntryTimeline(container: Element): gsap.core.Timelin
   });
 
   const tl = gsap.timeline({
+    paused: options?.paused ?? false,
     onStart: () => {
       gsap.set(animated, { willChange: 'transform, opacity' });
     },
@@ -1435,6 +1610,19 @@ export function createSystemExitTimeline(container: Element): gsap.core.Timeline
     }, 0);
 
   return tl;
+}
+
+export function setSystemEnteredState(container: Element): void {
+  const watermark = container.querySelector('[data-system-watermark]');
+  const background = container.querySelector('[data-system-background]');
+  const portrait = container.querySelector('[data-system-portrait]');
+  const panel = container.querySelector('[data-system-panel]');
+  const wipeLine = container.querySelector('[data-system-wipe]');
+
+  gsap.set([watermark, background], { opacity: 1, clearProps: 'willChange' });
+  gsap.set(portrait, { opacity: 1, scale: 1, clearProps: 'willChange' });
+  gsap.set(panel, { x: 0, opacity: 1, clearProps: 'willChange' });
+  gsap.set(wipeLine, { autoAlpha: 0, clearProps: 'x,scaleX,willChange' });
 }
 
 // triData columns: [leftVh, top, w, h, maxOpacity, delay, duration, clipIdx]

@@ -5,7 +5,10 @@ import { MENU_ITEMS } from '../../lib/menuConfig';
 import PageBackground from '../background/PageBackground';
 import AboutTriangles from '../menu/splashEffects/AboutTriangles';
 import ScrollViewport from '../shared/ScrollViewport';
-import { createAboutEntryTimeline } from '../../lib/animations';
+import {
+  createAboutEntryTimeline,
+  createAboutExitTimeline,
+} from '../../lib/animations';
 import type { RegisterPageNavigation } from '../../lib/pageNavigation';
 import type { PlaySoundEffect } from '../../lib/soundEffects';
 import { rafThrottle } from '../../lib/rafThrottle';
@@ -13,16 +16,32 @@ import { rafThrottle } from '../../lib/rafThrottle';
 interface AboutPageProps {
   isActive: boolean;
   animationsEnabled: boolean;
+  initialEntryDelaySeconds: number;
+  pageState: 'entering-page' | 'page-active' | 'exiting-page';
   registerNavigation: RegisterPageNavigation;
   playSoundEffect: PlaySoundEffect;
+  onMemorandumNavigate: () => void;
+  onEntryAnimationComplete?: () => void;
 }
 
 const BOTTOM_DIAGONAL_WEDGE_CLIP_PATH = 'polygon(0 100%, 100% 0, 100% 100%)';
 
-export default function AboutPage({ isActive, animationsEnabled, registerNavigation, playSoundEffect }: AboutPageProps) {
+export default function AboutPage({
+  isActive,
+  animationsEnabled,
+  initialEntryDelaySeconds,
+  pageState,
+  registerNavigation,
+  playSoundEffect,
+  onMemorandumNavigate,
+  onEntryAnimationComplete,
+}: AboutPageProps) {
   const containerRef = useRef<HTMLElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const entryTlRef   = useRef<gsap.core.Timeline | null>(null);
+  const entryDelayRef = useRef<gsap.core.Tween | null>(null);
+  const exitTlRef = useRef<gsap.core.Timeline | null>(null);
+  const prevIsActive = useRef(isActive);
   const [isScrollable, setIsScrollable] = useState(false);
   const [memorandumLinkHovered, setMemorandumLinkHovered] = useState(false);
   const memorandumItem = MENU_ITEMS.find(item => item.id === 'memorandum');
@@ -37,9 +56,37 @@ export default function AboutPage({ isActive, animationsEnabled, registerNavigat
   // the wipe reveals it. Using useLayoutEffect prevents a one-frame flash at full opacity.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useLayoutEffect(() => {
-    if (!containerRef.current || !animationsEnabled) return;
-    entryTlRef.current = createAboutEntryTimeline(containerRef.current);
+    if (!containerRef.current) return;
+    if (!animationsEnabled) return;
+    const shouldDelayDirectMountPlayback = pageState === 'page-active';
+    let rafId: number | null = null;
+    let nestedRafId: number | null = null;
+    entryTlRef.current = createAboutEntryTimeline(containerRef.current, {
+      paused: initialEntryDelaySeconds > 0 || shouldDelayDirectMountPlayback,
+    });
+    if (onEntryAnimationComplete) {
+      entryTlRef.current.add(() => {
+        onEntryAnimationComplete();
+      });
+    }
+    if (initialEntryDelaySeconds > 0) {
+      entryDelayRef.current = gsap.delayedCall(entryDelaySeconds, () => {
+        entryDelayRef.current = null;
+        entryTlRef.current?.play(0);
+      });
+    } else if (shouldDelayDirectMountPlayback) {
+      rafId = requestAnimationFrame(() => {
+        nestedRafId = requestAnimationFrame(() => {
+          nestedRafId = null;
+          entryTlRef.current?.play(0);
+        });
+      });
+    }
     return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      if (nestedRafId !== null) cancelAnimationFrame(nestedRafId);
+      entryDelayRef.current?.kill();
+      entryDelayRef.current = null;
       entryTlRef.current?.kill();
       entryTlRef.current = null;
     };
@@ -53,6 +100,22 @@ export default function AboutPage({ isActive, animationsEnabled, registerNavigat
     if (!wipeLine) return;
     gsap.set(wipeLine, { autoAlpha: 0 });
   }, [animationsEnabled]);
+
+  useLayoutEffect(() => {
+    const wasActive = prevIsActive.current;
+    prevIsActive.current = isActive;
+
+    if (!wasActive || isActive || !containerRef.current || !animationsEnabled) return;
+
+    exitTlRef.current?.kill();
+    exitTlRef.current = createAboutExitTimeline(containerRef.current);
+  }, [animationsEnabled, isActive]);
+
+  useEffect(() => {
+    return () => {
+      exitTlRef.current?.kill();
+    };
+  }, []);
 
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
@@ -308,8 +371,12 @@ export default function AboutPage({ isActive, animationsEnabled, registerNavigat
               <p>
                 Check out my{' '}
                 <a
-                  href="#memorandum"
-                  onClick={() => playSoundEffect('enter')}
+                  href="/memorandum"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    playSoundEffect('enter');
+                    onMemorandumNavigate();
+                  }}
                   style={{
                     display: 'inline-block',
                     verticalAlign: 'baseline',

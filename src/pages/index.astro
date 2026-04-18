@@ -1,11 +1,5 @@
 ---
-import Layout from '../layouts/Layout.astro';
-import MainMenu from '../components/menu/MainMenu';
-import { loadMemorandumData } from '../lib/memorandumContent';
-
-const memorandumData = await loadMemorandumData();
+import AppShell from '../components/AppShell.astro';
 ---
 
-<Layout>
-  <MainMenu client:load memorandumData={memorandumData} />
-</Layout>
+<AppShell pathname="/" />

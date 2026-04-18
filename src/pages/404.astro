@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Ryan Zhou</title>
+    <script is:inline>
+      const normalizePath = (value) => {
+        const withLeadingSlash = value.startsWith('/') ? value : `/${value}`;
+        const collapsed = withLeadingSlash.replace(/\/{2,}/g, '/');
+        if (collapsed === '/') return '/';
+        return collapsed.replace(/\/+$/, '') || '/';
+      };
+
+      const pathname = normalizePath(window.location.pathname);
+      const destination = pathname === '/memorandum' || pathname.startsWith('/memorandum/')
+        ? '/memorandum'
+        : '/';
+
+      window.location.replace(destination);
+    </script>
+    <noscript>
+      <meta http-equiv="refresh" content="0;url=/" />
+    </noscript>
+  </head>
+  <body />
+</html>
