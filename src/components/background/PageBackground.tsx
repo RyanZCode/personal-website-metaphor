@@ -1,4 +1,13 @@
+import { useEffect, useState } from 'react';
+import { shouldRenderDecorativeTextures } from '../../lib/deviceProfile';
+
 export default function PageBackground() {
+  const [showTextures, setShowTextures] = useState(false);
+
+  useEffect(() => {
+    setShowTextures(shouldRenderDecorativeTextures());
+  }, []);
+
   return (
     <div
       style={{
@@ -13,16 +22,18 @@ export default function PageBackground() {
 
       <div style={{ position: 'absolute', inset: 0, background: 'var(--bg-combined)' }} />
 
-      <svg
-        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.05 }}
-        aria-hidden="true"
-      >
+      {showTextures ? (
+        <svg
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.05 }}
+          aria-hidden="true"
+        >
           <filter id="page-grain">
-          <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch" />
-          <feColorMatrix type="saturate" values="0" />
-        </filter>
-        <rect width="100%" height="100%" filter="url(#page-grain)" />
-      </svg>
+            <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch" />
+            <feColorMatrix type="saturate" values="0" />
+          </filter>
+          <rect width="100%" height="100%" filter="url(#page-grain)" />
+        </svg>
+      ) : null}
     </div>
   );
 }

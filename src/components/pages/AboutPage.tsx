@@ -451,7 +451,7 @@ export default function AboutPage({
               }}
             >
               <img
-                src="/assets/ryan-zhou-profile-pic.jpg"
+                src="/assets/ryan-zhou-profile-pic.webp"
                 alt="Ryan Zhou"
                 draggable={false}
                 style={{
@@ -482,6 +482,8 @@ export default function AboutPage({
           background: 'white',
           zIndex: 30,
           pointerEvents: 'none',
+          opacity: 0,
+          visibility: 'hidden',
         }}
       />
 

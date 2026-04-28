@@ -682,7 +682,7 @@ export default function SystemPage({
               }}
             >
               <img
-                src="/assets/coby-sleep.jpg"
+                src="/assets/coby-sleep.webp"
                 alt="Coby sleeping"
                 draggable={false}
                 style={{
@@ -859,6 +859,7 @@ export default function SystemPage({
           zIndex: 4,
           pointerEvents: 'none',
           opacity: 0,
+          visibility: 'hidden',
         }}
       />
     </section>

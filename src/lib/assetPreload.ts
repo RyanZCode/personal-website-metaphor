@@ -1,23 +1,23 @@
 import type { MemorandumData } from './memorandum';
 
 const BLOCKING_PAGE_IMAGE_SOURCES = [
-  '/assets/coby-main.png',
-  '/assets/ryan-zhou-profile-pic.jpg',
-  '/assets/coby-left.jpg',
-  '/assets/coby-wistful.jpg',
-  '/assets/coby-stare.jpg',
-  '/assets/coby-sleep.jpg',
+  '/assets/coby-main.webp',
+  '/assets/ryan-zhou-profile-pic.webp',
+  '/assets/coby-left.webp',
+  '/assets/coby-wistful.webp',
+  '/assets/coby-stare.webp',
+  '/assets/coby-sleep.webp',
+  '/assets/experience-logos/shopify-logo.webp',
+  '/assets/experience-logos/uhn-logo.webp',
+  '/assets/experience-logos/dishon-logo.webp',
+  '/assets/experience-logos/uwaterloo-logo.webp',
+  '/assets/contact-icons/github-logo.webp',
+  '/assets/contact-icons/linkedin-logo.webp',
+  '/assets/contact-icons/email-symbol.webp',
+  '/assets/contact-icons/leetcode-logo.webp',
 ] as const;
 
 const DEFERRED_PAGE_IMAGE_SOURCES = [
-  '/assets/experience-logos/shopify-logo.jpg',
-  '/assets/experience-logos/uhn-logo.png',
-  '/assets/experience-logos/dishon-logo.jpg',
-  '/assets/experience-logos/uwaterloo-logo.png',
-  '/assets/contact-icons/github-logo.png',
-  '/assets/contact-icons/linkedin-logo.png',
-  '/assets/contact-icons/email-symbol.jpg',
-  '/assets/contact-icons/leetcode-logo.png',
 ] as const;
 
 const MAX_BLOCKING_MEMORANDUM_IMAGES = 6;
@@ -50,20 +50,23 @@ function getMemorandumImageSources(memorandumData: MemorandumData) {
 
 export function createAssetPreloadManifest(memorandumData: MemorandumData): AssetPreloadManifest {
   const memorandumImageSources = getMemorandumImageSources(memorandumData);
+  const blockingImageSrcs = getUniqueSources([
+    ...BLOCKING_PAGE_IMAGE_SOURCES,
+    ...memorandumImageSources.slice(0, MAX_BLOCKING_MEMORANDUM_IMAGES),
+  ]);
+  const blockingImageSet = new Set(blockingImageSrcs);
+  const deferredImageSrcs = getUniqueSources([
+    ...DEFERRED_PAGE_IMAGE_SOURCES,
+    ...memorandumImageSources.slice(MAX_BLOCKING_MEMORANDUM_IMAGES),
+  ]).filter((src) => !blockingImageSet.has(src));
 
   return {
-    blockingImageSrcs: getUniqueSources([
-      ...BLOCKING_PAGE_IMAGE_SOURCES,
-      ...memorandumImageSources.slice(0, MAX_BLOCKING_MEMORANDUM_IMAGES),
-    ]),
-    deferredImageSrcs: getUniqueSources([
-      ...DEFERRED_PAGE_IMAGE_SOURCES,
-      ...memorandumImageSources.slice(MAX_BLOCKING_MEMORANDUM_IMAGES),
-    ]),
+    blockingImageSrcs,
+    deferredImageSrcs,
   };
 }
 
-function preloadImage(src: string) {
+function preloadImage(src: string, options?: { decode?: boolean }) {
   if (typeof Image === 'undefined') {
     return Promise.resolve();
   }
@@ -78,6 +81,11 @@ function preloadImage(src: string) {
     };
 
     const decodeImage = () => {
+      if (options?.decode === false) {
+        finish();
+        return;
+      }
+
       if (typeof image.decode !== 'function') {
         finish();
         return;
@@ -98,7 +106,7 @@ function preloadImage(src: string) {
 
 export async function preloadImages(
   sources: readonly string[],
-  options?: { concurrency?: number; signal?: AbortSignal }
+  options?: { concurrency?: number; decode?: boolean; signal?: AbortSignal }
 ) {
   const queue = getUniqueSources(sources);
   const signal = options?.signal;
@@ -114,7 +122,7 @@ export async function preloadImages(
       while (!signal?.aborted) {
         const nextSource = queue.shift();
         if (!nextSource) return;
-        await preloadImage(nextSource);
+        await preloadImage(nextSource, { decode: options?.decode });
       }
     })
   );

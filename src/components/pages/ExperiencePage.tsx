@@ -36,7 +36,7 @@ const JOBS: Job[] = [
     role: 'Intern Engineer (Infra)',
     period: 'May 2026 - Present',
     type: 'Internship',
-    logo: '/assets/experience-logos/shopify-logo.jpg',
+    logo: '/assets/experience-logos/shopify-logo.webp',
     logoScale: 0.8,
     logoOffsetX: '0%',
     logoOffsetY: '-3%',
@@ -46,7 +46,7 @@ const JOBS: Job[] = [
     role: 'Intern Engineer (Full-Stack)',
     period: 'Sept 2025 - Dec 2025',
     type: 'Internship',
-    logo: '/assets/experience-logos/shopify-logo.jpg',
+    logo: '/assets/experience-logos/shopify-logo.webp',
     logoScale: 0.8,
     logoOffsetX: '0%',
     logoOffsetY: '-3%',
@@ -56,7 +56,7 @@ const JOBS: Job[] = [
     role: 'Web Developer',
     period: 'Jan 2025 - Apr 2025',
     type: 'Internship',
-    logo: '/assets/experience-logos/uhn-logo.png',
+    logo: '/assets/experience-logos/uhn-logo.webp',
     logoScale: 1.2,
     logoOffsetX: '0%',
     logoOffsetY: '0%',
@@ -66,7 +66,7 @@ const JOBS: Job[] = [
     role: 'Developer',
     period: 'Aug 2024 - Nov 2025',
     type: 'Independent Contractor',
-    logo: '/assets/experience-logos/dishon-logo.jpg',
+    logo: '/assets/experience-logos/dishon-logo.webp',
     logoScale: 0.95,
     logoOffsetX: '-0.5%',
     logoOffsetY: '2%',
@@ -76,7 +76,7 @@ const JOBS: Job[] = [
     role: 'Data Analyst Intern',
     period: 'May 2024 - Aug 2024',
     type: 'Internship',
-    logo: '/assets/experience-logos/dishon-logo.jpg',
+    logo: '/assets/experience-logos/dishon-logo.webp',
     logoScale: 0.95,
     logoOffsetX: '-0.5%',
     logoOffsetY: '2%',
@@ -86,7 +86,7 @@ const JOBS: Job[] = [
     role: 'Bachelor of Computer Science (Co-op)',
     period: 'Sept 2023 - Present',
     type: 'Education',
-    logo: '/assets/experience-logos/uwaterloo-logo.png',
+    logo: '/assets/experience-logos/uwaterloo-logo.webp',
     logoScale: 1,
     logoOffsetX: '0%',
     logoOffsetY: '-0.5%',
@@ -758,7 +758,7 @@ export default function ExperiencePage({
             }}
           >
             <img
-              src="/assets/coby-wistful.jpg"
+              src="/assets/coby-wistful.webp"
               alt="Coby with a wistful look"
               draggable={false}
               style={{
@@ -1080,6 +1080,7 @@ export default function ExperiencePage({
           zIndex: 4,
           pointerEvents: 'none',
           opacity: 0,
+          visibility: 'hidden',
         }}
       >
         <div

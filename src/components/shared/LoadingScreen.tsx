@@ -34,7 +34,7 @@ export default function LoadingScreen() {
         </p>
       ) : (
         <img
-          src="/assets/take-your-time.png"
+          src="/assets/take-your-time.webp"
           alt="Take your time"
           draggable={false}
           onError={() => setImgFailed(true)}
