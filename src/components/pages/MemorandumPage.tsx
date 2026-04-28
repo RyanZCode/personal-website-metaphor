@@ -1684,6 +1684,7 @@ export default function MemorandumPage({
             zIndex: 5,
             pointerEvents: 'none',
             opacity: 0,
+            visibility: 'hidden',
           }}
         />
 

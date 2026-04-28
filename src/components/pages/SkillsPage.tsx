@@ -413,7 +413,7 @@ export default function SkillsPage({
               }}
             >
               <img
-                src="/assets/coby-left.jpg"
+                src="/assets/coby-left.webp"
                 alt="Coby looking left"
                 draggable={false}
                 style={{
@@ -477,6 +477,8 @@ export default function SkillsPage({
           background: 'white',
           zIndex: 30,
           pointerEvents: 'none',
+          opacity: 0,
+          visibility: 'hidden',
         }}
       />
     </section>

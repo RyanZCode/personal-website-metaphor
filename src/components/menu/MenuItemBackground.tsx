@@ -129,7 +129,7 @@ export default function MenuItemBackground({ itemRefs, menuStackRef, selectedInd
 
     // Defer the initial measurement by one frame so the browser has finished
     // laying out with the correct font metrics before we read offsetWidth/offsetHeight.
-    let rafId = requestAnimationFrame(compute);
+    const rafId = requestAnimationFrame(compute);
 
     // Re-measure whenever the selected item's size changes (e.g. font swap settling)
     const el = itemRefs.current[selectedIndex];

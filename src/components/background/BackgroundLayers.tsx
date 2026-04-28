@@ -1,4 +1,13 @@
+import { useEffect, useState } from 'react';
+import { shouldRenderDecorativeTextures } from '../../lib/deviceProfile';
+
 export default function BackgroundLayers() {
+  const [showTextures, setShowTextures] = useState(false);
+
+  useEffect(() => {
+    setShowTextures(shouldRenderDecorativeTextures());
+  }, []);
+
   return (
     <div
       data-bg-layers
@@ -9,53 +18,54 @@ export default function BackgroundLayers() {
         pointerEvents: 'none',
         overflow: 'hidden',
       }}
-    >
-      <div style={{ position: 'absolute', inset: 0, background: 'var(--bg-combined)' }} />
-
-      {/* dark patches - multiply only darkens, so transparent areas are no-ops */}
-      <svg
-        style={{
-          position: 'absolute',
-          inset: 0,
-          width: '100%',
-          height: '100%',
-          opacity: 0.14,
-          mixBlendMode: 'multiply',
-        }}
-        aria-hidden="true"
       >
-        <defs>
-          <filter id="dark-patches">
-            <feTurbulence
-              type="turbulence"
-              baseFrequency="0.032 0.024"
-              numOctaves="3"
-              seed="7"
-            />
-            {/* light output = subtle darkening when multiplied against the teal */}
-            <feColorMatrix
-              type="matrix"
-              values="0 0 0 0 0.10
-                      0 0 0 0 0.38
-                      0 0 0 0 0.36
-                      0 0 0 2.0 -1.1"
-            />
-          </filter>
-        </defs>
-        <rect width="100%" height="100%" filter="url(#dark-patches)" />
-      </svg>
+        <div style={{ position: 'absolute', inset: 0, background: 'var(--bg-combined)' }} />
 
-      {/* fine grain */}
-      <svg
-        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.05 }}
-        aria-hidden="true"
-      >
-        <filter id="bg-grain">
-          <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch" />
-          <feColorMatrix type="saturate" values="0" />
-        </filter>
-        <rect width="100%" height="100%" filter="url(#bg-grain)" />
-      </svg>
+      {showTextures ? (
+        <>
+          <svg
+            style={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              opacity: 0.14,
+              mixBlendMode: 'multiply',
+            }}
+            aria-hidden="true"
+          >
+            <defs>
+              <filter id="dark-patches">
+                <feTurbulence
+                  type="turbulence"
+                  baseFrequency="0.032 0.024"
+                  numOctaves="3"
+                  seed="7"
+                />
+                <feColorMatrix
+                  type="matrix"
+                  values="0 0 0 0 0.10
+                          0 0 0 0 0.38
+                          0 0 0 0 0.36
+                          0 0 0 2.0 -1.1"
+                />
+              </filter>
+            </defs>
+            <rect width="100%" height="100%" filter="url(#dark-patches)" />
+          </svg>
+
+          <svg
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.05 }}
+            aria-hidden="true"
+          >
+            <filter id="bg-grain">
+              <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch" />
+              <feColorMatrix type="saturate" values="0" />
+            </filter>
+            <rect width="100%" height="100%" filter="url(#bg-grain)" />
+          </svg>
+        </>
+      ) : null}
     </div>
   );
 }

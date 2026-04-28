@@ -29,7 +29,7 @@ export default function UnsupportedScreen() {
         This screen size is not supported yet
       </p>
       <img
-        src="/assets/sad-dog.png"
+        src="/assets/sad-dog.webp"
         alt="Crying dog looking at phone"
         style={{
           width: 'auto',

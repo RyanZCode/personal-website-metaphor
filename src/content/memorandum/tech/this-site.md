@@ -10,7 +10,7 @@ date: 2026-04-11
 pinned: true
 subtitle: Meta
 pages:
-  - imageSrc: /assets/memorandum-images/metaphor-main-menu.png
+  - imageSrc: /assets/memorandum-images/metaphor-main-menu.webp
     imageAlt: 'Metaphor: Refantazio Main Menu'
     body:
       - >-
@@ -18,7 +18,7 @@ pages:
         I tried to keep the design and animations of the website fairly close to Metaphor's design.
       - >-
         if you've played Metaphor, see if you can spot which of my menu designs correspond with which in-game menu designs!
-  - imageSrc: /assets/memorandum-images/metaphor-display-settings.png
+  - imageSrc: /assets/memorandum-images/metaphor-display-settings.webp
     imageAlt: 'Metaphor: Refantazio Display Settings Menu'
     body:
       - >-

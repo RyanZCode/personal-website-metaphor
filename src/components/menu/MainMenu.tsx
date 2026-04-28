@@ -3,7 +3,6 @@ import gsap from 'gsap';
 import { MENU_ITEMS } from '../../lib/menuConfig';
 import { COLORS } from '../../lib/constants';
 import {
-  prefersReducedMotion,
   setEntryInitialStates,
   createEntryTimeline,
   createPageEnterTimeline,
@@ -21,6 +20,7 @@ import LoadingScreen from '../shared/LoadingScreen';
 import UnsupportedScreen from '../shared/UnsupportedScreen';
 import CustomCursor from '../shared/CustomCursor';
 import { createAssetPreloadManifest, preloadImages } from '../../lib/assetPreload';
+import { shouldReduceBootWork } from '../../lib/deviceProfile';
 import { rafThrottle } from '../../lib/rafThrottle';
 import type { PageNavigationDirection, PageNavigationHandler } from '../../lib/pageNavigation';
 import {
@@ -59,6 +59,7 @@ interface MainMenuProps {
 
 const MENU_SELECTED_OFFSET_VH = 1;
 const MENU_BELOW_SELECTED_OFFSET_VH = 2;
+const TOUCH_INPUT_GRACE_MS = 800;
 type IdleDeadline = {
   didTimeout: boolean;
   timeRemaining: () => number;
@@ -87,6 +88,13 @@ type AppNavigation = EventTarget;
 type WindowWithNavigation = Window & {
   navigation?: AppNavigation;
 };
+
+interface ClientPreferences {
+  animationsEnabled: boolean;
+  cursorStyle: CursorStyle;
+  bgInverted: boolean;
+  soundEnabled: boolean;
+}
 
 function setDirectPageInitialStates(container: Element): void {
   gsap.set(container.querySelectorAll('[data-char]'), { x: 0, y: 0, opacity: 0 });
@@ -118,14 +126,41 @@ function getMenuItemWrapOffsetYVh(index: number, selectedIndex: number) {
   return 0;
 }
 
+function readClientPreferences(): ClientPreferences {
+  if (typeof window === 'undefined') {
+    return {
+      animationsEnabled: true,
+      cursorStyle: 'metaphor',
+      bgInverted: false,
+      soundEnabled: true,
+    };
+  }
+
+  const stored = window.localStorage.getItem('animationsEnabled');
+  const storedCursor = window.localStorage.getItem('cursorStyle');
+
+  return {
+    animationsEnabled: stored !== null
+      ? stored === 'true'
+      : !window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+    cursorStyle: storedCursor === 'default' || storedCursor === 'metaphor' ? storedCursor : 'metaphor',
+    bgInverted: window.localStorage.getItem('bgInverted') === 'true',
+    soundEnabled: window.localStorage.getItem('soundEnabled') !== 'false',
+  };
+}
+
 export default function MainMenu({ memorandumData, initialPathname }: MainMenuProps) {
   const initialNormalizedPathRef = useRef(normalizePathname(initialPathname));
   const initialTargetPathRef = useRef(
     initialNormalizedPathRef.current
   );
+  const initialClientPreferencesRef = useRef(readClientPreferences());
   const initialTargetRouteRef = useRef(
     resolveAppRoute(initialTargetPathRef.current, memorandumData)
   );
+  const initialAnimationsEnabled = initialClientPreferencesRef.current.animationsEnabled;
+  const shouldMountPageDirectOnLoad = initialTargetRouteRef.current.pageId !== null;
+  const shouldAnimateDirectPageEntry = shouldMountPageDirectOnLoad && initialAnimationsEnabled;
   const initialDirectMountPageId = initialTargetRouteRef.current?.pageId ?? null;
   const initialSelectedIndex = (() => {
     const targetPageId = initialTargetRouteRef.current?.pageId ?? null;
@@ -139,23 +174,22 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
   })();
   const [selectedIndex, setSelectedIndex] = useState(initialSelectedIndex);
   const shouldMountPageDirectOnLoadRef = useRef(
-    initialTargetRouteRef.current.pageId !== null
+    shouldMountPageDirectOnLoad
   );
   const shouldSkipBlockingPreloadRef = useRef(
-    initialTargetRouteRef.current.pageId !== null
+    shouldMountPageDirectOnLoad
   );
   const [appState, setAppState] = useState<AppState>(
-    shouldMountPageDirectOnLoadRef.current && initialTargetRouteRef.current?.pageId
+    shouldAnimateDirectPageEntry
       ? 'entering-page'
+      : shouldMountPageDirectOnLoadRef.current && initialTargetRouteRef.current?.pageId
+        ? 'page-active'
       : shouldSkipBlockingPreloadRef.current
         ? 'idle'
         : 'preloading'
   );
-  const [animationsEnabled, setAnimationsEnabled] = useState(() => {
-    if (typeof window === 'undefined') return true;
-    const stored = localStorage.getItem('animationsEnabled');
-    return stored !== null ? stored === 'true' : !prefersReducedMotion();
-  });
+  const [animationsEnabled, setAnimationsEnabled] = useState(initialAnimationsEnabled);
+  const [preferencesReady, setPreferencesReady] = useState(typeof window !== 'undefined');
   const [clipPath, setClipPath] = useState('polygon(2% 100%, 99% 0%, 100% 0%, 100% 100%)');
   const [unsupported, setUnsupported] = useState(false);
   const [displayIndex, setDisplayIndex] = useState(initialSelectedIndex);
@@ -166,9 +200,9 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
   const [hintsPage, setHintsPage] = useState<PageId>(
     shouldMountPageDirectOnLoadRef.current ? initialDirectMountPageId : null
   );
-  const [cursorStyle, setCursorStyle] = useState<CursorStyle>('metaphor');
-  const [bgInverted, setBgInverted] = useState(false);
-  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [cursorStyle, setCursorStyle] = useState<CursorStyle>(initialClientPreferencesRef.current.cursorStyle);
+  const [bgInverted, setBgInverted] = useState(initialClientPreferencesRef.current.bgInverted);
+  const [soundEnabled, setSoundEnabled] = useState(initialClientPreferencesRef.current.soundEnabled);
   const [supportsHoverPointer, setSupportsHoverPointer] = useState(false);
   const [splashMeasureKey, setSplashMeasureKey] = useState(0);
   const [hintsMode, setHintsMode] = useState<'menu' | 'page'>(
@@ -195,8 +229,10 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
   const lastScrollAt = useRef(0);
   const lastKeyNavAt = useRef(0);
   const appStateRef = useRef<AppState>(
-    shouldMountPageDirectOnLoadRef.current && initialTargetRouteRef.current?.pageId
+    shouldAnimateDirectPageEntry
       ? 'entering-page'
+      : shouldMountPageDirectOnLoadRef.current && initialTargetRouteRef.current?.pageId
+        ? 'page-active'
       : shouldSkipBlockingPreloadRef.current
         ? 'idle'
         : 'preloading'
@@ -205,8 +241,10 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
     shouldMountPageDirectOnLoadRef.current ? initialDirectMountPageId : null
   );
   const transitionPhaseRef = useRef<TransitionPhase>(
-    shouldMountPageDirectOnLoadRef.current && initialTargetRouteRef.current?.pageId
+    shouldAnimateDirectPageEntry
       ? 'entering-page'
+      : shouldMountPageDirectOnLoadRef.current && initialTargetRouteRef.current?.pageId
+        ? 'page-active'
       : 'menu'
   );
   const currentLocationPathRef = useRef(
@@ -225,19 +263,20 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
   const soundWarmupStartedRef = useRef(false);
   const soundWarmupTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const soundWarmupIdleCallbackRef = useRef<number | null>(null);
-  const touchEnterDelayRef = useRef<gsap.core.Tween | null>(null);
   const menuReEntryDelayRef = useRef<gsap.core.Tween | null>(null);
   const hoverSyncRafRef = useRef<number | null>(null);
   const interceptedNavigationPathRef = useRef<string | null>(null);
   const interceptedNavigationResetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialDirectMountAppliedRef = useRef(false);
-  const initialDirectPageEntryInProgressRef = useRef(shouldMountPageDirectOnLoadRef.current);
+  const initialDirectPageEntryInProgressRef = useRef(shouldAnimateDirectPageEntry);
   const enterPageRef = useRef<(pageId: AppPageId, options?: PageTransitionOptions) => void>(() => {});
   const exitPageRef = useRef<(options?: PageTransitionOptions) => void>(() => {});
   const pageNavigationRef = useRef<PageNavigationHandler | null>(null);
   const [inputMode, setInputMode] = useState<'keyboard' | 'mouse' | 'touch'>('mouse');
   const deferredImageWarmupStartedRef = useRef(false);
   const lastTouchInputAt = useRef(0);
+  const lastPointerTypeRef = useRef<'mouse' | 'touch' | 'pen' | null>(null);
+  const lastPointerDownAtRef = useRef(0);
   const pageShellRevealRafRef = useRef<number | null>(null);
   const pageShellRevealNestedRafRef = useRef<number | null>(null);
   const pageShellRevealTokenRef = useRef(0);
@@ -402,7 +441,7 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
   }, []);
 
   const handleMenuItemMouseEnter = useCallback((index: number) => {
-    if (!supportsHoverPointer || Date.now() - lastTouchInputAt.current < 800) return;
+    if (!supportsHoverPointer || Date.now() - lastTouchInputAt.current < TOUCH_INPUT_GRACE_MS) return;
     if (appState === 'idle' && Date.now() - lastKeyNavAt.current > 100) {
       setInputMode('mouse');
       selectMenuIndex(index);
@@ -413,7 +452,7 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
     hoverSyncRafRef.current = null;
 
     if (!supportsHoverPointer || appStateRef.current !== 'idle' || activePageRef.current) return;
-    if (Date.now() - lastTouchInputAt.current < 800) return;
+    if (Date.now() - lastTouchInputAt.current < TOUCH_INPUT_GRACE_MS) return;
 
     const hoveredIndex = itemRefs.current.findIndex((itemRef, index) => (
       Boolean(itemRef?.matches(':hover') || itemWrapRefs.current[index]?.matches(':hover'))
@@ -474,11 +513,12 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
   useEffect(() => {
     const manifest = createAssetPreloadManifest(memorandumData);
     const preloadController = new AbortController();
+    const shouldReduceWork = shouldReduceBootWork();
     let cancelled = false;
 
     Promise.all([
       preloadImages(manifest.blockingImageSrcs, {
-        concurrency: 4,
+        concurrency: shouldReduceWork ? 1 : 2,
         signal: preloadController.signal,
       }),
       document.fonts.load('400 1em Cinzel'),
@@ -487,7 +527,9 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
     ]).then(() => {
       if (cancelled) return;
       if (appStateRef.current !== 'preloading') return;
-      requestAnimationFrame(() => requestAnimationFrame(() => setAppState('entry')));
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        setAppState(shouldMountPageDirectOnLoadRef.current ? 'entering-page' : 'entry');
+      }));
     });
 
     return () => {
@@ -498,6 +540,10 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
 
   useEffect(() => {
     if (appState === 'preloading' || deferredImageWarmupStartedRef.current) return;
+    if (shouldReduceBootWork()) {
+      deferredImageWarmupStartedRef.current = true;
+      return;
+    }
 
     const manifest = createAssetPreloadManifest(memorandumData);
     if (!manifest.deferredImageSrcs.length) {
@@ -516,6 +562,7 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
       if (preloadController.signal.aborted) return;
       void preloadImages(manifest.deferredImageSrcs, {
         concurrency: 2,
+        decode: false,
         signal: preloadController.signal,
       });
     };
@@ -539,15 +586,13 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
     };
   }, [appState, memorandumData]);
 
-  // Initialized to true; corrected from OS preference on mount.
-  // Safe to initialize this way since the menu is behind the loading screen.
-  useEffect(() => {
-    const stored = localStorage.getItem('animationsEnabled');
-    setAnimationsEnabled(stored !== null ? stored === 'true' : !prefersReducedMotion());
-    const storedCursor = localStorage.getItem('cursorStyle') as CursorStyle | null;
-    if (storedCursor === 'default' || storedCursor === 'metaphor') setCursorStyle(storedCursor);
-    setBgInverted(localStorage.getItem('bgInverted') === 'true');
-    setSoundEnabled(localStorage.getItem('soundEnabled') !== 'false');
+  useLayoutEffect(() => {
+    const preferences = readClientPreferences();
+    setAnimationsEnabled(preferences.animationsEnabled);
+    setCursorStyle(preferences.cursorStyle);
+    setBgInverted(preferences.bgInverted);
+    setSoundEnabled(preferences.soundEnabled);
+    setPreferencesReady(true);
   }, []);
 
   useEffect(() => {
@@ -580,6 +625,7 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
 
   useLayoutEffect(() => {
     if (
+      !preferencesReady ||
       !shouldMountPageDirectOnLoadRef.current ||
       initialDirectMountAppliedRef.current ||
       !containerRef.current ||
@@ -589,19 +635,60 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
     }
 
     initialDirectMountAppliedRef.current = true;
-    setDirectPageInitialStates(containerRef.current);
     if (!animationsEnabled) {
       initialDirectPageEntryInProgressRef.current = false;
       appStateRef.current = 'page-active';
       transitionPhaseRef.current = 'page-active';
       gsap.set(containerRef.current.querySelector('[data-control-hints-fixed]'), { y: 0, opacity: 1 });
       setAppState('page-active');
+      return;
     }
+
+    setDirectPageInitialStates(containerRef.current);
     clearBootMode();
-  }, [appState, animationsEnabled]);
+  }, [appState, animationsEnabled, preferencesReady]);
 
   useLayoutEffect(() => {
-    if (appState !== 'entry' || !containerRef.current) return;
+    if (
+      !preferencesReady ||
+      !shouldMountPageDirectOnLoadRef.current ||
+      animationsEnabled ||
+      appState !== 'page-active' ||
+      !containerRef.current
+    ) {
+      return;
+    }
+
+    const pageShell = containerRef.current.querySelector('[data-page-shell]');
+    if (!pageShell) {
+      clearBootMode();
+      return;
+    }
+
+    const revealIfReady = () => {
+      if (pageShell.querySelector('section')) {
+        clearBootMode();
+        return true;
+      }
+
+      return false;
+    };
+
+    if (revealIfReady()) {
+      return;
+    }
+
+    const observer = new MutationObserver(() => {
+      if (!revealIfReady()) return;
+      observer.disconnect();
+    });
+
+    observer.observe(pageShell, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [appState, animationsEnabled, preferencesReady]);
+
+  useLayoutEffect(() => {
+    if (!preferencesReady || appState !== 'entry' || !containerRef.current) return;
 
     const initialRoute = resolveAppRoute(currentLocationPath, memorandumData);
     if (initialRoute.pageId) {
@@ -618,7 +705,7 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
 
     setEntryInitialStates(containerRef.current);
     clearBootMode();
-  }, [appState, animationsEnabled, currentLocationPath, memorandumData, selectMenuIndex]);
+  }, [appState, animationsEnabled, currentLocationPath, memorandumData, preferencesReady, selectMenuIndex]);
 
   // Start entry animation after initial states are applied.
   // activePage check guards against running when a page transition starts before cleanup.
@@ -714,13 +801,29 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
 
   useEffect(() => {
     const markTouchInput = () => {
-      lastTouchInputAt.current = Date.now();
+      const now = Date.now();
+      lastTouchInputAt.current = now;
+      lastPointerTypeRef.current = 'touch';
+      lastPointerDownAtRef.current = now;
       setInputMode('touch');
     };
 
     const onPointerDown = (event: PointerEvent) => {
       if (event.pointerType === 'touch') {
         markTouchInput();
+        return;
+      }
+
+      const now = Date.now();
+      if (event.pointerType === 'mouse' || event.pointerType === 'pen') {
+        lastPointerTypeRef.current = event.pointerType;
+        lastPointerDownAtRef.current = now;
+      } else {
+        lastPointerTypeRef.current = null;
+      }
+
+      if (event.pointerType === 'mouse' && supportsHoverPointer) {
+        setInputMode('mouse');
       }
     };
 
@@ -730,12 +833,12 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
       window.removeEventListener('touchstart', markTouchInput);
       window.removeEventListener('pointerdown', onPointerDown);
     };
-  }, []);
+  }, [supportsHoverPointer]);
 
   useEffect(() => {
     const onMove = () => {
       if (!supportsHoverPointer) return;
-      if (Date.now() - lastTouchInputAt.current < 800) return;
+      if (Date.now() - lastTouchInputAt.current < TOUCH_INPUT_GRACE_MS) return;
       if (Date.now() - lastKeyNavAt.current < 600) return;
       setInputMode('mouse');
     };
@@ -907,7 +1010,7 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
       const isEnter = e.key === 'Enter' || e.key === ' ';
       if (isEnter) {
         e.preventDefault();
-        enterPageRef.current(MENU_ITEMS[selectedIndexRef.current].id, { playSound: true });
+        enterPageRef.current(MENU_ITEMS[selectedIndexRef.current].id as AppPageId, { playSound: true });
         return;
       }
       if (!isNav) return;
@@ -934,7 +1037,6 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
       }
       cancelPendingPageShellReveal();
       menuReEntryDelayRef.current?.kill();
-      touchEnterDelayRef.current?.kill();
       pageTlRef.current?.kill();
     };
   }, [cancelPendingPageShellReveal]);
@@ -994,25 +1096,12 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
     }
 
     if (appState === 'idle' && !activePage && getCurrentPathname() !== '/') {
-      const currentPath = getCurrentPathname();
-      const currentRoute = resolveAppRoute(currentPath, memorandumData);
-
-      if (currentRoute.pageId) {
-        if (pendingLocationPageRef.current !== currentRoute.pathname) {
-          pendingLocationPageRef.current = currentRoute.pathname;
-        }
-        if (currentLocationPath !== currentRoute.pathname) {
-          setCurrentLocationPath(currentRoute.pathname);
-        }
-        return;
+      if (!pendingLocationPageRef.current) {
+        replacePathname('/');
       }
-
-      if (currentPath !== currentRoute.pathname) {
-        replacePathname(currentRoute.pathname);
-        return;
+      if (currentLocationPath !== '/') {
+        setCurrentLocationPath('/');
       }
-
-      replacePathname('/');
     }
   }, [appState, activePage, currentLocationPath, memorandumData]);
 
@@ -1058,6 +1147,15 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
 
       const destinationRoute = resolveAppRoute(destinationPath, memorandumData);
       if (!destinationRoute.pathname) return;
+
+      const shouldUseDirectPageLoad =
+        getCurrentPathname() === '/' &&
+        !activePageRef.current &&
+        destinationRoute.pageId !== null;
+
+      if (shouldUseDirectPageLoad) {
+        return;
+      }
 
       if (!navigateEvent.canIntercept || typeof navigateEvent.intercept !== 'function') return;
 
@@ -1274,11 +1372,15 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
     ) {
       return;
     }
+
     if (playSound) playSoundEffect('enter');
 
     const nextPath = buildPagePath(pageId);
     const resolvedPath = fromPopState
-      ? resolveAppRoute(getCurrentPathname(), memorandumData).pathname
+      ? resolveAppRoute(
+          pendingLocationPageRef.current ?? currentLocationPathRef.current,
+          memorandumData
+        ).pathname
       : nextPath;
 
     if (!fromPopState) {
@@ -1334,10 +1436,19 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
     ) {
       return;
     }
+    const pendingLocationPath = pendingLocationPageRef.current;
+    const shouldPreserveLocationPath = fromPopState || (
+      Boolean(pendingLocationPath) &&
+      resolveAppRoute(pendingLocationPath!, memorandumData).pageId !== currentActivePage
+    );
+
+    if (!shouldPreserveLocationPath) {
+      pendingLocationPageRef.current = null;
+    }
+
     appStateRef.current = animationsEnabled ? 'exiting-page' : 'idle';
     transitionPhaseRef.current = animationsEnabled ? 'exiting-page' : 'menu';
     if (playSound) playSoundEffect('exit');
-    const shouldPreserveLocationPath = fromPopState || Boolean(pendingLocationPageRef.current);
 
     if (!fromPopState) {
       pushPathname('/');
@@ -1427,6 +1538,79 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
         ? 'exiting-page'
         : 'page-active';
   const initialEntryDelaySeconds = 0;
+  const activePageContent = activePage === 'about' ? (
+    <AboutPage
+      isActive={appState === 'page-active'}
+      animationsEnabled={animationsEnabled}
+      initialEntryDelaySeconds={initialEntryDelaySeconds}
+      pageState={pageAnimationState}
+      registerNavigation={setPageNavigation}
+      playSoundEffect={playSoundEffect}
+      onMemorandumNavigate={() => navigateToPage('memorandum', { playSound: false })}
+      onEntryAnimationComplete={directPageEntryCompleteHandler}
+    />
+  ) : activePage === 'skills' ? (
+    <SkillsPage
+      isActive={appState === 'page-active'}
+      animationsEnabled={animationsEnabled}
+      initialEntryDelaySeconds={initialEntryDelaySeconds}
+      pageState={pageAnimationState}
+      registerNavigation={setPageNavigation}
+      onEntryAnimationComplete={directPageEntryCompleteHandler}
+    />
+  ) : activePage === 'experience' ? (
+    <ExperiencePage
+      isActive={appState === 'page-active'}
+      animationsEnabled={animationsEnabled}
+      initialEntryDelaySeconds={initialEntryDelaySeconds}
+      pageState={pageAnimationState}
+      registerNavigation={setPageNavigation}
+      onEntryAnimationComplete={directPageEntryCompleteHandler}
+    />
+  ) : activePage === 'contact' ? (
+    <ContactPage
+      isActive={appState === 'page-active'}
+      animationsEnabled={animationsEnabled}
+      initialEntryDelaySeconds={initialEntryDelaySeconds}
+      pageState={pageAnimationState}
+      registerNavigation={setPageNavigation}
+      playSoundEffect={playSoundEffect}
+      onEntryAnimationComplete={directPageEntryCompleteHandler}
+    />
+  ) : activePage === 'memorandum' ? (
+    <MemorandumPage
+      memorandumData={memorandumData}
+      isActive={appState === 'page-active'}
+      animationsEnabled={animationsEnabled}
+      initialEntryDelaySeconds={initialEntryDelaySeconds}
+      pageState={pageAnimationState}
+      registerNavigation={setPageNavigation}
+      requestPageExit={exitPage}
+      readEntryIds={readMemorandumEntryIds}
+      onEntryRead={handleMemorandumEntryRead}
+      locationPath={currentLocationPath}
+      onPathChange={handleMemorandumPathChange}
+      playSoundEffect={playSoundEffect}
+      onEntryAnimationComplete={directPageEntryCompleteHandler}
+    />
+  ) : activePage === 'system' ? (
+    <SystemPage
+      isActive={appState === 'page-active'}
+      initialEntryDelaySeconds={initialEntryDelaySeconds}
+      pageState={pageAnimationState}
+      cursorStyle={cursorStyle}
+      onCursorChange={handleCursorChange}
+      bgInverted={bgInverted}
+      onBgInvertedChange={handleBgInvertedChange}
+      animationsEnabled={animationsEnabled}
+      onAnimationsToggle={handleAnimationsToggle}
+      soundEnabled={soundEnabled}
+      onSoundToggle={handleSoundToggle}
+      registerNavigation={setPageNavigation}
+      playSoundEffect={playSoundEffect}
+      onEntryAnimationComplete={directPageEntryCompleteHandler}
+    />
+  ) : null;
 
   return (
     <>
@@ -1439,31 +1623,27 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
       onClick={(e) => {
         if (appState !== 'idle') return;
         if ((e.target as Element).closest('[data-control-hints-fixed]')) return;
+        const tappedMenuItemTarget = (e.target as Element).closest<HTMLElement>('[data-menu-item-target]');
         const tappedMenuItem = (e.target as Element).closest<HTMLElement>('[data-menu-item]');
-        const tappedPageId = tappedMenuItem?.dataset.menuItem;
+        const tappedPageId = tappedMenuItemTarget?.dataset.menuItemTarget ?? tappedMenuItem?.dataset.menuItem;
+        const intendedPageId = tappedPageId && APP_PAGE_IDS.includes(tappedPageId as AppPageId)
+          ? tappedPageId as AppPageId
+          : null;
+        const isTouchActivation = lastPointerTypeRef.current === 'touch' ||
+          Date.now() - lastTouchInputAt.current < TOUCH_INPUT_GRACE_MS;
 
-        if (inputMode === 'touch') {
-          if (!tappedPageId || !APP_PAGE_IDS.includes(tappedPageId as AppPageId)) return;
-          const tappedIndex = MENU_ITEMS.findIndex((item) => item.id === tappedPageId);
-          if (tappedIndex !== -1) {
-            selectMenuIndex(tappedIndex);
-          }
-          touchEnterDelayRef.current?.kill();
-          touchEnterDelayRef.current = gsap.delayedCall(0.1, () => {
-            touchEnterDelayRef.current = null;
-            enterPageRef.current(tappedPageId as AppPageId, { playSound: true });
-          });
+        if (isTouchActivation && !intendedPageId) {
           return;
         }
 
-        touchEnterDelayRef.current?.kill();
-        touchEnterDelayRef.current = null;
-        enterPage(
-          tappedPageId && APP_PAGE_IDS.includes(tappedPageId as AppPageId)
-            ? tappedPageId as AppPageId
-            : MENU_ITEMS[selectedIndex].id,
-          { playSound: true }
-        );
+        if (isTouchActivation && intendedPageId) {
+          const tappedIndex = MENU_ITEMS.findIndex((item) => item.id === intendedPageId);
+          if (tappedIndex !== -1) {
+            selectMenuIndex(tappedIndex, { playSound: false });
+          }
+        }
+
+        enterPage(intendedPageId ?? MENU_ITEMS[selectedIndex].id as AppPageId, { playSound: true });
       }}
     >
       <BackgroundLayers />
@@ -1505,6 +1685,7 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
               return (
                 <div
                   key={item.id}
+                  data-menu-item-target={item.id}
                   data-menu-item-wrap
                   ref={(el) => { itemWrapRefs.current[i] = el; }}
                   style={{
@@ -1601,7 +1782,7 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
           }}
           onConfirm={() => {
             if (hintsMode === 'menu') {
-              enterPage(MENU_ITEMS[selectedIndex].id, { playSound: true });
+              enterPage(MENU_ITEMS[selectedIndex].id as AppPageId, { playSound: true });
               return;
             }
 
@@ -1631,85 +1812,8 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
               ? 'opacity'
               : undefined,
           }}
-        >
-          {activePage === 'about' && (
-            <AboutPage
-              isActive={appState === 'page-active'}
-              animationsEnabled={animationsEnabled}
-              initialEntryDelaySeconds={initialEntryDelaySeconds}
-              pageState={pageAnimationState}
-              registerNavigation={setPageNavigation}
-              playSoundEffect={playSoundEffect}
-              onMemorandumNavigate={() => navigateToPage('memorandum', { playSound: false })}
-              onEntryAnimationComplete={directPageEntryCompleteHandler}
-            />
-          )}
-          {activePage === 'skills' && (
-            <SkillsPage
-              isActive={appState === 'page-active'}
-              animationsEnabled={animationsEnabled}
-              initialEntryDelaySeconds={initialEntryDelaySeconds}
-              pageState={pageAnimationState}
-              registerNavigation={setPageNavigation}
-              onEntryAnimationComplete={directPageEntryCompleteHandler}
-            />
-          )}
-          {activePage === 'experience' && (
-            <ExperiencePage
-              isActive={appState === 'page-active'}
-              animationsEnabled={animationsEnabled}
-              initialEntryDelaySeconds={initialEntryDelaySeconds}
-              pageState={pageAnimationState}
-              registerNavigation={setPageNavigation}
-              onEntryAnimationComplete={directPageEntryCompleteHandler}
-            />
-          )}
-          {activePage === 'contact' && (
-            <ContactPage
-              isActive={appState === 'page-active'}
-              animationsEnabled={animationsEnabled}
-              initialEntryDelaySeconds={initialEntryDelaySeconds}
-              pageState={pageAnimationState}
-              registerNavigation={setPageNavigation}
-              playSoundEffect={playSoundEffect}
-              onEntryAnimationComplete={directPageEntryCompleteHandler}
-            />
-          )}
-          {activePage === 'memorandum' && (
-            <MemorandumPage
-              memorandumData={memorandumData}
-              isActive={appState === 'page-active'}
-              animationsEnabled={animationsEnabled}
-              initialEntryDelaySeconds={initialEntryDelaySeconds}
-              pageState={pageAnimationState}
-              registerNavigation={setPageNavigation}
-              requestPageExit={exitPage}
-              readEntryIds={readMemorandumEntryIds}
-              onEntryRead={handleMemorandumEntryRead}
-              locationPath={currentLocationPath}
-              onPathChange={handleMemorandumPathChange}
-              playSoundEffect={playSoundEffect}
-              onEntryAnimationComplete={directPageEntryCompleteHandler}
-            />
-          )}
-          {activePage === 'system' && (
-            <SystemPage
-              isActive={appState === 'page-active'}
-              initialEntryDelaySeconds={initialEntryDelaySeconds}
-              pageState={pageAnimationState}
-              cursorStyle={cursorStyle}
-              onCursorChange={handleCursorChange}
-              bgInverted={bgInverted}
-              onBgInvertedChange={handleBgInvertedChange}
-              animationsEnabled={animationsEnabled}
-              onAnimationsToggle={handleAnimationsToggle}
-              soundEnabled={soundEnabled}
-              onSoundToggle={handleSoundToggle}
-              registerNavigation={setPageNavigation}
-              playSoundEffect={playSoundEffect}
-              onEntryAnimationComplete={directPageEntryCompleteHandler}
-            />
-          )}
+      >
+          {activePageContent}
         </div>
       )}
     </div>

@@ -50,7 +50,7 @@ const CONTACTS: ContactMethod[] = [
     descriptor: 'Open Source',
     href: 'https://github.com/RyanZCode',
     iconAlt: 'GitHub icon',
-    iconSrc: '/assets/contact-icons/github-logo.png',
+    iconSrc: '/assets/contact-icons/github-logo.webp',
     iconScale: 1.1,
     iconOffsetX: '2%',
     iconOffsetY: '-1%',
@@ -61,7 +61,7 @@ const CONTACTS: ContactMethod[] = [
     descriptor: 'Professional',
     href: 'https://www.linkedin.com/in/ryanzhou154/',
     iconAlt: 'LinkedIn icon',
-    iconSrc: '/assets/contact-icons/linkedin-logo.png',
+    iconSrc: '/assets/contact-icons/linkedin-logo.webp',
     iconScale: 1,
     iconOffsetX: '1%',
     iconOffsetY: '0%',
@@ -72,7 +72,7 @@ const CONTACTS: ContactMethod[] = [
     descriptor: 'Direct',
     href: 'mailto:r97zhou@uwaterloo.ca',
     iconAlt: 'Email icon',
-    iconSrc: '/assets/contact-icons/email-symbol.jpg',
+    iconSrc: '/assets/contact-icons/email-symbol.webp',
     iconScale: 1.2,
     iconOffsetX: '1%',
     iconOffsetY: '0%',
@@ -83,7 +83,7 @@ const CONTACTS: ContactMethod[] = [
     descriptor: 'For Fun',
     href: 'https://leetcode.com/u/RyanZCode/',
     iconAlt: 'LeetCode icon',
-    iconSrc: '/assets/contact-icons/leetcode-logo.png',
+    iconSrc: '/assets/contact-icons/leetcode-logo.webp',
     iconScale: 1.2,
     iconOffsetX: '-0.5%',
     iconOffsetY: '5%',
@@ -492,6 +492,7 @@ export default function ContactPage({
           zIndex: 4,
           pointerEvents: 'none',
           opacity: 0,
+          visibility: 'hidden',
         }}
       />
 
@@ -763,7 +764,7 @@ export default function ContactPage({
               }}
             >
               <img
-                    src="/assets/coby-stare.jpg"
+                    src="/assets/coby-stare.webp"
                 alt="Coby staring at the camera"
                 draggable={false}
                 style={{
