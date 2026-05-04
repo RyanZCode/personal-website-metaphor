@@ -5,6 +5,7 @@ import {
   createExperienceEntryTimeline,
   createExperienceExitTimeline,
 } from '../../lib/animations';
+import { readViewportProfile, useViewportProfile } from '../../lib/deviceProfile';
 import type { RegisterPageNavigation } from '../../lib/pageNavigation';
 import PageBackground from '../background/PageBackground';
 import ExperienceRipples from '../menu/splashEffects/ExperienceRipples';
@@ -95,12 +96,29 @@ const JOBS: Job[] = [
 
 const accent = 'hsl(215, 72%, 42%)';
 
-const LEFT_TOP      = 65;
-const LEFT_BOT      = 35;
-const RIGHT_BOT     = 73;
 const EXPERIENCE_SCROLL_STEP = 132;
-// Right border line starts at the right edge of the screen at 9/10ths up (y=10%)
-const RIGHT_START_Y = 10;
+const EXPERIENCE_BOTTOM_SCROLL_SPACE_REM = 5.5;
+
+interface ExperienceGeometry {
+  leftTop: number;
+  leftBottom: number;
+  rightBottom: number;
+  rightStartY: number;
+}
+
+const DEFAULT_GEOMETRY: ExperienceGeometry = {
+  leftTop: 65,
+  leftBottom: 35,
+  rightBottom: 73,
+  rightStartY: 10,
+};
+
+const COMPACT_GEOMETRY: ExperienceGeometry = {
+  leftTop: 22,
+  leftBottom: -8,
+  rightBottom: 73,
+  rightStartY: 10,
+};
 
 // Portrait is 26vw wide starting at paddingLeft 6vw → right edge 32vw, gap 3vw, content at 35vw.
 // The panel is a pentagon: top edge from LEFT_TOP% to 100%, then down the right edge to
@@ -159,6 +177,7 @@ function buildRowLayouts(
   scrollOffset: number,
   viewportWidth: number,
   viewportHeight: number,
+  geometry: ExperienceGeometry,
 ): RowLayout[] {
   if (viewportWidth <= 0 || viewportHeight <= 0) {
     return JOBS.map(() => createDefaultRowLayout());
@@ -166,8 +185,7 @@ function buildRowLayouts(
 
   const rowPaddingLeftPx = (ROW_PADDING_L_VW / 100) * viewportWidth;
   const logoOverhangPx = LOGO_OVERHANG_REM * measurement.rootFontSize;
-  const diagonalScrollX = scrollOffset * ((LEFT_TOP - LEFT_BOT) / 100) * (viewportWidth / viewportHeight);
-  const contentLeft = measurement.contentLeft + diagonalScrollX;
+  const contentLeft = measurement.contentLeft;
   const contentRight = contentLeft + measurement.contentWidth;
 
   return measurement.rows.map((row) => {
@@ -177,51 +195,63 @@ function buildRowLayouts(
 
     const rowTopY = measurement.contentTop + row.offsetTop - scrollOffset;
     const rowBottomY = rowTopY + row.height;
-    const rowLeftBorderPx = Math.max(
+    const rowTopLeftBorderPx = Math.max(
       contentLeft,
-      getLeftStripX(rowTopY, viewportWidth, viewportHeight)
+      getLeftStripX(rowTopY, viewportWidth, viewportHeight, geometry)
     );
-    const rowRightBorderPx = Math.min(
+    const rowTopRightBorderPx = Math.min(
       contentRight,
-      getRightStripX(rowTopY, viewportWidth, viewportHeight)
-    );
-    const rowLeftPx = Math.max(
-      rowLeftBorderPx,
-      rowLeftBorderPx + logoOverhangPx - rowPaddingLeftPx
+      getRightStripX(rowTopY, viewportWidth, viewportHeight, geometry)
     );
     const bottomBorderLeftPx = Math.max(
       contentLeft,
-      getLeftStripX(rowBottomY, viewportWidth, viewportHeight)
+      getLeftStripX(rowBottomY, viewportWidth, viewportHeight, geometry)
     );
     const bottomBorderRightPx = Math.min(
       contentRight,
-      getRightStripX(rowBottomY, viewportWidth, viewportHeight)
+      getRightStripX(rowBottomY, viewportWidth, viewportHeight, geometry)
+    );
+    const rowLeftBorderPx = Math.max(rowTopLeftBorderPx, bottomBorderLeftPx);
+    const rowRightBorderPx = Math.min(rowTopRightBorderPx, bottomBorderRightPx);
+    const rowLeftPx = Math.max(
+      rowLeftBorderPx,
+      rowLeftBorderPx + logoOverhangPx - rowPaddingLeftPx
     );
 
     return {
       marginLeft: `${Math.max(0, rowLeftBorderPx - contentLeft)}px`,
       width: `${Math.max(0, rowRightBorderPx - rowLeftBorderPx)}px`,
-      bottomBorderInsetLeft: `${bottomBorderLeftPx - rowLeftBorderPx}px`,
-      bottomBorderInsetRight: `${rowRightBorderPx - bottomBorderRightPx}px`,
+      bottomBorderInsetLeft: `${Math.max(0, bottomBorderLeftPx - rowLeftBorderPx)}px`,
+      bottomBorderInsetRight: `${Math.max(0, rowRightBorderPx - bottomBorderRightPx)}px`,
       contentInsetLeft: `${Math.max(0, rowLeftPx - rowLeftBorderPx)}px`,
     };
   });
 }
 
-function getLeftStripX(yPx: number, viewportWidth: number, viewportHeight: number): number {
+function getLeftStripX(
+  yPx: number,
+  viewportWidth: number,
+  viewportHeight: number,
+  geometry: ExperienceGeometry,
+): number {
   const progress = yPx / viewportHeight;
-  return ((LEFT_TOP + (LEFT_BOT - LEFT_TOP) * progress) / 100) * viewportWidth;
+  return ((geometry.leftTop + (geometry.leftBottom - geometry.leftTop) * progress) / 100) * viewportWidth;
 }
 
-function getRightStripX(yPx: number, viewportWidth: number, viewportHeight: number): number {
-  const rightStartPx = (RIGHT_START_Y / 100) * viewportHeight;
+function getRightStripX(
+  yPx: number,
+  viewportWidth: number,
+  viewportHeight: number,
+  geometry: ExperienceGeometry,
+): number {
+  const rightStartPx = (geometry.rightStartY / 100) * viewportHeight;
 
   if (yPx <= rightStartPx) {
     return viewportWidth;
   }
 
   const progress = (yPx - rightStartPx) / (viewportHeight - rightStartPx);
-  return viewportWidth + ((((RIGHT_BOT / 100) * viewportWidth) - viewportWidth) * progress);
+  return viewportWidth + ((((geometry.rightBottom / 100) * viewportWidth) - viewportWidth) * progress);
 }
 
 function getElementTranslate(target: Element | null): { x: number; y: number } {
@@ -269,6 +299,9 @@ export default function ExperiencePage({
   registerNavigation,
   onEntryAnimationComplete,
 }: ExperiencePageProps) {
+  const viewportProfile = useViewportProfile();
+  const isCompact = viewportProfile.layoutMode === 'compact';
+  const geometry = isCompact ? COMPACT_GEOMETRY : DEFAULT_GEOMETRY;
   const containerRef = useRef<HTMLElement | null>(null);
   const entryTlRef = useRef<gsap.core.Timeline | null>(null);
   const entryDelayRef = useRef<gsap.core.Tween | null>(null);
@@ -328,6 +361,12 @@ export default function ExperiencePage({
     if (!animationsEnabled) {
       return;
     }
+
+    const currentLayoutMode = readViewportProfile().layoutMode;
+    containerRef.current.setAttribute(
+      'data-experience-compact',
+      currentLayoutMode === 'compact' ? 'true' : 'false',
+    );
 
     const shouldDelayDirectMountPlayback = pageState === 'page-active';
     let rafId: number | null = null;
@@ -444,8 +483,8 @@ export default function ExperiencePage({
     };
   }, []);
 
-  useEffect(() => {
-    const measureRowLayouts = rafThrottle(() => {
+  useLayoutEffect(() => {
+    const measureRowLayoutsNow = () => {
       const viewport = viewportRef.current;
       const content = contentRef.current;
       if (!viewport || !content) {
@@ -474,19 +513,21 @@ export default function ExperiencePage({
         scrollOffsetRef.current,
         window.innerWidth,
         window.innerHeight,
+        geometry,
       );
       setRowLayouts((currentLayouts) => {
         return haveRowLayoutsChanged(nextLayouts, currentLayouts) ? nextLayouts : currentLayouts;
       });
-    });
+    };
+    const measureRowLayouts = rafThrottle(measureRowLayoutsNow);
 
     measureRowLayoutsRef.current = measureRowLayouts;
 
-    measureRowLayouts();
+    measureRowLayoutsNow();
 
     const container = containerRef.current;
     const handleEntryComplete = () => {
-      measureRowLayouts();
+      measureRowLayoutsNow();
     };
     container?.addEventListener('experience-entry-complete', handleEntryComplete);
 
@@ -514,7 +555,7 @@ export default function ExperiencePage({
       resizeObserver?.disconnect();
       window.removeEventListener('resize', measureRowLayouts);
     };
-  }, []);
+  }, [geometry]);
 
   useEffect(() => {
     measureRowLayoutsRef.current?.();
@@ -535,11 +576,12 @@ export default function ExperiencePage({
       scrollOffset,
       viewportSize.width,
       viewportSize.height,
+      geometry,
     );
     setRowLayouts((currentLayouts) => (
       haveRowLayoutsChanged(nextLayouts, currentLayouts) ? nextLayouts : currentLayouts
     ));
-  }, [scrollOffset, viewportSize.height, viewportSize.width]);
+  }, [geometry, scrollOffset, viewportSize.height, viewportSize.width]);
 
   useLayoutEffect(() => {
     if (!isActive) {
@@ -588,19 +630,21 @@ export default function ExperiencePage({
     touchScrollRef.current = null;
   }, []);
 
-  const diagonalScrollX = scrollOffset * ((LEFT_TOP - LEFT_BOT) / 100) * (viewportSize.width / viewportSize.height);
+  const bottomScrollSpace = maxScrollOffset > 1 ? `${EXPERIENCE_BOTTOM_SCROLL_SPACE_REM}rem` : '0px';
   const scrollbarThumbFraction = Math.min(
     1,
     Math.max(0.18, scrollMetrics.viewportHeight / Math.max(scrollMetrics.contentHeight, 1))
   );
   const scrollbarProgress = maxScrollOffset <= 1 ? 0 : scrollOffset / maxScrollOffset;
   const trackAngleDeg = Math.atan2(
-    ((100 - RIGHT_START_Y) / 100) * viewportSize.height,
-    ((RIGHT_BOT - 100) / 100) * viewportSize.width
+    ((100 - geometry.rightStartY) / 100) * viewportSize.height,
+    ((geometry.rightBottom - 100) / 100) * viewportSize.width
   ) * 180 / Math.PI;
   const trackLengthPx = Math.min(scrollMetrics.viewportHeight * 0.76, scrollMetrics.viewportWidth * 0.7);
   const trackTopPx = scrollMetrics.viewportHeight * 0.16;
-  const trackRightPx = Math.max(18, scrollMetrics.viewportWidth * 0.075);
+  const trackRightPx = isCompact
+    ? Math.max(8, scrollMetrics.viewportWidth * 0.025)
+    : Math.max(18, scrollMetrics.viewportWidth * 0.075);
   const thumbWidthPx = trackLengthPx * scrollbarThumbFraction;
   const thumbTravelPx = Math.max(0, trackLengthPx - thumbWidthPx);
   const thumbOffsetPx = thumbTravelPx * scrollbarProgress;
@@ -608,8 +652,9 @@ export default function ExperiencePage({
   return (
     <section
       ref={containerRef}
-      aria-hidden={!isActive}
+      inert={!isActive}
       data-experience-page
+      data-experience-compact={isCompact ? 'true' : 'false'}
       style={{
         position: 'absolute',
         inset: 0,
@@ -636,7 +681,7 @@ export default function ExperiencePage({
           letterSpacing: '-0.03em',
           lineHeight: 1,
           color: 'var(--text-primary)',
-          opacity: 0.75,
+            opacity: 1,
           pointerEvents: 'none',
           userSelect: 'none',
           zIndex: 0,
@@ -646,55 +691,57 @@ export default function ExperiencePage({
         Experience
       </div>
 
-      <div
-        data-experience-geo-lines
-        aria-hidden="true"
-        style={{
-          position: 'absolute',
-          inset: 0,
-          zIndex: 2,
-          pointerEvents: 'none',
-        }}
-      >
+      {!isCompact ? (
         <div
-          style={{
-            position: 'absolute',
-            top: 'calc(100% - 8.5vh)',
-            left: 0,
-            width: '50%',
-            height: '3px',
-            background: 'linear-gradient(to right, rgba(240,232,236,0.42) 0%, rgba(240,232,236,0.42) 78%, rgba(240,232,236,0) 100%)',
-          }}
-        />
-
-        <svg
+          data-experience-geo-lines
+          aria-hidden="true"
           style={{
             position: 'absolute',
             inset: 0,
-            width: '100%',
-            height: '100%',
-            overflow: 'visible',
+            zIndex: 2,
+            pointerEvents: 'none',
           }}
         >
-          <defs>
-            <linearGradient id="exp-panel-left-line" gradientUnits="userSpaceOnUse" x1="31%" y1="100%" x2="46%" y2="48%">
-              <stop offset="0%" stopColor="#f0e8ec" stopOpacity="0.34" />
-              <stop offset="72%" stopColor="#f0e8ec" stopOpacity="0.18" />
-              <stop offset="100%" stopColor="#f0e8ec" stopOpacity="0" />
-            </linearGradient>
-          </defs>
-
-          <line
-            x1="31%"
-            y1="100%"
-            x2="47%"
-            y2="48%"
-            stroke="url(#exp-panel-left-line)"
-            strokeWidth="3"
+          <div
+            style={{
+              position: 'absolute',
+              top: 'calc(100% - 8.5vh)',
+              left: 0,
+              width: '50%',
+              height: '3px',
+              background: 'linear-gradient(to right, rgba(240,232,236,0.42) 0%, rgba(240,232,236,0.42) 78%, rgba(240,232,236,0) 100%)',
+            }}
           />
-        </svg>
 
-      </div>
+          <svg
+            style={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              overflow: 'visible',
+            }}
+          >
+            <defs>
+              <linearGradient id="exp-panel-left-line" gradientUnits="userSpaceOnUse" x1="31%" y1="100%" x2="46%" y2="48%">
+                <stop offset="0%" stopColor="#f0e8ec" stopOpacity="0.34" />
+                <stop offset="72%" stopColor="#f0e8ec" stopOpacity="0.18" />
+                <stop offset="100%" stopColor="#f0e8ec" stopOpacity="0" />
+              </linearGradient>
+            </defs>
+
+            <line
+              x1="31%"
+              y1="100%"
+              x2="47%"
+              y2="48%"
+              stroke="url(#exp-panel-left-line)"
+              strokeWidth="3"
+            />
+          </svg>
+
+        </div>
+      ) : null}
 
       <div
         data-experience-portrait
@@ -719,21 +766,23 @@ export default function ExperiencePage({
             flexShrink: 0,
           }}
         >
-          <div
-            aria-hidden="true"
-            style={{
-              position: 'absolute',
-              top: '50%',
-              left: '50%',
-              width: '120%',
-              height: '120%',
-              transform: 'translate(-50%, -50%)',
-              borderRadius: '50%',
-              border: '3px solid rgba(240,232,236,0.34)',
-              clipPath: 'inset(0 0 52% 0)',
-              pointerEvents: 'none',
-            }}
-          />
+          {!isCompact ? (
+            <div
+              aria-hidden="true"
+              style={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                width: '120%',
+                height: '120%',
+                transform: 'translate(-50%, -50%)',
+                borderRadius: '50%',
+                border: '3px solid rgba(240,232,236,0.34)',
+                clipPath: 'inset(0 0 52% 0)',
+                pointerEvents: 'none',
+              }}
+            />
+          ) : null}
           <div
             style={{
               position: 'absolute',
@@ -786,14 +835,15 @@ export default function ExperiencePage({
           pointerEvents: 'none',
         }}
       >
-        <div
-          aria-hidden="true"
-          style={{
-            position: 'absolute',
-            inset: 0,
+      <div
+        data-experience-lines
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          inset: 0,
             background: 'linear-gradient(140deg, rgba(25, 9, 13, 0.92), rgba(7, 4, 7, 0.86))',
             boxShadow: '0 0 0 1px rgba(205, 35, 45, 0.18), 0 2rem 5rem rgba(0, 0, 0, 0.45)',
-            clipPath: `polygon(${LEFT_TOP}% 0%, 100% 0%, 100% ${RIGHT_START_Y}%, ${RIGHT_BOT}% 100%, ${LEFT_BOT}% 100%)`,
+            clipPath: `polygon(${geometry.leftTop}% 0%, 100% 0%, 100% ${geometry.rightStartY}%, ${geometry.rightBottom}% 100%, ${geometry.leftBottom}% 100%)`,
             pointerEvents: 'none',
           }}
         />
@@ -810,11 +860,12 @@ export default function ExperiencePage({
             overflow: 'visible',
           }}
         >
-          <line x1={`${LEFT_TOP}%`} y1="0%" x2={`${LEFT_BOT}%`} y2="100%" stroke="rgba(240,232,236,0.55)" strokeWidth="3" />
-          <line x1="100%" y1={`${RIGHT_START_Y}%`} x2={`${RIGHT_BOT}%`} y2="100%" stroke="rgba(240,232,236,0.55)" strokeWidth="3" />
+          <line x1={`${geometry.leftTop}%`} y1="0%" x2={`${geometry.leftBottom}%`} y2="100%" stroke="rgba(240,232,236,0.55)" strokeWidth="3" />
+          <line x1="100%" y1={`${geometry.rightStartY}%`} x2={`${geometry.rightBottom}%`} y2="100%" stroke="rgba(240,232,236,0.55)" strokeWidth="3" />
         </svg>
 
         <div
+          data-experience-layout
           style={{
             position: 'relative',
             zIndex: 3,
@@ -904,7 +955,9 @@ export default function ExperiencePage({
                   display: 'flex',
                   flexDirection: 'column',
                   minWidth: 0,
-                  transform: maxScrollOffset > 1 ? `translate(${diagonalScrollX}px, ${-scrollOffset}px)` : 'translate(0px, 0px)',
+                  paddingBottom: bottomScrollSpace,
+                  boxSizing: 'border-box',
+                  transform: maxScrollOffset > 1 ? `translateY(${-scrollOffset}px)` : 'translateY(0px)',
                   willChange: maxScrollOffset > 1 ? 'transform' : 'auto',
                 }}
               >
@@ -980,14 +1033,22 @@ export default function ExperiencePage({
                         </div>
 
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '1rem' }}>
+                          <div
+                            style={{
+                              display: 'flex',
+                              flexDirection: isCompact ? 'column' : 'row',
+                              justifyContent: 'space-between',
+                              alignItems: isCompact ? 'stretch' : 'flex-start',
+                              gap: isCompact ? '0.45rem' : '1rem',
+                            }}
+                          >
                             <div style={{ minWidth: 0 }}>
                               <div
-                              style={{
-                                  fontSize: 'var(--font-fluid-md)',
-                                  fontWeight: 600,
-                                  letterSpacing: '0.04em',
-                                  color: COLORS.textPrimary,
+                                style={{
+                                   fontSize: 'var(--font-fluid-md)',
+                                   fontWeight: 600,
+                                   letterSpacing: '0.04em',
+                                   color: COLORS.textPrimary,
                                   marginBottom: '0.15rem',
                                   whiteSpace: 'normal',
                                   overflow: 'visible',
@@ -1011,8 +1072,10 @@ export default function ExperiencePage({
                             <div
                               style={{
                                 display: 'flex',
-                                flexDirection: 'column',
-                                alignItems: 'flex-end',
+                                flexDirection: isCompact ? 'row' : 'column',
+                                alignItems: isCompact ? 'center' : 'flex-end',
+                                justifyContent: isCompact ? 'space-between' : undefined,
+                                flexWrap: isCompact ? 'wrap' : 'nowrap',
                                 gap: '0.3rem',
                                 flexShrink: 0,
                               }}
@@ -1023,7 +1086,7 @@ export default function ExperiencePage({
                                   letterSpacing: '0.1em',
                                   color: COLORS.textPrimaryDim,
                                   textTransform: 'uppercase',
-                                  whiteSpace: 'nowrap',
+                                  whiteSpace: isCompact ? 'normal' : 'nowrap',
                                 }}
                               >
                                 {job.period}
@@ -1038,7 +1101,7 @@ export default function ExperiencePage({
                                   letterSpacing: '0.15em',
                                   textTransform: 'uppercase',
                                   color: COLORS.textPrimaryDim,
-                                  whiteSpace: 'nowrap',
+                                  whiteSpace: isCompact ? 'normal' : 'nowrap',
                                 }}
                               >
                                 {job.type}
@@ -1094,31 +1157,33 @@ export default function ExperiencePage({
         />
       </div>
 
-      <div
-        data-experience-ripples
-        style={{
-          position: 'absolute',
-          right: `${ripple.rightVw}vw`,
-          bottom: `${ripple.bottomVh}vh`,
-          width: `${ripple.sideVw}vw`,
-          height: `${ripple.sideVw}vw`,
-          transform: `rotate(${ripple.angleDeg}deg)`,
-          transformOrigin: 'center',
-          overflow: 'hidden',
-          zIndex: 1,
-          pointerEvents: 'none',
-        }}
-      >
+      {!isCompact ? (
         <div
-          data-experience-ripples-fade
+          data-experience-ripples
           style={{
-            width: '100%',
-            height: '100%',
+            position: 'absolute',
+            right: `${ripple.rightVw}vw`,
+            bottom: `${ripple.bottomVh}vh`,
+            width: `${ripple.sideVw}vw`,
+            height: `${ripple.sideVw}vw`,
+            transform: `rotate(${ripple.angleDeg}deg)`,
+            transformOrigin: 'center',
+            overflow: 'hidden',
+            zIndex: 1,
+            pointerEvents: 'none',
           }}
         >
-          <ExperienceRipples isActive={true} animationsEnabled={animationsEnabled} />
+          <div
+            data-experience-ripples-fade
+            style={{
+              width: '100%',
+              height: '100%',
+            }}
+          >
+            <ExperienceRipples isActive={true} animationsEnabled={animationsEnabled} />
+          </div>
         </div>
-      </div>
+      ) : null}
     </section>
   );
 }

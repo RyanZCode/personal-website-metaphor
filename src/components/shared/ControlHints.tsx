@@ -1,3 +1,4 @@
+import type { LayoutMode } from '../../lib/deviceProfile';
 import { COLORS } from '../../lib/constants';
 
 interface Props {
@@ -10,6 +11,8 @@ interface Props {
   onBack?: () => void;
   onShortcutClick?: (key: string) => void;
   onAnimationsToggle?: () => void;
+  layoutMode?: LayoutMode;
+  touchMode?: boolean;
 }
 
 interface HintChip {
@@ -18,6 +21,7 @@ interface HintChip {
   label: string;
   onClick?: () => void;
   hidden?: boolean;
+  variant?: 'default' | 'back';
 }
 
 const baseChipStyle: React.CSSProperties = {
@@ -55,38 +59,125 @@ const labelStyle: React.CSSProperties = {
   alignItems: 'center',
 };
 
-function Chip({ keys, label, onClick }: { keys: string; label: string; onClick?: () => void }) {
+function Chip({
+  keys,
+  label,
+  onClick,
+  variant = 'default',
+}: {
+  keys: string;
+  label: string;
+  onClick?: () => void;
+  variant?: 'default' | 'back';
+}) {
+  const isBackChip = variant === 'back';
+  const sharedStyle: React.CSSProperties = {
+    ...baseChipStyle,
+    position: 'relative',
+    overflow: 'hidden',
+    border: isBackChip ? `1px solid ${COLORS.chipBorder}` : 'none',
+    background: isBackChip
+      ? 'linear-gradient(135deg, rgba(255, 247, 233, 1), rgba(255, 221, 170, 0.98))'
+      : COLORS.chipBg,
+    boxShadow: isBackChip
+      ? '0 0 0 1px rgba(255, 240, 214, 0.55), 0 0.7rem 1.4rem rgba(0, 0, 0, 0.28)'
+      : 'none',
+    padding: isBackChip ? '0.62rem 2rem 0.62rem 1.7rem' : baseChipStyle.padding,
+    gap: isBackChip ? '0.52rem' : baseChipStyle.gap,
+    transform: isBackChip ? 'translateY(-0.08rem)' : 'none',
+  };
+  const icon = isBackChip ? (
+    <span
+      aria-hidden="true"
+      style={{
+        fontFamily: '"Cinzel", serif',
+        fontSize: 'var(--font-fluid-xs)',
+        fontWeight: 700,
+        lineHeight: 1,
+        color: COLORS.chipTextStrong,
+        transform: 'translateY(-0.03rem)',
+      }}
+    >
+      {'<'}
+    </span>
+  ) : null;
+
   if (onClick) {
     return (
       <button
         onClick={onClick}
         style={{
-          ...baseChipStyle,
-          border: 'none',
+          ...sharedStyle,
           cursor: 'pointer',
           pointerEvents: 'auto',
         }}
       >
+        {icon}
         <span style={keyStyle}>{keys}</span>
-        <span style={labelStyle}>{label}</span>
+        <span
+          style={{
+            ...labelStyle,
+            color: isBackChip ? COLORS.chipTextStrong : labelStyle.color,
+            fontWeight: isBackChip ? 700 : 400,
+            letterSpacing: isBackChip ? '0.08em' : labelStyle.letterSpacing,
+          }}
+        >
+          {label}
+        </span>
       </button>
     );
   }
   return (
-    <div style={baseChipStyle}>
+    <div style={sharedStyle}>
+      {icon}
       <span style={keyStyle}>{keys}</span>
-      <span style={labelStyle}>{label}</span>
+      <span
+        style={{
+          ...labelStyle,
+          color: isBackChip ? COLORS.chipTextStrong : labelStyle.color,
+          fontWeight: isBackChip ? 700 : 400,
+          letterSpacing: isBackChip ? '0.08em' : labelStyle.letterSpacing,
+        }}
+      >
+        {label}
+      </span>
     </div>
   );
 }
 
-export default function ControlHints({ animationsEnabled, mode, activePage, hintVariant, showScrollHint = false, onConfirm, onBack, onShortcutClick, onAnimationsToggle }: Props) {
+export default function ControlHints({
+  animationsEnabled,
+  mode,
+  activePage,
+  hintVariant,
+  showScrollHint = false,
+  onConfirm,
+  onBack,
+  onShortcutClick,
+  onAnimationsToggle,
+  layoutMode = 'desktop',
+  touchMode = false,
+}: Props) {
   const chips: HintChip[] = [];
+  const isCompactTouch = layoutMode === 'compact' && touchMode;
+  const navigateKeys = touchMode ? 'Swipe' : 'W / S';
+  const confirmKeys = touchMode ? 'Tap' : 'Space';
+  const previousPageKeys = touchMode ? 'Tap' : 'A';
+  const nextPageKeys = touchMode ? 'Tap' : 'D';
+  const previousEntryKeys = touchMode ? 'Tap' : '1';
+  const nextEntryKeys = touchMode ? 'Tap' : '3';
+
+  const backLabel = activePage === 'memorandum' && hintVariant === 'memorandum-detail'
+    ? 'Back to Memorandum'
+    : mode === 'page'
+      ? 'Back to Main Menu'
+      : 'Back';
+  const clickableBackKeys = touchMode ? 'Tap' : 'C / Click';
 
   if (mode === 'menu') {
     chips.push(
-      { id: 'menu-navigate', keys: 'W / S', label: 'Navigate' },
-      { id: 'menu-confirm', keys: 'Space', label: 'Confirm', onClick: onConfirm },
+      { id: 'menu-navigate', keys: navigateKeys, label: 'Navigate' },
+      { id: 'menu-confirm', keys: confirmKeys, label: 'Confirm', onClick: onConfirm },
     );
   }
 
@@ -97,55 +188,83 @@ export default function ControlHints({ animationsEnabled, mode, activePage, hint
       case 'experience':
         chips.push({
           id: 'page-scroll',
-          keys: 'W / S',
+          keys: navigateKeys,
           label: 'Scroll',
           hidden: !showScrollHint,
         });
         break;
       case 'contact':
-        chips.push(
-          { id: 'page-select', keys: 'W / S', label: 'Select' },
-          { id: 'page-confirm', keys: 'Space', label: 'Confirm', onClick: onConfirm },
-        );
+        if (!isCompactTouch) {
+          chips.push({ id: 'page-select', keys: navigateKeys, label: 'Select' });
+        }
+        chips.push({ id: 'page-confirm', keys: confirmKeys, label: 'Confirm', onClick: onConfirm });
         break;
       case 'memorandum':
         if (hintVariant === 'memorandum-detail') {
-          chips.push(
-            {
-              id: 'page-scroll',
-              keys: 'W / S',
-              label: 'Scroll',
-              hidden: !showScrollHint,
-            },
-            { id: 'page-prev-page', keys: 'A', label: 'Back', onClick: () => onShortcutClick?.('a') },
-            { id: 'page-next-page', keys: 'D', label: 'Next', onClick: () => onShortcutClick?.('d') },
-            { id: 'page-prev-entry', keys: '1', label: 'Previous', onClick: () => onShortcutClick?.('1') },
-            { id: 'page-next-entry', keys: '3', label: 'Next', onClick: () => onShortcutClick?.('3') },
-          );
+          if (touchMode) {
+            chips.push(
+              { id: 'page-prev-page', keys: previousPageKeys, label: 'Back', onClick: () => onShortcutClick?.('a') },
+              { id: 'page-next-page', keys: nextPageKeys, label: 'Next', onClick: () => onShortcutClick?.('d') },
+            );
+          } else {
+            chips.push(
+              {
+                id: 'page-scroll',
+                keys: navigateKeys,
+                label: 'Scroll',
+                hidden: !showScrollHint,
+              },
+              { id: 'page-prev-page', keys: previousPageKeys, label: 'Back', onClick: () => onShortcutClick?.('a') },
+              { id: 'page-next-page', keys: nextPageKeys, label: 'Next', onClick: () => onShortcutClick?.('d') },
+              { id: 'page-prev-entry', keys: previousEntryKeys, label: 'Previous', onClick: () => onShortcutClick?.('1') },
+              { id: 'page-next-entry', keys: nextEntryKeys, label: 'Next', onClick: () => onShortcutClick?.('3') },
+            );
+          }
         } else {
-          chips.push(
-            { id: 'page-select', keys: 'W / S', label: 'Select' },
-            { id: 'page-confirm', keys: 'Space', label: 'Confirm', onClick: onConfirm },
-          );
+          if (!isCompactTouch) {
+            chips.push({ id: 'page-select', keys: navigateKeys, label: 'Select' });
+          }
+          chips.push({ id: 'page-confirm', keys: confirmKeys, label: 'Confirm', onClick: onConfirm });
         }
         break;
       case 'system':
-        chips.push(
-          { id: 'page-select', keys: 'W / S', label: 'Select' },
-          { id: 'page-change', keys: 'A / D', label: 'Change' },
-        );
+        if (!isCompactTouch) {
+          chips.push(
+            { id: 'page-select', keys: navigateKeys, label: 'Select' },
+            { id: 'page-change', keys: touchMode ? 'Tap' : 'A / D', label: 'Change' },
+          );
+        }
         break;
       default:
         break;
     }
 
-    chips.push({ id: 'page-back', keys: 'C', label: 'Back', onClick: onBack });
+    chips.push({
+      id: 'page-back',
+      keys: clickableBackKeys,
+      label: backLabel,
+      onClick: onBack,
+      variant: 'back',
+    });
   }
 
   chips.push({ id: 'toggle-animations', keys: 'F', label: `Toggle Animations ${animationsEnabled ? 'On' : 'Off'}`, onClick: onAnimationsToggle });
 
   return (
-    <div data-control-hints key={`${mode}-${activePage ?? 'menu'}`} style={{ display: 'flex', gap: '0.3rem' }}>
+    <div
+      data-control-hints
+      key={`${mode}-${activePage ?? 'menu'}`}
+      style={{
+        display: 'flex',
+        gap: '0.3rem',
+        flexWrap: layoutMode === 'compact' ? 'wrap' : 'nowrap',
+        justifyContent: layoutMode === 'compact' ? 'flex-end' : 'flex-start',
+        alignItems: layoutMode === 'compact' ? 'flex-end' : 'stretch',
+        alignContent: layoutMode === 'compact' ? 'flex-end' : 'stretch',
+        width: layoutMode === 'compact' ? 'calc(100vw - 4vw)' : undefined,
+        maxWidth: layoutMode === 'compact' ? '100%' : undefined,
+      }}
+    >
       {chips.map((chip) => (
         <div
           key={chip.id}
@@ -194,7 +313,12 @@ export default function ControlHints({ animationsEnabled, mode, activePage, hint
               </span>
             </button>
           ) : (
-            <Chip keys={chip.keys} label={chip.label} onClick={chip.onClick} />
+            <Chip
+              keys={chip.keys}
+              label={chip.label}
+              onClick={chip.onClick}
+              variant={chip.variant}
+            />
           )}
         </div>
       ))}

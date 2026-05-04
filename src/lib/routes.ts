@@ -33,7 +33,11 @@ export type AppRoute =
   | MemorandumRoute;
 
 function normalizeRouteToken(value: string) {
-  return value.trim().toLowerCase();
+  try {
+    return decodeURIComponent(value).trim().toLowerCase();
+  } catch {
+    return value.trim().toLowerCase();
+  }
 }
 
 export function normalizePathname(pathname: string) {
@@ -85,7 +89,7 @@ export function buildMemorandumPath(
   }
 
   const resolvedPageNumber = Math.max(1, pageNumber ?? 1);
-  pathname += `/${entrySlug}/${resolvedPageNumber}`;
+  pathname += `/${encodeURIComponent(entrySlug)}/${resolvedPageNumber}`;
   return pathname;
 }
 
@@ -131,7 +135,7 @@ export function parseMemorandumRoute(
   if (segments.length !== 4) return null;
 
   const entrySlug = segments[2];
-  const entry = column.entries.find((candidate) => candidate.slug === entrySlug);
+  const entry = column.entries.find((candidate) => normalizeRouteToken(candidate.slug) === entrySlug);
   if (!entry) return null;
 
   const pageNumber = Number(segments[3]);

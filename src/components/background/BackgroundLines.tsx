@@ -1,8 +1,12 @@
+import type { LayoutMode } from '../../lib/deviceProfile';
 import { COLORS } from '../../lib/constants';
 
-interface Props { animationsEnabled: boolean; }
+interface Props {
+  animationsEnabled: boolean;
+  layoutMode?: LayoutMode;
+}
 
-export default function BackgroundLines({ animationsEnabled }: Props) {
+export default function BackgroundLines({ animationsEnabled, layoutMode = 'desktop' }: Props) {
   // transform-box: fill-box + transform-origin: center makes each circle rotate
   // around its own center regardless of viewport size, no pixel math needed.
   // The existing "spin" keyframe (global.css) handles clockwise; spin-ccw handles counter.
@@ -14,6 +18,10 @@ export default function BackgroundLines({ animationsEnabled }: Props) {
     transformBox: 'fill-box',
     transformOrigin: 'center',
   };
+
+  if (layoutMode === 'compact') {
+    return null;
+  }
 
   return (
     <>
@@ -52,7 +60,7 @@ export default function BackgroundLines({ animationsEnabled }: Props) {
             pathLength="360"
             strokeDasharray="84 6"
             strokeDashoffset="87"
-            style={{ ...circleBase, animation: spinCw }}
+            style={{ ...circleBase, animation: spinCw, opacity: layoutMode === 'tablet' ? 0.55 : 1 }}
           />
           <circle
             cx="57%" cy="50%"
@@ -63,7 +71,7 @@ export default function BackgroundLines({ animationsEnabled }: Props) {
             pathLength="360"
             strokeDasharray="84 6"
             strokeDashoffset="87"
-            style={{ ...circleBase, animation: spinCcw }}
+            style={{ ...circleBase, animation: spinCcw, opacity: layoutMode === 'tablet' ? 0.4 : 1 }}
           />
 
           <line
@@ -71,8 +79,9 @@ export default function BackgroundLines({ animationsEnabled }: Props) {
             x2="100%" y2="10%"
             stroke={COLORS.textPrimaryDim}
             strokeWidth="1"
+            opacity={layoutMode === 'tablet' ? 0.5 : 1}
           />
-          <rect x="70%" y="57%" width="30%" height="3" fill="url(#h-line-fade)" />
+          <rect x="70%" y="57%" width="30%" height="3" fill="url(#h-line-fade)" opacity={layoutMode === 'tablet' ? 0.5 : 1} />
         </svg>
       </div>
 
@@ -97,7 +106,7 @@ export default function BackgroundLines({ animationsEnabled }: Props) {
             <stop offset="100%" stopColor={COLORS.textPrimaryGhost} />
           </linearGradient>
         </defs>
-        <rect x="95.2%" y="0" width="3" height="70%" fill="url(#v-line-fade)" />
+        <rect x="95.2%" y="0" width="3" height="70%" fill="url(#v-line-fade)" opacity={layoutMode === 'tablet' ? 0.6 : 1} />
       </svg>
     </>
   );

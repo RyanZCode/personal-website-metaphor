@@ -1,16 +1,23 @@
+import type { LayoutMode } from '../../lib/deviceProfile';
 import { COLORS } from '../../lib/constants';
 
-export default function StatsPanel() {
+export default function StatsPanel({ layoutMode = 'desktop' }: { layoutMode?: LayoutMode }) {
+  if (layoutMode === 'compact') {
+    return null;
+  }
+
   return (
     <div
       data-stats-panel
       style={{
         // Extends ~4rem past the right viewport edge - viewport clips it naturally
-        marginRight: '-4rem',
+        marginRight: layoutMode === 'tablet' ? '-2.5rem' : '-4rem',
         background: COLORS.chipBg,
         // Trapezoid: left side angled, right side straight (disappears off screen)
         clipPath: 'polygon(3rem 0%, 100% 0%, 100% 100%, 0% 100%)',
-        padding: '0.8rem 7rem 0.5rem 5rem',
+        padding: layoutMode === 'tablet' ? '0.7rem 4.5rem 0.45rem 3.2rem' : '0.8rem 7rem 0.5rem 5rem',
+        transform: layoutMode === 'tablet' ? 'scale(0.9)' : 'none',
+        transformOrigin: 'right bottom',
       }}
     >
       <div style={{

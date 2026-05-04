@@ -177,7 +177,7 @@ export default function AboutPage({
   return (
     <section
       ref={containerRef}
-      aria-hidden={!isActive}
+      inert={!isActive}
       style={{
         position: 'absolute',
         inset: 0,
@@ -202,7 +202,7 @@ export default function AboutPage({
           letterSpacing: '-0.03em',
           lineHeight: 1,
           color: 'var(--text-primary)',
-          opacity: 0.75,
+            opacity: 1,
           pointerEvents: 'none',
           userSelect: 'none',
           zIndex: 1,
@@ -275,6 +275,7 @@ export default function AboutPage({
       </div>
 
       <div
+        data-about-layout
         style={{
           position: 'relative',
           zIndex: 3,

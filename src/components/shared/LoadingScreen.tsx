@@ -1,7 +1,11 @@
 import { useState } from 'react';
 import { COLORS } from '../../lib/constants';
 
-export default function LoadingScreen() {
+interface LoadingScreenProps {
+  animateBar?: boolean;
+}
+
+export default function LoadingScreen({ animateBar = true }: LoadingScreenProps) {
   const [imgFailed, setImgFailed] = useState(false);
 
   return (
@@ -48,7 +52,12 @@ export default function LoadingScreen() {
         />
       )}
       <div className="loading-bar-track">
-        <div className="loading-bar-fill" />
+        <div
+          className="loading-bar-fill"
+          style={{
+            animationPlayState: animateBar ? 'running' : 'paused',
+          }}
+        />
       </div>
     </div>
   );
