@@ -1,7 +1,9 @@
+import type { LayoutMode } from '../../lib/deviceProfile';
 import { useEffect, useRef, useState } from 'react';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
-import { ITEM_SCALES, ARC_CURVE_X } from '../../lib/constants';
+import { getMenuItemScaleFactor, getMenuSplashScale } from '../../lib/menuLayout';
+import { ITEM_SCALES } from '../../lib/constants';
 import AboutTriangles from './splashEffects/AboutTriangles';
 import SkillsBands    from './splashEffects/SkillsBands';
 import ExperienceRipples  from './splashEffects/ExperienceRipples';
@@ -13,6 +15,7 @@ import { rafThrottle } from '../../lib/rafThrottle';
 interface MenuItemBackgroundProps {
   itemRefs: React.RefObject<(HTMLDivElement | null)[]>;
   menuStackRef: React.RefObject<HTMLDivElement | null>;
+  menuScrollViewportRef?: React.RefObject<HTMLDivElement | null>;
   selectedIndex: number;
   animationsEnabled: boolean;
   accentH: number;
@@ -26,6 +29,7 @@ interface MenuItemBackgroundProps {
   menuScrollYVh: number;
   selectedItemOffsetYVh: number;
   measureKey: number;
+  layoutMode?: LayoutMode;
 }
 
 interface SplashPos {
@@ -46,8 +50,29 @@ const EFFECT_COMPONENTS = [
   SystemGlitch,
 ] as const;
 
-export default function MenuItemBackground({ itemRefs, menuStackRef, selectedIndex, animationsEnabled, accentH, accentS, accentL, splashHeightVh, splashWidthVh, splashOffsetY, splashTipXPct, splashTaperYPct, menuScrollYVh, selectedItemOffsetYVh, measureKey }: MenuItemBackgroundProps) {
+export default function MenuItemBackground({
+  itemRefs,
+  menuStackRef,
+  menuScrollViewportRef,
+  selectedIndex,
+  animationsEnabled,
+  accentH,
+  accentS,
+  accentL,
+  splashHeightVh,
+  splashWidthVh,
+  splashOffsetY,
+  splashTipXPct,
+  splashTaperYPct,
+  menuScrollYVh,
+  selectedItemOffsetYVh,
+  measureKey,
+  layoutMode = 'desktop',
+}: MenuItemBackgroundProps) {
   const [pos, setPos] = useState<SplashPos | null>(null);
+  const splashScale = getMenuSplashScale(layoutMode);
+  const itemScale = getMenuItemScaleFactor(layoutMode);
+  const splashLeftVh = SPLASH_LEFT_VH * splashScale;
 
   // Layer refs
   const backRef         = useRef<HTMLDivElement>(null); // back bloom layer
@@ -59,56 +84,26 @@ export default function MenuItemBackground({ itemRefs, menuStackRef, selectedInd
     const compute = rafThrottle(() => {
       const el = itemRefs.current[selectedIndex];
       if (!el) return;
-      const menuStack = menuStackRef.current;
-      if (!menuStack) return;
+      const anchor = el.querySelector('[data-menu-anchor]') as HTMLElement | null;
+      const label = el.querySelector('[data-menu-label]') as HTMLElement | null;
+      if (!anchor || !label) return;
 
-      const scale = ITEM_SCALES[Math.min(selectedIndex, ITEM_SCALES.length - 1)];
-      const arcX = ARC_CURVE_X[Math.min(selectedIndex, ARC_CURVE_X.length - 1)];
       const vh = window.innerHeight / 100;
-      const splashH = splashHeightVh * vh;
+      const splashH = splashHeightVh * splashScale * vh;
+      const anchorRect = anchor.getBoundingClientRect();
+      const labelRect = label.getBoundingClientRect();
+      const leftEdgeScreen = anchorRect.left;
+      const labelCenterY = labelRect.top + labelRect.height / 2;
 
-      // Walk the offsetParent chain from el up to menuStack, accumulating layout offsets.
-      // Chrome treats GSAP-transformed elements as offsetParents, so we can't rely on
-      // el.offsetParent being menuStack directly - we traverse to get the true layout position.
-      let layoutTop = 0, layoutLeft = 0;
-      let node: HTMLElement | null = el;
-      while (node && node !== menuStack) {
-        layoutTop += node.offsetTop;
-        layoutLeft += node.offsetLeft;
-        node = node.offsetParent as HTMLElement | null;
-      }
-
-      const menuStackRect = menuStack.getBoundingClientRect();
-      // Use layout offsetTop (unaffected by GSAP) + the final target scroll position.
-      // getBoundingClientRect().top sees the mid-animation position; offsetTop does not.
-      // menu-left has top:0vh in CSS, so menuStack.offsetTop is its natural viewport Y.
-      const pivotY =
-        menuStack.offsetTop +
-        menuScrollYVh * vh +
-        layoutTop +
-        el.offsetHeight / 2 +
-        selectedItemOffsetYVh * vh;
-
-      const T_px = (arcX * 16 / 9) * vh;
-      const leftEdgeScreen = menuStackRect.left + layoutLeft + T_px;
-
-      const rotateRad = scale.rotate * Math.PI / 180;
-      const textCenterY = pivotY + (el.offsetWidth / 2) * Math.sin(rotateRad);
-
-      const elementLeftPx = SPLASH_LEFT_VH * vh;
-      const elementWidthPx = splashWidthVh * vh;
-
+      const elementLeftPx = splashLeftVh * vh;
       const pivotX = leftEdgeScreen - elementLeftPx;
 
-      const elementCenterX = elementLeftPx + elementWidthPx / 2;
-      const splashVerticalShift = (elementCenterX - leftEdgeScreen) * Math.sin(rotateRad);
-
       const nextPos = {
-        top: textCenterY - splashH / 2 - splashVerticalShift + splashOffsetY * vh,
+        top: labelCenterY - splashH / 2 + splashOffsetY * itemScale * vh,
         height: splashH,
         pivotX,
-        rotate: scale.rotate,
-        rotateY: scale.rotateY,
+        rotate: ITEM_SCALES[Math.min(selectedIndex, ITEM_SCALES.length - 1)].rotate,
+        rotateY: ITEM_SCALES[Math.min(selectedIndex, ITEM_SCALES.length - 1)].rotateY,
       };
 
       setPos((current) => {
@@ -127,23 +122,46 @@ export default function MenuItemBackground({ itemRefs, menuStackRef, selectedInd
       });
     });
 
-    // Defer the initial measurement by one frame so the browser has finished
-    // laying out with the correct font metrics before we read offsetWidth/offsetHeight.
-    const rafId = requestAnimationFrame(compute);
+    // Menu items and their parent stack tween for ~200ms on selection changes.
+    // Re-sample through that settle window so the splash locks to the final text
+    // position instead of capturing an in-between animation frame.
+    let settleRafId: number | null = null;
+    const rafId = requestAnimationFrame((startTime) => {
+      const tick = (now: number) => {
+        compute();
+        if (now - startTime < 260) {
+          settleRafId = requestAnimationFrame(tick);
+        } else {
+          settleRafId = null;
+          compute();
+        }
+      };
+
+      tick(startTime);
+    });
 
     // Re-measure whenever the selected item's size changes (e.g. font swap settling)
     const el = itemRefs.current[selectedIndex];
     const ro = el ? new ResizeObserver(compute) : null;
     if (el && ro) ro.observe(el);
+    const label = el?.querySelector('[data-menu-label]') as HTMLElement | null;
+    if (label && ro) ro.observe(label);
+
+    const scrollViewport = menuScrollViewportRef?.current;
 
     window.addEventListener('resize', compute);
+    scrollViewport?.addEventListener('scroll', compute, { passive: true });
     return () => {
       cancelAnimationFrame(rafId);
+      if (settleRafId !== null) {
+        cancelAnimationFrame(settleRafId);
+      }
       compute.cancel();
       ro?.disconnect();
       window.removeEventListener('resize', compute);
+      scrollViewport?.removeEventListener('scroll', compute);
     };
-  }, [selectedIndex, splashHeightVh, splashWidthVh, splashOffsetY, splashTipXPct, splashTaperYPct, menuScrollYVh, selectedItemOffsetYVh, measureKey]);
+  }, [selectedIndex, splashHeightVh, splashWidthVh, splashOffsetY, splashTipXPct, splashTaperYPct, menuScrollYVh, selectedItemOffsetYVh, measureKey, splashLeftVh, splashScale, itemScale, menuScrollViewportRef]);
 
   useGSAP(() => {
     if (!backRef.current || !frontRef.current || !effectsWrapRef.current || !effectsInnerRef.current) return;
@@ -204,9 +222,9 @@ export default function MenuItemBackground({ itemRefs, menuStackRef, selectedInd
       data-paint-splash
       style={{
         position: 'absolute',
-        left: `${SPLASH_LEFT_VH}vh`,
+        left: `${splashLeftVh}vh`,
         top: pos?.top ?? 0,
-        width: `${splashWidthVh}vh`,
+        width: `${splashWidthVh * splashScale}vh`,
         height: pos?.height ?? 0,
         transform: `rotate(${pos?.rotate ?? 0}deg) perspective(20vh) rotateY(${pos?.rotateY ?? 0}deg)`,
         transformOrigin: `${pos?.pivotX ?? 0}px center`,

@@ -2,6 +2,16 @@ import gsap from 'gsap';
 
 type CharEntry = { char: HTMLElement; withinItemIdx: number; itemIdx: number };
 
+function toDefinedTargets(targets: gsap.TweenTarget): Element[] {
+  return gsap.utils.toArray(targets).filter((target): target is Element => target instanceof Element);
+}
+
+function setIfPresent(targets: gsap.TweenTarget, vars: gsap.TweenVars): void {
+  const elements = toDefinedTargets(targets);
+  if (!elements.length) return;
+  gsap.set(elements, vars);
+}
+
 // Collects all chars from menu items, shuffles them within each item,
 // then displaces each char to a shared screen origin using the local transform matrix.
 // Returns the char entries in animation order.
@@ -92,15 +102,15 @@ function appendCharFlyTweens(
 }
 
 export function setEntryInitialStates(container: Element): void {
-  gsap.set(container.querySelector('[data-portrait-wrap]'), { y: '25vh', opacity: 0 });
-  gsap.set(container.querySelector('[data-bg-layers]'), { opacity: 0 });
-  gsap.set(container.querySelectorAll('[data-geometric-overlays]'), { opacity: 0 });
-  gsap.set(container.querySelectorAll('[data-char]'), { opacity: 0 });
-  gsap.set(container.querySelectorAll('[data-menu-item-wrap]'), { x: 0, y: 0 });
-  gsap.set(container.querySelector('[data-menu-index]'), { y: '1.5vh', opacity: 0 });
-  gsap.set(container.querySelector('[data-paint-splash-wrap]'), { opacity: 0 });
-  gsap.set(container.querySelector('[data-stats-hints]'), { y: '1.5vh', opacity: 0 });
-  gsap.set(container.querySelector('[data-control-hints-fixed]'), { y: '1vh', opacity: 0 });
+  setIfPresent(container.querySelector('[data-portrait-wrap]'), { y: '25vh', opacity: 0 });
+  setIfPresent(container.querySelector('[data-bg-layers]'), { opacity: 0 });
+  setIfPresent(container.querySelectorAll('[data-geometric-overlays]'), { opacity: 0 });
+  setIfPresent(container.querySelectorAll('[data-char]'), { opacity: 0 });
+  setIfPresent(container.querySelectorAll('[data-menu-item-wrap]'), { x: 0, y: 0 });
+  setIfPresent(container.querySelector('[data-menu-index]'), { y: '1.5vh', opacity: 0 });
+  setIfPresent(container.querySelector('[data-paint-splash-wrap]'), { opacity: 0 });
+  setIfPresent(container.querySelector('[data-stats-hints]'), { y: '1.5vh', opacity: 0 });
+  setIfPresent(container.querySelector('[data-control-hints-fixed]'), { y: '1vh', opacity: 0 });
 }
 
 export function createEntryTimeline(
@@ -332,10 +342,9 @@ export function createAboutEntryTimeline(
   // Wipe line sweeps across full width
   tl.to(wipeLine, { x: vw + lineW, duration: WIPE_DUR, ease: 'power1.inOut' }, 0);
   tl.to(wipeLine, { scaleX: 1, duration: WIPE_DUR, ease: 'power1.out' }, 0);
-  // Content group zooms out together as the line passes the left half.
-  // Watermark targets its natural 0.75 opacity; panel and geo lines target 1.
-  tl.to([geoLines, panel], { scale: 1, opacity: 1,    duration: 0.40, ease: 'power2.out' }, 0.10);
-  tl.to(watermark,         { scale: 1, opacity: 0.75, duration: 0.40, ease: 'power2.out' }, 0.10);
+    // Content group zooms out together as the line passes the left half.
+    tl.to([geoLines, panel], { scale: 1, opacity: 1,    duration: 0.40, ease: 'power2.out' }, 0.10);
+    tl.to(watermark,         { scale: 1, opacity: 1, duration: 0.40, ease: 'power2.out' }, 0.10);
   // Triangles are in the bottom-right (~45% from left). Line left edge reaches them at ~0.25s.
   tl.to(triangles, { opacity: 1, duration: 0.22, ease: 'power1.out' }, 0.25);
   // Portrait: reveals just ahead of the wipe reaching the right half, anchored-bottom zoom
@@ -373,7 +382,7 @@ export function setAboutEnteredState(container: Element): void {
   const wipeLine = container.querySelector('[data-about-wipe]');
 
   gsap.set([geoLines, panel], { x: 0, y: 0, scale: 1, opacity: 1, clearProps: 'willChange' });
-  gsap.set(watermark, { x: 0, y: 0, scale: 1, opacity: 0.75, clearProps: 'willChange' });
+    gsap.set(watermark, { x: 0, y: 0, scale: 1, opacity: 1, clearProps: 'willChange' });
   gsap.set(triangles, { x: 0, y: 0, opacity: 1, clearProps: 'willChange' });
   gsap.set(portrait, { x: 0, y: 0, scale: 1, opacity: 1, clearProps: 'willChange' });
   gsap.set(wipeLine, { autoAlpha: 0, clearProps: 'x,scaleX,willChange' });
@@ -483,7 +492,7 @@ export function createSkillsEntryTimeline(
 
   tl.to(wipeLine,  { y: vh + lineH, duration: WIPE_DUR, ease: 'power1.inOut' }, 0);
   tl.to(geoLines,  { opacity: 1, duration: 0.35, ease: 'power2.out' }, 0.22);
-  tl.to(watermark, { y: 0, opacity: 0.75, duration: 0.38, ease: 'power2.out' }, 0.06);
+    tl.to(watermark, { y: 0, opacity: 1, duration: 0.38, ease: 'power2.out' }, 0.06);
   tl.to(portrait,  { opacity: 1, duration: 0.70, ease: 'power1.out' }, 0.05);
   tl.to(content,   { y: 0, opacity: 1, duration: 0.40, ease: 'power2.out' }, 0.12);
   tl.to(bands,     { opacity: 1, duration: 0.65, ease: 'power1.out' }, 0);
@@ -512,20 +521,33 @@ export function setSkillsEnteredState(container: Element): void {
   const bands = container.querySelector('[data-skills-bands]');
   const wipeLine = container.querySelector('[data-skills-wipe]');
 
-  gsap.set(watermark, { y: 0, opacity: 0.75, clearProps: 'willChange' });
+    gsap.set(watermark, { y: 0, opacity: 1, clearProps: 'willChange' });
   gsap.set(content, { y: 0, opacity: 1, clearProps: 'willChange' });
   gsap.set([geoLines, portrait, bands], { opacity: 1, clearProps: 'willChange' });
   gsap.set(wipeLine, { autoAlpha: 0, clearProps: 'y,willChange' });
 }
 
 function withWillChange(targets: gsap.TweenTarget): gsap.TweenTarget[] {
-  return gsap.utils.toArray(targets);
+  return toDefinedTargets(targets);
 }
 
-function getExperiencePanelAngle(): number {
-  const dx = (65 - 35) * window.innerWidth / 100;
+function getExperiencePanelAngle(container: Element): number {
+  const isCompact = container.getAttribute('data-experience-compact') === 'true';
+  const leftTop = isCompact ? 22 : 65;
+  const leftBottom = isCompact ? -8 : 35;
+  const dx = (leftTop - leftBottom) * window.innerWidth / 100;
   const dy = window.innerHeight;
   return Math.atan2(dx, dy) * 180 / Math.PI;
+}
+
+function getExperienceWipeEndX(container: Element, wipeWidth: number): number {
+  const isCompact = container.getAttribute('data-experience-compact') === 'true';
+
+  if (!isCompact) {
+    return window.innerWidth * 0.47 - wipeWidth / 2;
+  }
+
+  return -window.innerWidth * 0.1 - wipeWidth / 2;
 }
 
 export function createExperienceEntryTimeline(
@@ -541,11 +563,17 @@ export function createExperienceEntryTimeline(
   const rippleGroup = container.querySelector('[data-experience-ripples]');
   const rippleFade = container.querySelector('[data-experience-ripples-fade]');
 
+  const isCompact = container.getAttribute('data-experience-compact') === 'true';
+  const shouldShowRipples = !isCompact;
   const animated = withWillChange([portrait, watermark, panelGroup, geoLines, wipeLine, wipeLineInner, rippleFade]);
-  const angle = getExperiencePanelAngle();
+  const angle = getExperiencePanelAngle(container);
   const wipeStartX = window.innerWidth * 0.94;
   const wipeWidth = wipeLine?.getBoundingClientRect().width ?? 0;
-  const wipeEndX = window.innerWidth * 0.47 - wipeWidth / 2;
+  const wipeEndX = getExperienceWipeEndX(container, wipeWidth);
+  const wipeMoveDuration = isCompact ? 0.26 : 0.24;
+  const wipeCollapseStart = isCompact ? 0.16 : 0.10;
+  const wipeCollapseDuration = isCompact ? 0.12 : 0.18;
+  const wipeHideAt = wipeCollapseStart + wipeCollapseDuration;
 
   gsap.set(wipeLine, {
     autoAlpha: 1,
@@ -571,10 +599,14 @@ export function createExperienceEntryTimeline(
     x: window.innerWidth * 0.09,
     y: -window.innerHeight * 0.08,
   });
-  gsap.set(geoLines, { opacity: 0 });
-  gsap.set(rippleFade, {
-    opacity: 0,
-  });
+  if (geoLines) {
+    gsap.set(geoLines, { opacity: 0 });
+  }
+  if (rippleFade) {
+    gsap.set(rippleFade, {
+      opacity: 0,
+    });
+  }
 
   const tl = gsap.timeline({
     paused: options?.paused ?? false,
@@ -604,11 +636,11 @@ export function createExperienceEntryTimeline(
     },
   });
 
-  tl.to(watermark, {
-    opacity: 0.75,
-    scale: 1,
-    duration: 0.45,
-    ease: 'power3.out',
+    tl.to(watermark, {
+      opacity: 1,
+      scale: 1,
+      duration: 0.45,
+      ease: 'power3.out',
   }, 0)
     .to(portrait, {
       opacity: 1,
@@ -619,7 +651,7 @@ export function createExperienceEntryTimeline(
     }, 0.04)
     .to(wipeLine, {
       x: wipeEndX,
-      duration: 0.24,
+      duration: wipeMoveDuration,
       ease: 'none',
     }, 0.06)
     .to(wipeLineInner, {
@@ -628,14 +660,14 @@ export function createExperienceEntryTimeline(
       ease: 'none',
     }, 0.06)
     .to(wipeLineInner, {
-      scaleX: 0.02,
-      scaleY: 1,
-      duration: 0.18,
+      scaleX: 0.008,
+      scaleY: 1.08,
+      duration: wipeCollapseDuration,
       ease: 'none',
-    }, 0.10)
+    }, wipeCollapseStart)
     .set(wipeLine, {
       autoAlpha: 0,
-    }, 0.28)
+    }, wipeHideAt)
     .to(panelGroup, {
       opacity: 1,
       x: 0,
@@ -643,16 +675,20 @@ export function createExperienceEntryTimeline(
       duration: 0.36,
       ease: 'power3.out',
     }, 0.12)
-    .to(geoLines, {
+  if (geoLines) {
+    tl.to(geoLines, {
       opacity: 1,
       duration: 0.24,
       ease: 'power2.out',
-    }, 0.14)
-    .to(rippleFade, {
-      opacity: 1,
+    }, 0.14);
+  }
+  if (rippleFade) {
+    tl.to(rippleFade, {
+      opacity: shouldShowRipples ? 1 : 0,
       duration: 0.26,
       ease: 'power2.out',
     }, 0.18);
+  }
 
   return tl;
 }
@@ -663,7 +699,9 @@ export function createExperienceExitTimeline(container: Element): gsap.core.Time
   const panelGroup = container.querySelector('[data-experience-panel-group]');
   const geoLines = container.querySelector('[data-experience-geo-lines]');
   const rippleFade = container.querySelector('[data-experience-ripples-fade]');
+  const primaryGroup = toDefinedTargets([panelGroup, portrait, watermark]);
 
+  const shouldShowRipples = container.getAttribute('data-experience-compact') !== 'true';
   const animated = withWillChange([portrait, watermark, panelGroup, geoLines, rippleFade]);
 
   const tl = gsap.timeline({
@@ -678,34 +716,42 @@ export function createExperienceExitTimeline(container: Element): gsap.core.Time
     },
   });
 
-  tl.to([panelGroup, portrait, watermark], {
-    x: -window.innerWidth * 0.12,
-    duration: 0.2,
-    ease: 'power2.in',
-  }, 0)
-    .to([panelGroup, portrait, watermark], {
-      x: `-=${window.innerWidth * 0.08}`,
-      opacity: 0,
-      duration: 0.16,
-      ease: 'power2.in',
-      stagger: 0,
-    }, 0.18)
-    .to(geoLines, {
+  if (primaryGroup.length) {
+    tl.to(primaryGroup, {
       x: -window.innerWidth * 0.12,
       duration: 0.2,
       ease: 'power2.in',
     }, 0)
-    .to(geoLines, {
-      x: `-=${window.innerWidth * 0.08}`,
-      opacity: 0,
-      duration: 0.16,
+      .to(primaryGroup, {
+        x: `-=${window.innerWidth * 0.08}`,
+        opacity: 0,
+        duration: 0.16,
+        ease: 'power2.in',
+        stagger: 0,
+      }, 0.18);
+  }
+
+  if (geoLines instanceof Element) {
+    tl.to(geoLines, {
+      x: -window.innerWidth * 0.12,
+      duration: 0.2,
       ease: 'power2.in',
-    }, 0.18)
-    .to(rippleFade, {
-      opacity: 0,
+    }, 0)
+      .to(geoLines, {
+        x: `-=${window.innerWidth * 0.08}`,
+        opacity: 0,
+        duration: 0.16,
+        ease: 'power2.in',
+      }, 0.18);
+  }
+
+  if (rippleFade instanceof Element) {
+    tl.to(rippleFade, {
+      opacity: shouldShowRipples ? 0 : 0,
       duration: 0.14,
       ease: 'power2.in',
     }, 0.18);
+  }
 
   return tl;
 }
@@ -719,11 +765,12 @@ export function setExperienceEnteredState(container: Element): void {
   const wipeLineInner = container.querySelector('[data-experience-wipe-line]');
   const rippleFade = container.querySelector('[data-experience-ripples-fade]');
 
-  gsap.set(watermark, { opacity: 0.75, scale: 1, clearProps: 'willChange' });
+  const shouldShowRipples = container.getAttribute('data-experience-compact') !== 'true';
+    gsap.set(watermark, { opacity: 1, scale: 1, clearProps: 'willChange' });
   gsap.set(portrait, { x: 0, opacity: 1, scale: 1, clearProps: 'willChange' });
   gsap.set(panelGroup, { x: 0, y: 0, opacity: 1, clearProps: 'willChange' });
   gsap.set(geoLines, { opacity: 1, clearProps: 'willChange' });
-  gsap.set(rippleFade, { opacity: 1, clearProps: 'willChange' });
+  gsap.set(rippleFade, { opacity: shouldShowRipples ? 1 : 0, clearProps: 'willChange' });
   gsap.set(wipeLineInner, { clearProps: 'scaleX,scaleY,willChange' });
   gsap.set(wipeLine, { autoAlpha: 0, clearProps: 'x,y,rotation,willChange' });
 }

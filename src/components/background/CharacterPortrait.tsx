@@ -1,16 +1,22 @@
+import type { LayoutMode } from '../../lib/deviceProfile';
 import { COLORS } from '../../lib/constants';
 
-interface Props { animationsEnabled: boolean; }
+interface Props {
+  animationsEnabled: boolean;
+  layoutMode?: LayoutMode;
+}
 
-export default function CharacterPortrait({ animationsEnabled }: Props) {
+export default function CharacterPortrait({ animationsEnabled, layoutMode = 'desktop' }: Props) {
   const bobAnim  = animationsEnabled ? 'portrait-bob 4s ease-in-out infinite' : 'none';
   const glowAnim = animationsEnabled ? 'portrait-glow 3s ease-in-out infinite' : 'none';
+  const isTablet = layoutMode === 'tablet';
+  const isCompact = layoutMode === 'compact';
   return (
     <div
       style={{
         animation: bobAnim,
         position: 'absolute',
-        left: '28%',
+        left: isCompact ? '0%' : isTablet ? '40%' : '28%',
         right: 0,
         bottom: 0,
         top: 0,
@@ -19,12 +25,15 @@ export default function CharacterPortrait({ animationsEnabled }: Props) {
         display: 'flex',
         alignItems: 'flex-end',
         justifyContent: 'center',
+        opacity: isCompact ? 0.26 : isTablet ? 0.72 : 1,
         WebkitMaskImage:
-          'linear-gradient(to right, transparent 0%, black 20%), ' +
-          'linear-gradient(to top, transparent 0%, black 8%)',
+          isCompact
+            ? 'linear-gradient(to right, transparent 0%, black 10%, black 78%, transparent 100%), linear-gradient(to top, transparent 0%, black 12%)'
+            : 'linear-gradient(to right, transparent 0%, black 20%), linear-gradient(to top, transparent 0%, black 8%)',
         maskImage:
-          'linear-gradient(to right, transparent 0%, black 20%), ' +
-          'linear-gradient(to top, transparent 0%, black 8%)',
+          isCompact
+            ? 'linear-gradient(to right, transparent 0%, black 10%, black 78%, transparent 100%), linear-gradient(to top, transparent 0%, black 12%)'
+            : 'linear-gradient(to right, transparent 0%, black 20%), linear-gradient(to top, transparent 0%, black 8%)',
         WebkitMaskComposite: 'destination-in',
         maskComposite: 'intersect',
       }}
@@ -34,7 +43,7 @@ export default function CharacterPortrait({ animationsEnabled }: Props) {
         style={{
           position: 'absolute',
           inset: 0,
-          background: `radial-gradient(ellipse 45% 50% at 50% 50%, ${COLORS.portraitGlow} 0%, transparent 100%)`,
+          background: `radial-gradient(ellipse ${isCompact ? '60% 55%' : '45% 50%'} at 50% 50%, ${COLORS.portraitGlow} 0%, transparent 100%)`,
           animation: glowAnim,
         }}
       />
@@ -45,10 +54,11 @@ export default function CharacterPortrait({ animationsEnabled }: Props) {
         data-portrait
         draggable={false}
         style={{
-          height: '105%',
+          height: isCompact ? '86%' : isTablet ? '94%' : '105%',
           width: 'auto',
           objectFit: 'contain',
           objectPosition: 'bottom center',
+          transform: isCompact ? 'translateX(17vw)' : 'none',
           position: 'relative',
           zIndex: 1,
           maxWidth: 'none',

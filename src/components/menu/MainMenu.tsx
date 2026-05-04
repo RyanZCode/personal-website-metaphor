@@ -17,10 +17,10 @@ import MenuItemBackground from './MenuItemBackground';
 import StatsPanel from './StatsPanel';
 import ControlHints from '../shared/ControlHints';
 import LoadingScreen from '../shared/LoadingScreen';
-import UnsupportedScreen from '../shared/UnsupportedScreen';
 import CustomCursor from '../shared/CustomCursor';
+import UnsupportedScreen from '../shared/UnsupportedScreen';
 import { createAssetPreloadManifest, preloadImages } from '../../lib/assetPreload';
-import { shouldReduceBootWork } from '../../lib/deviceProfile';
+import { readViewportProfile, shouldReduceBootWork, useViewportProfile } from '../../lib/deviceProfile';
 import { rafThrottle } from '../../lib/rafThrottle';
 import type { PageNavigationDirection, PageNavigationHandler } from '../../lib/pageNavigation';
 import {
@@ -42,10 +42,11 @@ import MemorandumPage from '../pages/MemorandumPage';
 import SystemPage from '../pages/SystemPage';
 import type { MemorandumData } from '../../lib/memorandum';
 
-type AppState = 'preloading' | 'entry' | 'idle' | 'entering-page' | 'page-active' | 'exiting-page';
+type AppState = 'preloading' | 'unsupported-screen' | 'entry' | 'idle' | 'entering-page' | 'page-active' | 'exiting-page';
 type PageId = AppPageId | null;
 type CursorStyle = 'default' | 'metaphor';
 type TransitionPhase = 'menu' | 'entering-page' | 'page-active' | 'exiting-page';
+type UnsupportedScreenResumeState = 'entry' | 'entering-page' | 'page-active';
 
 interface PageTransitionOptions {
   fromPopState?: boolean;
@@ -60,6 +61,7 @@ interface MainMenuProps {
 const MENU_SELECTED_OFFSET_VH = 1;
 const MENU_BELOW_SELECTED_OFFSET_VH = 2;
 const TOUCH_INPUT_GRACE_MS = 800;
+const MENU_TOUCH_STEP_VH = 4.5;
 type IdleDeadline = {
   didTimeout: boolean;
   timeRemaining: () => number;
@@ -96,17 +98,32 @@ interface ClientPreferences {
   soundEnabled: boolean;
 }
 
+const DEFAULT_CLIENT_PREFERENCES: ClientPreferences = {
+  animationsEnabled: true,
+  cursorStyle: 'metaphor',
+  bgInverted: false,
+  soundEnabled: true,
+};
+
+function setIfPresent(targets: gsap.TweenTarget, vars: gsap.TweenVars): void {
+  const elements = gsap.utils
+    .toArray(targets)
+    .filter((target): target is Element => target instanceof Element);
+  if (!elements.length) return;
+  gsap.set(elements, vars);
+}
+
 function setDirectPageInitialStates(container: Element): void {
-  gsap.set(container.querySelectorAll('[data-char]'), { x: 0, y: 0, opacity: 0 });
-  gsap.set(container.querySelector('[data-menu-left]'), { x: 0, opacity: 0 });
-  gsap.set(container.querySelector('[data-menu-index]'), { y: '1.5vh', opacity: 0 });
-  gsap.set(container.querySelector('[data-paint-splash-wrap]'), {
+  setIfPresent(container.querySelectorAll('[data-char]'), { x: 0, y: 0, opacity: 0 });
+  setIfPresent(container.querySelector('[data-menu-left]'), { x: 0, opacity: 0 });
+  setIfPresent(container.querySelector('[data-menu-index]'), { y: '1.5vh', opacity: 0 });
+  setIfPresent(container.querySelector('[data-paint-splash-wrap]'), {
     opacity: 0,
     clipPath: 'inset(0 0 0 0%)',
   });
-  gsap.set(container.querySelector('[data-stats-hints]'), { y: '1.5vh', opacity: 0 });
-  gsap.set(container.querySelector('[data-control-hints-fixed]'), { y: '1vh', opacity: 0 });
-  gsap.set(container.querySelector('[data-portrait-wrap]'), { opacity: 0 });
+  setIfPresent(container.querySelector('[data-stats-hints]'), { y: '1.5vh', opacity: 0 });
+  setIfPresent(container.querySelector('[data-control-hints-fixed]'), { y: '1vh', opacity: 0 });
+  setIfPresent(container.querySelector('[data-portrait-wrap]'), { opacity: 0 });
 }
 
 function clearBootMode() {
@@ -126,14 +143,39 @@ function getMenuItemWrapOffsetYVh(index: number, selectedIndex: number) {
   return 0;
 }
 
+function scaleVhSpacing(value: string | undefined, factor: number) {
+  if (!value) return value;
+  if (!value.endsWith('vh')) return value;
+  return `${parseFloat(value) * factor}vh`;
+}
+
+function getMenuTouchStepPx() {
+  if (typeof window === 'undefined') return 34;
+  return Math.max(window.innerHeight * (MENU_TOUCH_STEP_VH / 100), 24);
+}
+
+function getResponsiveMenuItemSpacing(
+  item: (typeof MENU_ITEMS)[number],
+  layoutMode: 'desktop' | 'tablet' | 'compact',
+) {
+  const factor = 1;
+  let marginBottom = scaleVhSpacing(item.marginBottom, factor) ?? item.marginBottom;
+  const marginTop = scaleVhSpacing(item.marginTop, factor) ?? item.marginTop;
+
+  if (item.id === 'memorandum') {
+    marginBottom = layoutMode === 'compact'
+      ? '-7vh'
+      : layoutMode === 'tablet'
+        ? '-7vh'
+        : '-7vh';
+  }
+
+  return { marginBottom, marginTop };
+}
+
 function readClientPreferences(): ClientPreferences {
   if (typeof window === 'undefined') {
-    return {
-      animationsEnabled: true,
-      cursorStyle: 'metaphor',
-      bgInverted: false,
-      soundEnabled: true,
-    };
+    return DEFAULT_CLIENT_PREFERENCES;
   }
 
   const stored = window.localStorage.getItem('animationsEnabled');
@@ -149,15 +191,25 @@ function readClientPreferences(): ClientPreferences {
   };
 }
 
+function getBootTargetAppState(
+  shouldMountPageDirectOnLoad: boolean,
+  shouldAnimateDirectPageEntry: boolean,
+): AppState {
+  if (shouldAnimateDirectPageEntry) return 'entering-page';
+  if (shouldMountPageDirectOnLoad) return 'page-active';
+  return 'entry';
+}
+
 export default function MainMenu({ memorandumData, initialPathname }: MainMenuProps) {
   const initialNormalizedPathRef = useRef(normalizePathname(initialPathname));
   const initialTargetPathRef = useRef(
     initialNormalizedPathRef.current
   );
-  const initialClientPreferencesRef = useRef(readClientPreferences());
+  const initialClientPreferencesRef = useRef(DEFAULT_CLIENT_PREFERENCES);
   const initialTargetRouteRef = useRef(
     resolveAppRoute(initialTargetPathRef.current, memorandumData)
   );
+  const initialShouldShowUnsupportedScreenRef = useRef(false);
   const initialAnimationsEnabled = initialClientPreferencesRef.current.animationsEnabled;
   const shouldMountPageDirectOnLoad = initialTargetRouteRef.current.pageId !== null;
   const shouldAnimateDirectPageEntry = shouldMountPageDirectOnLoad && initialAnimationsEnabled;
@@ -177,10 +229,12 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
     shouldMountPageDirectOnLoad
   );
   const shouldSkipBlockingPreloadRef = useRef(
-    shouldMountPageDirectOnLoad
+    shouldMountPageDirectOnLoad && !initialShouldShowUnsupportedScreenRef.current
   );
   const [appState, setAppState] = useState<AppState>(
-    shouldAnimateDirectPageEntry
+    initialShouldShowUnsupportedScreenRef.current
+      ? 'preloading'
+      : shouldAnimateDirectPageEntry
       ? 'entering-page'
       : shouldMountPageDirectOnLoadRef.current && initialTargetRouteRef.current?.pageId
         ? 'page-active'
@@ -189,9 +243,8 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
         : 'preloading'
   );
   const [animationsEnabled, setAnimationsEnabled] = useState(initialAnimationsEnabled);
-  const [preferencesReady, setPreferencesReady] = useState(typeof window !== 'undefined');
+  const [preferencesReady, setPreferencesReady] = useState(false);
   const [clipPath, setClipPath] = useState('polygon(2% 100%, 99% 0%, 100% 0%, 100% 100%)');
-  const [unsupported, setUnsupported] = useState(false);
   const [displayIndex, setDisplayIndex] = useState(initialSelectedIndex);
   const [subtitleVisible, setSubtitleVisible] = useState(false);
   const [activePage, setActivePage] = useState<PageId>(
@@ -211,6 +264,7 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
   const [showScrollHint, setShowScrollHint] = useState(false);
   const [hintVariant, setHintVariant] = useState<'memorandum-detail' | undefined>(undefined);
   const [readMemorandumEntryIds, setReadMemorandumEntryIds] = useState<string[]>([]);
+  const [compactMenuScrollWidth, setCompactMenuScrollWidth] = useState<number | null>(null);
   const [currentLocationPath, setCurrentLocationPath] = useState(() =>
     initialTargetPathRef.current
   );
@@ -218,10 +272,13 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
   const containerRef = useRef<HTMLDivElement>(null);
   const menuIndexRef = useRef<HTMLDivElement>(null);
   const menuStackRef = useRef<HTMLDivElement>(null);
+  const menuScrollViewportRef = useRef<HTMLDivElement>(null);
+  const menuScrollOverlayRef = useRef<HTMLDivElement>(null);
   const menuLeftRef = useRef<HTMLDivElement>(null);
   const entryTlRef = useRef<gsap.core.Timeline | null>(null);
   const indexAnimTlRef = useRef<gsap.core.Timeline | null>(null);
   const pageTlRef = useRef<gsap.core.Timeline | null>(null);
+  const controlHintsRevealTweenRef = useRef<gsap.core.Tween | null>(null);
   const prevSelectedIndexRef = useRef(initialSelectedIndex);
   const selectedIndexRef = useRef(initialSelectedIndex);
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -229,7 +286,9 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
   const lastScrollAt = useRef(0);
   const lastKeyNavAt = useRef(0);
   const appStateRef = useRef<AppState>(
-    shouldAnimateDirectPageEntry
+    initialShouldShowUnsupportedScreenRef.current
+      ? 'preloading'
+      : shouldAnimateDirectPageEntry
       ? 'entering-page'
       : shouldMountPageDirectOnLoadRef.current && initialTargetRouteRef.current?.pageId
         ? 'page-active'
@@ -280,6 +339,36 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
   const pageShellRevealRafRef = useRef<number | null>(null);
   const pageShellRevealNestedRafRef = useRef<number | null>(null);
   const pageShellRevealTokenRef = useRef(0);
+  const menuTouchStartYRef = useRef<number | null>(null);
+  const menuTouchStartXRef = useRef<number | null>(null);
+  const menuTouchStartIndexRef = useRef<number | null>(null);
+  const menuTouchStartScrollLeftRef = useRef(0);
+  const menuTouchNavigatedRef = useRef(false);
+  const menuTouchStartedInScrollViewportRef = useRef(false);
+  const menuTouchHorizontalScrollLockedRef = useRef(false);
+  const menuTouchSuppressClickUntilRef = useRef(0);
+  const viewportProfile = useViewportProfile();
+  const isCompactViewport = viewportProfile.layoutMode === 'compact';
+  const [unsupportedScreenDismissed, setUnsupportedScreenDismissed] = useState(false);
+  const unsupportedScreenResumeStateRef = useRef<UnsupportedScreenResumeState>(
+    getBootTargetAppState(
+      shouldMountPageDirectOnLoadRef.current,
+      shouldAnimateDirectPageEntry
+    ) as UnsupportedScreenResumeState
+  );
+
+  const continueFromUnsupportedScreen = useCallback(() => {
+    setUnsupportedScreenDismissed(true);
+    if (appStateRef.current !== 'unsupported-screen') return;
+
+    const nextState = unsupportedScreenResumeStateRef.current;
+    if (nextState === 'entering-page') {
+      initialDirectMountAppliedRef.current = false;
+      initialDirectPageEntryInProgressRef.current = Boolean(activePageRef.current);
+    }
+    appStateRef.current = nextState;
+    setAppState(nextState);
+  }, []);
 
   const cancelPendingPageShellReveal = useCallback(() => {
     pageShellRevealTokenRef.current += 1;
@@ -316,6 +405,13 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
   }, [appState]);
 
   useEffect(() => {
+    return () => {
+      controlHintsRevealTweenRef.current?.kill();
+      controlHintsRevealTweenRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
     activePageRef.current = activePage;
   }, [activePage]);
 
@@ -333,7 +429,11 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
     appStateRef.current = 'page-active';
     transitionPhaseRef.current = 'page-active';
     if (containerRef.current) {
-      gsap.set(containerRef.current.querySelector('[data-control-hints-fixed]'), { y: 0, opacity: 1 });
+      controlHintsRevealTweenRef.current?.kill();
+      controlHintsRevealTweenRef.current = gsap.to(
+        containerRef.current.querySelector('[data-control-hints-fixed]'),
+        { y: 0, opacity: 1, duration: 0.14, ease: 'power2.out' }
+      );
     }
     setAppState('page-active');
   }, []);
@@ -528,7 +628,18 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
       if (cancelled) return;
       if (appStateRef.current !== 'preloading') return;
       requestAnimationFrame(() => requestAnimationFrame(() => {
-        setAppState(shouldMountPageDirectOnLoadRef.current ? 'entering-page' : 'entry');
+        const bootTargetState = getBootTargetAppState(
+          shouldMountPageDirectOnLoadRef.current,
+          shouldMountPageDirectOnLoadRef.current && animationsEnabled
+        ) as UnsupportedScreenResumeState;
+        const nextState = isCompactViewport && !unsupportedScreenDismissed
+          ? 'unsupported-screen'
+          : bootTargetState;
+        if (nextState === 'unsupported-screen') {
+          unsupportedScreenResumeStateRef.current = bootTargetState;
+        }
+        appStateRef.current = nextState;
+        setAppState(nextState);
       }));
     });
 
@@ -536,7 +647,7 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
       cancelled = true;
       preloadController.abort();
     };
-  }, [memorandumData]);
+  }, [isCompactViewport, memorandumData, unsupportedScreenDismissed]);
 
   useEffect(() => {
     if (appState === 'preloading' || deferredImageWarmupStartedRef.current) return;
@@ -595,12 +706,16 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
     setPreferencesReady(true);
   }, []);
 
+  const cursorActive = cursorStyle === 'metaphor' &&
+    supportsHoverPointer &&
+    inputMode === 'mouse';
+
   useEffect(() => {
-    document.body.classList.toggle(
-      'cursor-metaphor',
-      cursorStyle === 'metaphor' && supportsHoverPointer && inputMode === 'mouse'
-    );
-  }, [cursorStyle, inputMode, supportsHoverPointer]);
+    document.body.classList.toggle('cursor-metaphor', cursorActive);
+    return () => {
+      document.body.classList.remove('cursor-metaphor');
+    };
+  }, [cursorActive]);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia('(any-hover: hover) and (any-pointer: fine)');
@@ -750,11 +865,15 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
       }
     });
 
-    if (menuLeftRef.current) {
+    const menuVerticalMotionTarget = viewportProfile.layoutMode === 'compact'
+      ? menuScrollOverlayRef.current
+      : menuLeftRef.current;
+
+    if (menuVerticalMotionTarget) {
       if (changed) {
-        gsap.to(menuLeftRef.current, { y: newY, duration: 0.2, ease: 'power3.out' });
+        gsap.to(menuVerticalMotionTarget, { y: newY, duration: 0.2, ease: 'power3.out' });
       } else {
-        gsap.set(menuLeftRef.current, { y: newY });
+        gsap.set(menuVerticalMotionTarget, { y: newY });
       }
     }
 
@@ -796,7 +915,92 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
         );
       }
     }
-  }, [selectedIndex, appState, animationsEnabled]);
+  }, [selectedIndex, appState, animationsEnabled, viewportProfile.layoutMode]);
+
+  useEffect(() => {
+    if (viewportProfile.layoutMode !== 'compact' || !menuScrollViewportRef.current || !containerRef.current) {
+      setCompactMenuScrollWidth(null);
+      return;
+    }
+
+    const scrollViewport = menuScrollViewportRef.current;
+    const root = containerRef.current;
+    const measureScrollWidth = rafThrottle(() => {
+      const viewportRect = scrollViewport.getBoundingClientRect();
+      const paintSplash = root.querySelector('[data-paint-splash]') as HTMLElement | null;
+      const labels = Array.from(root.querySelectorAll('[data-menu-label]')) as HTMLElement[];
+      const rightEdges = labels.map((label) => (
+        scrollViewport.scrollLeft + (label.getBoundingClientRect().right - viewportRect.left)
+      ));
+
+      if (paintSplash) {
+        rightEdges.push(
+          scrollViewport.scrollLeft + (paintSplash.getBoundingClientRect().right - viewportRect.left) + 24
+        );
+      }
+
+      const contentRight = rightEdges.length > 0
+        ? Math.max(...rightEdges)
+        : scrollViewport.clientWidth;
+      const measuredScrollWidth = Math.max(scrollViewport.clientWidth, Math.ceil(contentRight));
+      const measuredOverflow = Math.max(0, measuredScrollWidth - scrollViewport.clientWidth);
+      const nextScrollWidth = scrollViewport.clientWidth + Math.ceil(measuredOverflow * 0.7);
+      const maxScrollLeft = Math.max(0, nextScrollWidth - scrollViewport.clientWidth);
+
+      setCompactMenuScrollWidth((current) => current === nextScrollWidth ? current : nextScrollWidth);
+      if (scrollViewport.scrollLeft > maxScrollLeft) {
+        scrollViewport.scrollLeft = maxScrollLeft;
+      }
+    });
+
+    let settleRafId: number | null = null;
+    const settleStartRafId = requestAnimationFrame((startTime) => {
+      const tick = (now: number) => {
+        measureScrollWidth();
+        if (now - startTime < 280) {
+          settleRafId = requestAnimationFrame(tick);
+        } else {
+          settleRafId = null;
+          measureScrollWidth();
+        }
+      };
+
+      tick(startTime);
+    });
+
+    window.addEventListener('resize', measureScrollWidth);
+
+    return () => {
+      cancelAnimationFrame(settleStartRafId);
+      if (settleRafId !== null) {
+        cancelAnimationFrame(settleRafId);
+      }
+      measureScrollWidth.cancel();
+      window.removeEventListener('resize', measureScrollWidth);
+    };
+  }, [selectedIndex, appState, splashMeasureKey, viewportProfile.layoutMode]);
+
+  useEffect(() => {
+    const scrollViewport = menuScrollViewportRef.current;
+    const menuStack = menuStackRef.current;
+    if (!scrollViewport || !menuStack) return;
+
+    const syncMenuScroll = () => {
+      if (viewportProfile.layoutMode === 'compact') {
+        gsap.set(menuStack, { x: -scrollViewport.scrollLeft });
+        return;
+      }
+
+      gsap.set(menuStack, { x: 0 });
+    };
+
+    syncMenuScroll();
+    scrollViewport.addEventListener('scroll', syncMenuScroll, { passive: true });
+
+    return () => {
+      scrollViewport.removeEventListener('scroll', syncMenuScroll);
+    };
+  }, [viewportProfile.layoutMode, compactMenuScrollWidth]);
 
 
   useEffect(() => {
@@ -1053,17 +1257,40 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
   }, [appState, animationsEnabled]);
 
   useEffect(() => {
-    const check = rafThrottle(() => {
-      const ratio = window.innerWidth / window.innerHeight;
-      setUnsupported(ratio < 1.3 || ratio > 2.3);
-    });
-    check();
-    window.addEventListener('resize', check);
-    return () => {
-      check.cancel();
-      window.removeEventListener('resize', check);
-    };
-  }, []);
+    setSplashMeasureKey((key) => key + 1);
+  }, [viewportProfile.layoutMode, viewportProfile.orientation]);
+
+  useEffect(() => {
+    if (!isCompactViewport) {
+      setUnsupportedScreenDismissed(false);
+      if (appStateRef.current === 'unsupported-screen') {
+        const nextState = unsupportedScreenResumeStateRef.current;
+        if (nextState === 'entering-page') {
+          initialDirectMountAppliedRef.current = false;
+          initialDirectPageEntryInProgressRef.current = Boolean(activePageRef.current);
+        }
+        appStateRef.current = nextState;
+        setAppState(nextState);
+      }
+      return;
+    }
+
+    if (unsupportedScreenDismissed || appStateRef.current === 'unsupported-screen') return;
+    if (appStateRef.current !== 'entry' && appStateRef.current !== 'entering-page') return;
+
+    unsupportedScreenResumeStateRef.current = appStateRef.current;
+    entryTlRef.current?.kill();
+    entryTlRef.current = null;
+    pageTlRef.current?.kill();
+    pageTlRef.current = null;
+    cancelPendingPageShellReveal();
+    if (appStateRef.current === 'entering-page') {
+      initialDirectMountAppliedRef.current = false;
+      initialDirectPageEntryInProgressRef.current = Boolean(activePageRef.current);
+    }
+    appStateRef.current = 'unsupported-screen';
+    setAppState('unsupported-screen');
+  }, [cancelPendingPageShellReveal, isCompactViewport, unsupportedScreenDismissed]);
 
   useEffect(() => {
     if (appState === 'page-active' && activePage) {
@@ -1286,6 +1513,7 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
     initialDirectPageEntryInProgressRef.current
     ? handleDirectPageEntryComplete
     : undefined;
+  const shouldRenderPageShell = Boolean(activePage) && appState !== 'preloading' && appState !== 'unsupported-screen';
 
   function handleCursorChange(style: CursorStyle, options?: { playSound?: boolean }) {
     if (cursorStyle === style) return;
@@ -1528,15 +1756,17 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
     exitPageRef.current = exitPage;
   }, [enterPage, exitPage]);
 
-  if (unsupported) return <UnsupportedScreen />;
-
-  const cursorActive = cursorStyle === 'metaphor' && supportsHoverPointer && inputMode === 'mouse';
   const pageAnimationState =
     appState === 'entering-page'
       ? 'entering-page'
       : appState === 'exiting-page'
         ? 'exiting-page'
         : 'page-active';
+  const shouldShowUnsupportedScreen = (
+    appState !== 'preloading' &&
+    (appState === 'unsupported-screen' || isCompactViewport)
+  ) && !unsupportedScreenDismissed;
+  const shouldShowLoadingScreen = appState === 'preloading' || appState === 'unsupported-screen';
   const initialEntryDelaySeconds = 0;
   const activePageContent = activePage === 'about' ? (
     <AboutPage
@@ -1614,12 +1844,103 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
 
   return (
     <>
-    {appState === 'preloading' && <LoadingScreen />}
+    {shouldShowLoadingScreen && <LoadingScreen animateBar={appState === 'preloading'} />}
     <CustomCursor visible={cursorActive} />
     <div
       ref={containerRef}
       data-app-root
+      data-layout-mode={viewportProfile.layoutMode}
+      data-orientation={viewportProfile.orientation}
       className={`menu-root${inputMode === 'keyboard' ? ' keyboard-mode' : ''}`}
+      onTouchStart={(event) => {
+        if (!viewportProfile.shouldUseTouchNav || appState !== 'idle') return;
+        menuTouchStartedInScrollViewportRef.current = Boolean(
+          (event.target as Element).closest(
+            '[data-menu-scroll-viewport], [data-menu-scroll-overlay], [data-menu-left], [data-menu-item], [data-menu-item-wrap], [data-menu-item-target]'
+          )
+        );
+        menuTouchHorizontalScrollLockedRef.current = false;
+        const touch = event.touches[0];
+        menuTouchStartYRef.current = touch.clientY;
+        menuTouchStartXRef.current = touch.clientX;
+        menuTouchStartIndexRef.current = selectedIndexRef.current;
+        menuTouchStartScrollLeftRef.current = menuScrollViewportRef.current?.scrollLeft ?? 0;
+        menuTouchNavigatedRef.current = false;
+      }}
+      onTouchMove={(event) => {
+        if (!viewportProfile.shouldUseTouchNav || appState !== 'idle') return;
+        if (
+          menuTouchStartYRef.current === null ||
+          menuTouchStartXRef.current === null ||
+          menuTouchStartIndexRef.current === null
+        ) return;
+
+        const touch = event.touches[0];
+        const deltaY = touch.clientY - menuTouchStartYRef.current;
+        const deltaX = touch.clientX - menuTouchStartXRef.current;
+        const touchStepPx = getMenuTouchStepPx();
+        if (menuTouchStartedInScrollViewportRef.current) {
+          if (menuTouchHorizontalScrollLockedRef.current) {
+            if (menuScrollViewportRef.current) {
+              menuScrollViewportRef.current.scrollLeft = Math.max(
+                0,
+                menuTouchStartScrollLeftRef.current - deltaX
+              );
+            }
+            menuTouchSuppressClickUntilRef.current = Date.now() + 250;
+            lastTouchInputAt.current = Date.now();
+            setInputMode('touch');
+            return;
+          }
+          if (Math.abs(deltaY) < touchStepPx && Math.abs(deltaX) < touchStepPx) return;
+          if (Math.abs(deltaX) > Math.abs(deltaY)) {
+            menuTouchHorizontalScrollLockedRef.current = true;
+            if (menuScrollViewportRef.current) {
+              menuScrollViewportRef.current.scrollLeft = Math.max(
+                0,
+                menuTouchStartScrollLeftRef.current - deltaX
+              );
+            }
+            menuTouchSuppressClickUntilRef.current = Date.now() + 250;
+            lastTouchInputAt.current = Date.now();
+            setInputMode('touch');
+            return;
+          }
+        }
+
+        if (Math.abs(deltaY) < touchStepPx || Math.abs(deltaY) <= Math.abs(deltaX)) return;
+        const indexDelta = Math.floor(Math.abs(deltaY) / touchStepPx);
+        if (indexDelta < 1) return;
+
+        const startIndex = menuTouchStartIndexRef.current;
+        const nextIndex = deltaY > 0
+          ? Math.max(startIndex - indexDelta, 0)
+          : Math.min(startIndex + indexDelta, MENU_ITEMS.length - 1);
+
+        menuTouchNavigatedRef.current = nextIndex !== startIndex;
+        if (nextIndex !== startIndex) {
+          menuTouchSuppressClickUntilRef.current = Date.now() + 250;
+        }
+        lastTouchInputAt.current = Date.now();
+        setInputMode('touch');
+        selectMenuIndex(nextIndex);
+      }}
+      onTouchEnd={() => {
+        menuTouchStartYRef.current = null;
+        menuTouchStartXRef.current = null;
+        menuTouchStartIndexRef.current = null;
+        menuTouchNavigatedRef.current = false;
+        menuTouchStartedInScrollViewportRef.current = false;
+        menuTouchHorizontalScrollLockedRef.current = false;
+      }}
+      onTouchCancel={() => {
+        menuTouchStartYRef.current = null;
+        menuTouchStartXRef.current = null;
+        menuTouchStartIndexRef.current = null;
+        menuTouchNavigatedRef.current = false;
+        menuTouchStartedInScrollViewportRef.current = false;
+        menuTouchHorizontalScrollLockedRef.current = false;
+      }}
       onClick={(e) => {
         if (appState !== 'idle') return;
         if ((e.target as Element).closest('[data-control-hints-fixed]')) return;
@@ -1631,6 +1952,9 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
           : null;
         const isTouchActivation = lastPointerTypeRef.current === 'touch' ||
           Date.now() - lastTouchInputAt.current < TOUCH_INPUT_GRACE_MS;
+        if (isTouchActivation && Date.now() < menuTouchSuppressClickUntilRef.current) {
+          return;
+        }
 
         if (isTouchActivation && !intendedPageId) {
           return;
@@ -1645,15 +1969,18 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
 
         enterPage(intendedPageId ?? MENU_ITEMS[selectedIndex].id as AppPageId, { playSound: true });
       }}
+      style={{
+        touchAction: viewportProfile.shouldUseTouchNav && appState === 'idle' ? 'manipulation' : 'auto',
+      }}
     >
       <BackgroundLayers />
       <div
         data-portrait-wrap
         style={{ position: 'absolute', inset: 0, zIndex: 1, pointerEvents: 'none' }}
       >
-        <CharacterPortrait animationsEnabled={animationsEnabled} />
+        <CharacterPortrait animationsEnabled={animationsEnabled} layoutMode={viewportProfile.layoutMode} />
       </div>
-      <BackgroundLines animationsEnabled={animationsEnabled} />
+      <BackgroundLines animationsEnabled={animationsEnabled} layoutMode={viewportProfile.layoutMode} />
 
       <div
         data-paint-splash-wrap
@@ -1662,6 +1989,7 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
         <MenuItemBackground
           itemRefs={itemRefs}
           menuStackRef={menuStackRef}
+          menuScrollViewportRef={menuScrollViewportRef}
           selectedIndex={selectedIndex}
           animationsEnabled={animationsEnabled}
           accentH={activeItem.accentH}
@@ -1675,37 +2003,62 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
           menuScrollYVh={(2.5 - selectedIndex) * 1.5}
           selectedItemOffsetYVh={getMenuItemWrapOffsetYVh(selectedIndex, selectedIndex)}
           measureKey={splashMeasureKey}
+          layoutMode={viewportProfile.layoutMode}
         />
       </div>
 
       <div ref={menuLeftRef} className="menu-left" data-menu-left>
         <div className="menu-splash-wrap">
-          <div ref={menuStackRef} className="menu-stack">
-            {MENU_ITEMS.map((item, i) => {
-              return (
-                <div
-                  key={item.id}
-                  data-menu-item-target={item.id}
-                  data-menu-item-wrap
-                  ref={(el) => { itemWrapRefs.current[i] = el; }}
-                  style={{
-                    marginBottom: item.marginBottom,
-                    marginTop: item.marginTop,
-                  }}
-                >
-                  <MenuItem
-                    ref={(el) => { itemRefs.current[i] = el; }}
-                    item={item}
-                    index={i}
-                    isSelected={i === selectedIndex}
-                    subtitle={item.subtitle}
-                    subtitleVisible={subtitleVisible}
-                    animationsEnabled={animationsEnabled}
-                    onMouseEnter={handleMenuItemMouseEnter}
-                  />
-                </div>
-              );
-            })}
+          <div
+            ref={menuScrollViewportRef}
+            className="menu-scroll-viewport"
+            data-menu-scroll-viewport
+          >
+            <div
+              className="menu-scroll-spacer"
+              aria-hidden="true"
+              style={viewportProfile.layoutMode === 'compact' && compactMenuScrollWidth
+                ? { width: `${compactMenuScrollWidth}px` }
+                : undefined}
+            />
+          </div>
+          <div
+            ref={menuScrollOverlayRef}
+            className="menu-scroll-overlay"
+            data-menu-scroll-overlay
+          >
+            <div
+              ref={menuStackRef}
+              className={`menu-stack${viewportProfile.layoutMode === 'compact' ? ' menu-stack-compact' : ''}`}
+            >
+              {MENU_ITEMS.map((item, i) => {
+                const spacing = getResponsiveMenuItemSpacing(item, viewportProfile.layoutMode);
+                return (
+                  <div
+                    key={item.id}
+                    data-menu-item-target={item.id}
+                    data-menu-item-wrap
+                    ref={(el) => { itemWrapRefs.current[i] = el; }}
+                    style={{
+                      marginBottom: spacing.marginBottom,
+                      marginTop: spacing.marginTop,
+                    }}
+                  >
+                    <MenuItem
+                      ref={(el) => { itemRefs.current[i] = el; }}
+                      item={item}
+                      index={i}
+                      isSelected={i === selectedIndex}
+                      subtitle={item.subtitle}
+                      subtitleVisible={subtitleVisible}
+                      animationsEnabled={animationsEnabled}
+                      layoutMode={viewportProfile.layoutMode}
+                      onMouseEnter={handleMenuItemMouseEnter}
+                    />
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       </div>
@@ -1721,7 +2074,7 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
           pointerEvents: 'none',
         }}
       >
-        <MenuIndex index={MENU_ITEMS[displayIndex].index} />
+        <MenuIndex index={MENU_ITEMS[displayIndex].index} layoutMode={viewportProfile.layoutMode} />
         <div
           style={{
             position: 'absolute',
@@ -1730,7 +2083,11 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
             pointerEvents: 'none',
           }}
         >
-          <MenuIndex index={MENU_ITEMS[displayIndex].index} textColor={COLORS.accentRed} />
+          <MenuIndex
+            index={MENU_ITEMS[displayIndex].index}
+            textColor={COLORS.accentRed}
+            layoutMode={viewportProfile.layoutMode}
+          />
         </div>
       </div>
 
@@ -1745,7 +2102,7 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
           overflow: 'visible',
         }}
       >
-        <StatsPanel />
+        <StatsPanel layoutMode={viewportProfile.layoutMode} />
       </div>
 
       {/* Control hints - above page shell, always visible */}
@@ -1764,8 +2121,10 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
           animationsEnabled={animationsEnabled}
           mode={hintsMode}
           activePage={hintsPage}
-          hintVariant={hintVariant}
-          showScrollHint={showScrollHint}
+         hintVariant={hintVariant}
+         showScrollHint={showScrollHint}
+         layoutMode={viewportProfile.layoutMode}
+          touchMode={viewportProfile.shouldUseTouchNav}
           onShortcutClick={(key) => {
             if (pageNavigationRef.current?.inputLocked) return;
             if (key === 'a' || key === 'A') {
@@ -1798,7 +2157,7 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
         />
       </div>
 
-      {activePage && (
+      {shouldRenderPageShell && (
         <div
           data-page-shell
           style={{
@@ -1817,6 +2176,9 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
         </div>
       )}
     </div>
+    {shouldShowUnsupportedScreen && (
+      <UnsupportedScreen onDismiss={continueFromUnsupportedScreen} />
+    )}
     </>
   );
 }

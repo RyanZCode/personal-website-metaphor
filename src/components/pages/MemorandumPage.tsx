@@ -473,6 +473,7 @@ export default function MemorandumPage({
   const mountedRef = useRef(true);
   const pendingReadEntryIdRef = useRef<string | null>(null);
   const pendingExternalExitRef = useRef(false);
+  const routeSyncPathRef = useRef<string | null>(null);
   const prevIsActive = useRef(isActive);
   const previousColumnIndexRef = useRef(initialState.columnIndex);
   const initialCategoryPaintRef = useRef(false);
@@ -649,6 +650,10 @@ export default function MemorandumPage({
   const setEntryIndexForColumn = (columnIndex: number, nextIndex: number) => {
     const entryCount = columns[columnIndex].entries.length;
     const wrappedIndex = entryCount > 0 ? wrapIndex(nextIndex, entryCount) : 0;
+    const currentIndex = selectedEntryIndicesRef.current[columnIndex] ?? 0;
+    if (currentIndex === wrappedIndex) {
+      return wrappedIndex;
+    }
     selectedEntryIndicesRef.current = selectedEntryIndicesRef.current.map((value, index) => {
       if (index !== columnIndex) return value;
       return wrappedIndex;
@@ -1382,8 +1387,17 @@ export default function MemorandumPage({
       return;
     }
 
-    selectedColumnIndexRef.current = parsed.columnIndex;
-    setSelectedColumnIndex(parsed.columnIndex);
+    const currentPath = detailEntry
+      ? buildMemorandumPath(currentColumn.id, detailEntry.slug, detailPageIndex + 1)
+      : (!parsed.hasExplicitCategory && currentColumn.id === memorandumData.defaultColumnId
+          ? buildMemorandumPath()
+          : buildMemorandumPath(currentColumn.id));
+    routeSyncPathRef.current = currentPath === parsed.pathname ? null : parsed.pathname;
+
+    if (selectedColumnIndexRef.current !== parsed.columnIndex) {
+      selectedColumnIndexRef.current = parsed.columnIndex;
+      setSelectedColumnIndex(parsed.columnIndex);
+    }
 
     const column = columns[parsed.columnIndex];
     const entryIndex = parsed.entrySlug
@@ -1396,11 +1410,18 @@ export default function MemorandumPage({
 
       if (detailEntryIdRef.current === entry.slug) {
         const nextPageIndex = (parsed.pageNumber ?? 1) - 1;
-        setDetailPageIndex(nextPageIndex);
-        detailPageIndexRef.current = nextPageIndex;
-        setDisplayedDetail({
-          entryId: entry.slug,
-          pageIndex: nextPageIndex,
+        if (detailPageIndexRef.current !== nextPageIndex) {
+          setDetailPageIndex(nextPageIndex);
+          detailPageIndexRef.current = nextPageIndex;
+        }
+        setDisplayedDetail((current) => {
+          if (current?.entryId === entry.slug && current.pageIndex === nextPageIndex) {
+            return current;
+          }
+          return {
+            entryId: entry.slug,
+            pageIndex: nextPageIndex,
+          };
         });
         if (!readSet.has(entry.id)) {
           onEntryReadRef.current(entry.id);
@@ -1428,6 +1449,11 @@ export default function MemorandumPage({
       return;
     }
 
+    pendingDetailRouteRef.current = null;
+    if (detailEntryIdRef.current) {
+      closeDetail({ playSound: false });
+    }
+
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [columns, isActive, locationPath, memorandumData]);
 
@@ -1442,6 +1468,13 @@ export default function MemorandumPage({
       : (!parsed.hasExplicitCategory && currentColumn.id === memorandumData.defaultColumnId
           ? buildMemorandumPath()
           : buildMemorandumPath(currentColumn.id));
+
+    if (routeSyncPathRef.current === locationPath) {
+      if (nextPath === locationPath) {
+        routeSyncPathRef.current = null;
+      }
+      return;
+    }
 
     if (nextPath !== locationPath) {
       onPathChange(nextPath);
@@ -1549,8 +1582,6 @@ export default function MemorandumPage({
         return false;
       },
     });
-
-    return () => registerNavigation(null);
   }, [
     animationsEnabled,
     currentColumn.entries.length,
@@ -1568,10 +1599,16 @@ export default function MemorandumPage({
     selectedColumnIndex,
   ]);
 
+  useEffect(() => {
+    return () => {
+      registerNavigation(null);
+    };
+  }, [registerNavigation]);
+
   return (
     <section
       ref={containerRef}
-      aria-hidden={!isActive}
+      inert={!isActive}
       data-memorandum-page
       style={{
         position: 'absolute',
@@ -1739,6 +1776,7 @@ export default function MemorandumPage({
         </div>
 
         <div
+          data-memorandum-layout
           style={{
             position: 'relative',
             zIndex: 3,
@@ -1904,6 +1942,7 @@ export default function MemorandumPage({
               })}
             </div>
             <div
+              data-memorandum-tab-step="prev"
               style={{
                 position: 'absolute',
                 left: 0,
@@ -1926,6 +1965,7 @@ export default function MemorandumPage({
               />
             </div>
             <div
+              data-memorandum-tab-step="next"
               style={{
                 position: 'absolute',
                 right: 0,
@@ -2361,6 +2401,7 @@ export default function MemorandumPage({
               />
 
               <div
+                data-memorandum-detail-frame
                 style={{
                   position: 'absolute',
                   inset: 0,
@@ -2394,6 +2435,7 @@ export default function MemorandumPage({
                     }}
                   />
                   <div
+                    data-memorandum-detail-left-content
                     style={{
                       position: 'absolute',
                       inset: '2.75rem 1.5rem 2.4rem 2.75rem',
@@ -2471,6 +2513,7 @@ export default function MemorandumPage({
                     />
 
                     <div
+                      data-memorandum-detail-body-shell
                       style={{
                         position: 'relative',
                         width: '100%',
@@ -2478,6 +2521,7 @@ export default function MemorandumPage({
                       }}
                     >
                       <div
+                        data-memorandum-detail-body-viewport
                         style={{
                           position: 'absolute',
                           top: 0,
@@ -2546,6 +2590,7 @@ export default function MemorandumPage({
                     }}
                   />
                   <div
+                    data-memorandum-detail-right-content
                     style={{
                       position: 'absolute',
                       inset: '2.75rem 2.75rem 2.4rem 1.5rem',

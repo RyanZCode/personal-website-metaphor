@@ -6,6 +6,7 @@ import {
   createContactEntryTimeline,
   createContactExitTimeline,
 } from '../../lib/animations';
+import { useViewportProfile } from '../../lib/deviceProfile';
 import type { RegisterPageNavigation } from '../../lib/pageNavigation';
 import type { PlaySoundEffect } from '../../lib/soundEffects';
 import ContactRings from '../menu/splashEffects/ContactRings';
@@ -94,6 +95,8 @@ const PANEL_TOP_PADDING = 0;
 const PANEL_BOTTOM_PADDING = 0;
 const PANEL_SIDE_PADDING = 38;
 const CONTACT_ROW_HEIGHT = 108;
+const COMPACT_CONTACT_ROW_HEIGHT = 146;
+const NARROW_COMPACT_CONTACT_ROW_HEIGHT = 164;
 const MIN_VISIBLE_ROWS = 1;
 const PANEL_BORDER_COLOR = 'rgba(255, 255, 255, 0.5)';
 const PANEL_BORDER_WIDTH = 2;
@@ -230,6 +233,7 @@ export default function ContactPage({
   playSoundEffect,
   onEntryAnimationComplete,
 }: ContactPageProps) {
+  const viewportProfile = useViewportProfile();
   const containerRef = useRef<HTMLElement>(null);
   const panelSlotRef = useRef<HTMLDivElement>(null);
   const panelFrameRef = useRef<HTMLDivElement>(null);
@@ -245,6 +249,14 @@ export default function ContactPage({
   const accent = contactItem
     ? `hsl(${contactItem.accentH} ${contactItem.accentS} ${contactItem.accentL})`
     : 'hsl(25 80% 50%)';
+  const isCompact = viewportProfile.layoutMode === 'compact';
+  const isNarrowCompactViewport = isCompact && typeof window !== 'undefined' && window.innerWidth <= 380;
+  const contactRowHeight = isCompact
+    ? isNarrowCompactViewport
+      ? NARROW_COMPACT_CONTACT_ROW_HEIGHT
+      : COMPACT_CONTACT_ROW_HEIGHT
+    : CONTACT_ROW_HEIGHT;
+
   useEffect(() => {
     selectedIndexRef.current = selectedIndex;
   }, [selectedIndex]);
@@ -336,7 +348,7 @@ export default function ContactPage({
       const availableForRows = availableHeight - PANEL_TOP_PADDING - PANEL_BOTTOM_PADDING;
       const nextVisibleRows = Math.max(
         MIN_VISIBLE_ROWS,
-        Math.min(CONTACTS.length, Math.floor(availableForRows / CONTACT_ROW_HEIGHT))
+        Math.min(CONTACTS.length, Math.floor(availableForRows / contactRowHeight))
       );
       setVisibleRows(nextVisibleRows);
     });
@@ -352,7 +364,7 @@ export default function ContactPage({
       resizeObserver.disconnect();
       window.removeEventListener('resize', updateVisibleRows);
     };
-  }, []);
+  }, [contactRowHeight]);
 
   useLayoutEffect(() => {
     if (!isActive) {
@@ -401,7 +413,7 @@ export default function ContactPage({
     return () => registerNavigation(null);
   }, [isActive, registerNavigation, selectContact]);
 
-  const listViewportHeight = visibleRows * CONTACT_ROW_HEIGHT;
+  const listViewportHeight = visibleRows * contactRowHeight;
   const panelHeight = PANEL_TOP_PADDING + PANEL_BOTTOM_PADDING + listViewportHeight;
   const bobAnim = isActive && animationsEnabled ? 'portrait-bob 4s ease-in-out infinite' : 'none';
   const glowAnim = animationsEnabled ? 'portrait-glow 3s ease-in-out infinite' : 'none';
@@ -410,7 +422,7 @@ export default function ContactPage({
   return (
     <section
       ref={containerRef}
-      aria-hidden={!isActive}
+      inert={!isActive}
       data-contact-page
       style={{
         position: 'absolute',
@@ -525,6 +537,7 @@ export default function ContactPage({
         />
 
         <div
+          data-contact-panel
           ref={panelSlotRef}
           style={{
             position: 'relative',
@@ -602,8 +615,8 @@ export default function ContactPage({
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     gap: '1.5rem',
-                    height: `${CONTACT_ROW_HEIGHT}px`,
-                    minHeight: `${CONTACT_ROW_HEIGHT}px`,
+                    height: `${contactRowHeight}px`,
+                    minHeight: `${contactRowHeight}px`,
                     padding: `0 ${PANEL_SIDE_PADDING}px`,
                     marginLeft: `-${PANEL_SIDE_PADDING}px`,
                     marginRight: `-${PANEL_SIDE_PADDING}px`,
@@ -642,8 +655,12 @@ export default function ContactPage({
                       }}
                     />
                   ) : null}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', minWidth: 0, flex: 1 }}>
+                  <div
+                    data-contact-row-main
+                    style={{ display: 'flex', alignItems: 'center', gap: '1rem', minWidth: 0, flex: 1 }}
+                  >
                     <div
+                      data-contact-row-icon
                       aria-label={contact.iconAlt}
                       style={{
                         width: '3.35rem',
@@ -673,30 +690,36 @@ export default function ContactPage({
                         }}
                       />
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', minWidth: 0 }}>
                     <div
-                      style={{
-                        fontSize: 'var(--font-fluid-lg)',
-                        fontWeight: 600,
-                        letterSpacing: '0.04em',
-                        color: index === selectedIndex ? COLORS.textPrimary : COLORS.textPrimary,
-                      }}
+                      data-contact-row-copy
+                      style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', minWidth: 0 }}
                     >
-                      {contact.platform}
+                      <div
+                        data-contact-row-title
+                        style={{
+                          fontSize: 'var(--font-fluid-lg)',
+                          fontWeight: 600,
+                          letterSpacing: '0.04em',
+                          color: index === selectedIndex ? COLORS.textPrimary : COLORS.textPrimary,
+                        }}
+                      >
+                        {contact.platform}
+                      </div>
+                      <div
+                        data-contact-row-handle
+                        style={{
+                          fontSize: 'var(--font-fluid-md)',
+                          color: index === selectedIndex ? accent : 'rgba(255, 197, 160, 0.92)',
+                          letterSpacing: '0.04em',
+                          wordBreak: 'break-word',
+                        }}
+                      >
+                        {contact.handle}
+                      </div>
                     </div>
-                    <div
-                      style={{
-                        fontSize: 'var(--font-fluid-md)',
-                        color: index === selectedIndex ? accent : 'rgba(255, 197, 160, 0.92)',
-                        letterSpacing: '0.04em',
-                        wordBreak: 'break-word',
-                      }}
-                    >
-                      {contact.handle}
-                    </div>
-                  </div>
                   </div>
                   <div
+                    data-contact-row-badge
                     style={{
                       padding: '0.38rem 0.82rem',
                       background: index === selectedIndex ? 'rgba(255, 173, 110, 0.14)' : 'rgba(240, 232, 236, 0.05)',

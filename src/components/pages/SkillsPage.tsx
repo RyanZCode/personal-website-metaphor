@@ -174,7 +174,7 @@ export default function SkillsPage({
   return (
     <section
       ref={containerRef}
-      aria-hidden={!isActive}
+      inert={!isActive}
       data-skills-page
       style={{
         position: 'absolute',
@@ -202,7 +202,7 @@ export default function SkillsPage({
           letterSpacing: '-0.03em',
           lineHeight: 1,
           color: 'var(--text-primary)',
-          opacity: 0.75,
+            opacity: 1,
           pointerEvents: 'none',
           userSelect: 'none',
           zIndex: 0,
@@ -247,6 +247,7 @@ export default function SkillsPage({
       </div>
 
       <div
+        data-skills-layout
         style={{
           position: 'relative',
           zIndex: 3,

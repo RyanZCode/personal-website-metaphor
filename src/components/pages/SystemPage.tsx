@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import gsap from 'gsap';
 import { COLORS } from '../../lib/constants';
+import { useViewportProfile } from '../../lib/deviceProfile';
 import type { RegisterPageNavigation } from '../../lib/pageNavigation';
 import type { PlaySoundEffect } from '../../lib/soundEffects';
 import SystemGlitch from '../menu/splashEffects/SystemGlitch';
@@ -40,10 +41,13 @@ const PANEL_TOP_PADDING = 0;
 const PANEL_BOTTOM_PADDING = 0;
 const PANEL_SIDE_PADDING = 0;
 const SYSTEM_ROW_HEIGHT = 156;
+const COMPACT_SYSTEM_ROW_HEIGHT = 138;
+const NARROW_COMPACT_SYSTEM_ROW_HEIGHT = 224;
 const MIN_VISIBLE_ROWS = 1;
 const TOGGLE_BUTTON_WIDTH = '11.75rem';
 const BACKGROUND_LINE_COLOR = 'rgba(240, 232, 236, 0.38)';
 const SYSTEM_ROW_COUNT = 4;
+const DEFAULT_VIEWPORT_SIZE = { width: 1440, height: 900 };
 
 const CURSOR_OPTIONS: Array<SystemOption & { id: 'default' | 'metaphor' }> = [
   { id: 'default', label: 'Default', description: 'System pointer for a cleaner interface.' },
@@ -152,6 +156,7 @@ function SystemRow({ title, detail, controls, bordered = true, selected = false,
   return (
     <div
       ref={rowRef}
+      data-system-row
       onMouseEnter={onMouseEnter}
       style={{
         position: 'relative',
@@ -180,6 +185,7 @@ function SystemRow({ title, detail, controls, bordered = true, selected = false,
         }}
       />
         <div
+          data-system-row-copy
           style={{
             flex: '1.28 1 0',
             display: 'flex',
@@ -203,6 +209,7 @@ function SystemRow({ title, detail, controls, bordered = true, selected = false,
           {title}
         </h3>
         <p
+          data-system-row-detail
           style={{
             margin: 0,
             display: 'inline-flex',
@@ -232,6 +239,7 @@ function SystemRow({ title, detail, controls, bordered = true, selected = false,
         </p>
       </div>
       <div
+        data-system-row-controls
         style={{
           flex: '0.9 1 16rem',
           display: 'flex',
@@ -279,6 +287,7 @@ export default function SystemPage({
   playSoundEffect,
   onEntryAnimationComplete,
 }: SystemPageProps) {
+  const viewportProfile = useViewportProfile();
   const containerRef = useRef<HTMLElement>(null);
   const panelSlotRef = useRef<HTMLDivElement>(null);
   const panelFrameRef = useRef<HTMLDivElement>(null);
@@ -290,10 +299,14 @@ export default function SystemPage({
   const selectedRowIndexRef = useRef(0);
   const [visibleRows, setVisibleRows] = useState(3);
   const [selectedRowIndex, setSelectedRowIndex] = useState(0);
-  const [viewportSize, setViewportSize] = useState(() => ({
-    width: typeof window === 'undefined' ? 1440 : window.innerWidth,
-    height: typeof window === 'undefined' ? 900 : window.innerHeight,
-  }));
+  const [viewportSize, setViewportSize] = useState(DEFAULT_VIEWPORT_SIZE);
+  const isCompact = viewportProfile.layoutMode === 'compact';
+  const isNarrowCompact = isCompact && viewportSize.width <= 520;
+  const systemRowHeight = isCompact
+    ? isNarrowCompact
+      ? NARROW_COMPACT_SYSTEM_ROW_HEIGHT
+      : COMPACT_SYSTEM_ROW_HEIGHT
+    : SYSTEM_ROW_HEIGHT;
   const glitchActive = isActive || pageState === 'entering-page';
   const bobAnim = animationsEnabled ? 'portrait-bob 4s ease-in-out infinite' : 'none';
   const glowAnim = animationsEnabled ? 'portrait-glow 3s ease-in-out infinite' : 'none';
@@ -383,7 +396,7 @@ export default function SystemPage({
       const availableForRows = availableHeight - PANEL_TOP_PADDING - PANEL_BOTTOM_PADDING;
       const nextVisibleRows = Math.max(
         MIN_VISIBLE_ROWS,
-        Math.min(4, Math.floor(availableForRows / SYSTEM_ROW_HEIGHT))
+        Math.min(4, Math.floor(availableForRows / systemRowHeight))
       );
       setVisibleRows(nextVisibleRows);
     });
@@ -399,7 +412,7 @@ export default function SystemPage({
       resizeObserver.disconnect();
       window.removeEventListener('resize', updateVisibleRows);
     };
-  }, []);
+  }, [systemRowHeight]);
 
   useEffect(() => {
     const updateViewportSize = rafThrottle(() => {
@@ -512,14 +525,15 @@ export default function SystemPage({
     soundEnabled,
   ]);
 
-  const listViewportHeight = visibleRows * SYSTEM_ROW_HEIGHT;
+  const listViewportHeight = visibleRows * systemRowHeight;
   const panelHeight = PANEL_TOP_PADDING + PANEL_BOTTOM_PADDING + listViewportHeight;
   const dividerX = viewportSize.width * 0.41;
 
   return (
     <section
       ref={containerRef}
-      aria-hidden={!isActive}
+      inert={!isActive}
+      data-system-layout
       style={{
         position: 'absolute',
         inset: 0,
@@ -549,6 +563,7 @@ export default function SystemPage({
       </div>
 
       <div
+        data-system-lines
         data-system-background
         style={{
           position: 'absolute',
@@ -559,6 +574,7 @@ export default function SystemPage({
       >
         {/* Watermark underline */}
         <div
+          data-system-underline
           style={{
             position: 'absolute',
             top: 'calc(clamp(7rem, 16vw, 17rem) * 0.69)',
@@ -570,6 +586,7 @@ export default function SystemPage({
         />
         {/* Divider between portrait and panel */}
         <div
+          data-system-divider
           style={{
             position: 'absolute',
             top: '0',

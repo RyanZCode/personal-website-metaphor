@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
-import { shouldRenderDecorativeTextures } from '../../lib/deviceProfile';
+import { shouldRenderDecorativeTextures, useViewportProfile } from '../../lib/deviceProfile';
 
 export default function BackgroundLayers() {
   const [showTextures, setShowTextures] = useState(false);
+  const viewportProfile = useViewportProfile();
 
   useEffect(() => {
     setShowTextures(shouldRenderDecorativeTextures());
-  }, []);
+  }, [viewportProfile.layoutMode, viewportProfile.isCoarsePointer]);
 
   return (
     <div
@@ -29,7 +30,7 @@ export default function BackgroundLayers() {
               inset: 0,
               width: '100%',
               height: '100%',
-              opacity: 0.14,
+              opacity: viewportProfile.layoutMode === 'tablet' ? 0.1 : 0.14,
               mixBlendMode: 'multiply',
             }}
             aria-hidden="true"
@@ -55,7 +56,13 @@ export default function BackgroundLayers() {
           </svg>
 
           <svg
-            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0.05 }}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              opacity: viewportProfile.layoutMode === 'tablet' ? 0.035 : 0.05,
+            }}
             aria-hidden="true"
           >
             <filter id="bg-grain">
