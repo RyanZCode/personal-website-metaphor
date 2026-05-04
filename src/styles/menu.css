@@ -647,6 +647,8 @@
   position: relative !important;
   inset: auto !important;
   display: grid !important;
+  grid-template-rows: auto auto minmax(0, 1fr) !important;
+  min-height: 0 !important;
 }
 
 .menu-root[data-layout-mode='compact'] [data-memorandum-detail-left-content] {
@@ -664,7 +666,9 @@
 }
 
 .menu-root[data-layout-mode='compact'] [data-memorandum-detail-body-shell] {
-  min-height: clamp(13rem, 28vh, 18rem) !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  height: 100% !important;
 }
 
 .menu-root[data-layout-mode='compact'] [data-memorandum-detail-body-viewport] {
@@ -680,4 +684,6 @@
 
 .menu-root[data-layout-mode='compact'] [data-memorandum-detail-body-viewport] [data-custom-scroll-viewport] {
   padding-left: 0 !important;
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 2rem) !important;
+  box-sizing: border-box !important;
 }
