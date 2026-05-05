@@ -5,6 +5,12 @@ import { createContactRingsTimelines } from '../../../lib/animations';
 
 interface Props { isActive: boolean; animationsEnabled: boolean; }
 
+const TRAIL_TEXTURES = {
+  soft: '/assets/contact-effects/ring-trail-soft.webp',
+  medium: '/assets/contact-effects/ring-trail-medium.webp',
+  wide: '/assets/contact-effects/ring-trail-wide.webp',
+} as const;
+
 // [sizeVh, startXVh, startYVh, endXVh, endYVh, delayS, opacity]
 const RINGS: Array<[number, number, number, number, number, number, number]> = [
   // Horizontal sweeps
@@ -27,6 +33,18 @@ const RINGS: Array<[number, number, number, number, number, number, number]> = [
   // Steep diagonal: top-right to bottom-left
   [138,   90, -120, -30,  30,  3.0,  0.5 ],
 ];
+
+function getTrailTexture(size: number) {
+  if (size <= 140) return TRAIL_TEXTURES.soft;
+  if (size <= 152) return TRAIL_TEXTURES.medium;
+  return TRAIL_TEXTURES.wide;
+}
+
+function getTrailScale(size: number) {
+  if (size <= 140) return 1.02;
+  if (size <= 152) return 1.05;
+  return 1.08;
+}
 
 export default function ContactRings({ isActive, animationsEnabled }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -55,6 +73,8 @@ export default function ContactRings({ isActive, animationsEnabled }: Props) {
         const angle = Math.atan2(ey - sy, ex - sx);
         const tx = -Math.cos(angle);
         const ty = -Math.sin(angle);
+        const trailTexture = getTrailTexture(size);
+        const trailScale = getTrailScale(size);
 
         return (
           <div
@@ -68,19 +88,21 @@ export default function ContactRings({ isActive, animationsEnabled }: Props) {
               marginTop:  `${-R}vh`,
             }}
           >
-            {/* Trail: border widened to 2.5vh so blur(1vh) has enough painted area to stay visible.
-                Size compensated (+1.9vh each axis, -0.95vh offset) so center radius stays
-                identical to the main ring's 0.6vh border */}
             <div style={{
               position: 'absolute',
-              width: 'calc(100% + 1.9vh)',
-              height: 'calc(100% + 1.9vh)',
-              left: '-0.95vh',
-              top: '-0.95vh',
+              inset: '-2.4vh',
               borderRadius: '50%',
-              border: '2.5vh solid rgba(255,255,255,0.45)',
-              filter: 'blur(1vh)',
-              transform: `translate(${tx * 0.9}vh, ${ty * 0.9}vh)`,
+              backgroundColor: 'rgba(255,255,255,0.58)',
+              maskImage: `url(${trailTexture})`,
+              maskRepeat: 'no-repeat',
+              maskPosition: 'center',
+              maskSize: 'contain',
+              WebkitMaskImage: `url(${trailTexture})`,
+              WebkitMaskRepeat: 'no-repeat',
+              WebkitMaskPosition: 'center',
+              WebkitMaskSize: 'contain',
+              opacity: 0.95,
+              transform: `translate(${tx * 0.9}vh, ${ty * 0.9}vh) scale(${trailScale})`,
             }} />
             {/* Main ring */}
             <div style={{
