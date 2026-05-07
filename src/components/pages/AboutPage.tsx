@@ -355,14 +355,14 @@ export default function AboutPage({
               }}
             >
               <p>
-                Hey y'all, I'm Ryan!
+                Hey y'all, I'm Ryan - a Toronto-based third-year CS student at UWaterloo who's spent the last couple years building things across the stack.
               </p>
-              <p>I'm:</p>
-              <ul style={{ paddingLeft: '1.2em', display: 'flex', flexDirection: 'column', gap: '0.25rem', listStyleType: 'disc' }}>
-                <li>A third-year CS student at the University of Waterloo</li>
-                <li>Passionate about programming</li>
-                <li>Eager to learn more!</li>
-              </ul>
+              <p>
+                I care about writing code that works now and years later in the future (← this is important).
+              </p>
+              <p>
+                I have a penchant for learning new things and I love working with people that can teach me something new!
+              </p>
               <p>In my free time, I'm:</p>
               <ul style={{ paddingLeft: '1.2em', display: 'flex', flexDirection: 'column', gap: '0.25rem', listStyleType: 'disc' }}>
                 <li>Enjoying video games</li>
