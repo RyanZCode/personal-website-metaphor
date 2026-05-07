@@ -34,7 +34,7 @@ interface Job {
 const JOBS: Job[] = [
   {
     company: 'Shopify',
-    role: 'Intern Engineer (Infra)',
+    role: 'Intern Engineer (Infrastructure)',
     period: 'May 2026 - Present',
     type: 'Internship',
     logo: '/assets/experience-logos/shopify-logo.webp',
@@ -1036,10 +1036,10 @@ export default function ExperiencePage({
                           <div
                             style={{
                               display: 'flex',
-                              flexDirection: isCompact ? 'column' : 'row',
+                              flexDirection: 'column',
                               justifyContent: 'space-between',
-                              alignItems: isCompact ? 'stretch' : 'flex-start',
-                              gap: isCompact ? '0.45rem' : '1rem',
+                              alignItems: 'stretch',
+                              gap: '0.45rem',
                             }}
                           >
                             <div style={{ minWidth: 0 }}>
@@ -1072,10 +1072,10 @@ export default function ExperiencePage({
                             <div
                               style={{
                                 display: 'flex',
-                                flexDirection: isCompact ? 'row' : 'column',
-                                alignItems: isCompact ? 'center' : 'flex-end',
-                                justifyContent: isCompact ? 'space-between' : undefined,
-                                flexWrap: isCompact ? 'wrap' : 'nowrap',
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                flexWrap: 'wrap',
                                 gap: '0.3rem',
                                 flexShrink: 0,
                               }}
@@ -1086,7 +1086,7 @@ export default function ExperiencePage({
                                   letterSpacing: '0.1em',
                                   color: COLORS.textPrimaryDim,
                                   textTransform: 'uppercase',
-                                  whiteSpace: isCompact ? 'normal' : 'nowrap',
+                                  whiteSpace: 'normal',
                                 }}
                               >
                                 {job.period}
@@ -1101,7 +1101,7 @@ export default function ExperiencePage({
                                   letterSpacing: '0.15em',
                                   textTransform: 'uppercase',
                                   color: COLORS.textPrimaryDim,
-                                  whiteSpace: isCompact ? 'normal' : 'nowrap',
+                                  whiteSpace: 'normal',
                                 }}
                               >
                                 {job.type}

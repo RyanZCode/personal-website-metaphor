@@ -14,65 +14,74 @@ export default function StatsPanel({ layoutMode = 'desktop' }: { layoutMode?: La
         marginRight: layoutMode === 'tablet' ? '-2.5rem' : '-4rem',
         background: COLORS.chipBg,
         // Trapezoid: left side angled, right side straight (disappears off screen)
-        clipPath: 'polygon(3rem 0%, 100% 0%, 100% 100%, 0% 100%)',
-        padding: layoutMode === 'tablet' ? '0.7rem 4.5rem 0.45rem 3.2rem' : '0.8rem 7rem 0.5rem 5rem',
+        clipPath: 'polygon(5.5rem 0%, 100% 0%, 100% 100%, 0% 100%)',
+        padding: layoutMode === 'tablet' ? '0.9rem 5rem 0.7rem 7rem' : '1.1rem 8rem 0.8rem 9rem',
         transform: layoutMode === 'tablet' ? 'scale(0.9)' : 'none',
         transformOrigin: 'right bottom',
       }}
     >
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'auto 1fr',
-        gap: '0 1rem',
-        marginBottom: '0.35rem',
-      }}>
-        <span style={{
-          gridColumn: 1, gridRow: 1,
+      {/* Name gets its own prominent row */}
+      <div style={{ marginBottom: '0.6rem' }}>
+        <div style={{
           fontFamily: '"Cinzel", serif',
-          fontSize: 'var(--font-fluid-lg)',
-          lineHeight: 1,
-          transform: 'scaleY(0.85)',
-          transformOrigin: 'top left',
-          letterSpacing: '-0.05em',
+          fontSize: 'var(--font-fluid-xs)',
           fontWeight: 700,
+          letterSpacing: '0.12em',
           textTransform: 'uppercase',
           color: COLORS.chipTextSub,
+          marginBottom: '0.1rem',
         }}>
           Name
-        </span>
-        <span style={{
-          gridColumn: 1, gridRow: 2,
-          fontSize: 'var(--font-fluid-xl)',
-          color: COLORS.chipTextSub,
-          lineHeight: 1,
-          textAlign: 'center',
-          alignSelf: 'center',
-        }}>
-          ✒
-        </span>
-        <span style={{
-          gridColumn: 2, gridRow: 2,
-          alignSelf: 'center',
+        </div>
+        <div style={{
           fontFamily: '"Cinzel", serif',
           fontSize: 'var(--font-fluid-2xl)',
           fontWeight: 900,
-          letterSpacing: '0.1em',
+          letterSpacing: '0.08em',
           color: COLORS.chipTextStrong,
+          lineHeight: 1.1,
         }}>
           Ryan Zhou
-        </span>
+        </div>
       </div>
 
-      <span style={{
-        fontFamily: 'Cambria, "Times New Roman", serif',
-        fontSize: 'var(--font-fluid-sm)',
-        letterSpacing: '0.08em',
-        color: COLORS.chipTextFaint,
-        display: 'block',
-        textAlign: 'center',
-      }}>
-        Design inspired by Metaphor: ReFantazio
-      </span>
+      {/* Divider */}
+      <div style={{
+        height: '1px',
+        background: `linear-gradient(to right, ${COLORS.chipTextSub}44, transparent)`,
+        marginBottom: '0.55rem',
+      }} />
+
+      {/* Remaining stats - single grid so label column auto-sizes to widest entry */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: '1rem', rowGap: '0.3rem', alignItems: 'baseline' }}>
+        {([
+          { label: 'Location',  value: 'Toronto, ON' },
+          { label: 'Archetype', value: 'Software Developer' },
+          { label: 'School',    value: 'University of Waterloo' },
+          { label: 'Year',      value: 'III' },
+        ] as const).flatMap(({ label, value }) => [
+          <span key={`${label}-l`} style={{
+            fontFamily: '"Cinzel", serif',
+            fontSize: 'var(--font-fluid-xs)',
+            fontWeight: 700,
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+            color: COLORS.chipTextSub,
+            whiteSpace: 'nowrap',
+          }}>
+            {label}
+          </span>,
+          <span key={`${label}-v`} style={{
+            fontFamily: '"Cinzel", serif',
+            fontSize: 'var(--font-fluid-sm)',
+            fontWeight: 900,
+            letterSpacing: '0.04em',
+            color: COLORS.chipTextStrong,
+          }}>
+            {value}
+          </span>,
+        ])}
+      </div>
     </div>
   );
 }

@@ -729,7 +729,6 @@ export default function ContactPage({
                       letterSpacing: '0.16em',
                       textTransform: 'uppercase',
                       color: index === selectedIndex ? COLORS.textPrimary : COLORS.textPrimaryFade,
-                      flexShrink: 0,
                     }}
                   >
                     {contact.descriptor}

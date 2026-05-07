@@ -26,10 +26,9 @@ interface SkillGroup {
 }
 
 const SKILL_GROUPS: SkillGroup[] = [
-  { category: 'Language',  skills: ['TypeScript', 'JavaScript', 'C++', 'Python', 'Ruby', 'Java', 'C', 'SQL', 'HTML', 'CSS'] },
-  { category: 'Framework', skills: ['React', 'Next.js', 'Astro', 'Node.js', 'Tailwind'] },
-  { category: 'Tool',      skills: ['Git', 'Docker', 'GSAP'] },
-  { category: 'Other',     skills: ['Communication', 'Growth Mindset'] },
+  { category: 'Frontend',        skills: ['React', 'Next.js', 'Tailwind'] },
+  { category: 'Backend / Infra', skills: ['Node.js', 'SQL', 'Kubernetes'] },
+  { category: 'Languages',       skills: ['TypeScript', 'Ruby', 'Python', 'C++', 'C', 'Java'] },
 ];
 
 const accent = 'hsl(335, 75%, 50%)';
@@ -301,6 +300,20 @@ export default function SkillsPage({
             thumbColor="rgba(255, 214, 224, 0.7)"
             thumbHoverColor="rgba(255, 132, 176, 0.98)"
           >
+            <p style={{
+              fontFamily: 'Cambria, "Times New Roman", serif',
+              fontSize: 'var(--font-fluid-md)',
+              lineHeight: 1.6,
+              color: COLORS.textPrimaryDim,
+              marginBottom: '1.5rem',
+            }}>
+              A few of the technologies I've worked with and enjoyed.
+              <br />
+              Am I proficient in all of these? Hell no!
+              <br />
+              But I believe in my ability to learn - I believe that the stack matters less than the problem-solving skills and fundamentals behind it.
+            </p>
+
             {SKILL_GROUPS.map((group, gi) => (
               <div
                 key={group.category}
