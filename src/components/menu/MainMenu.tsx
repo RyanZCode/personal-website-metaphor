@@ -40,7 +40,7 @@ import ExperiencePage from '../pages/ExperiencePage';
 import ContactPage from '../pages/ContactPage';
 import MemorandumPage from '../pages/MemorandumPage';
 import SystemPage from '../pages/SystemPage';
-import type { MemorandumData } from '../../lib/memorandum';
+import { MEMORANDUM_CATEGORIES, type MemorandumData } from '../../lib/memorandum';
 
 type AppState = 'preloading' | 'unsupported-screen' | 'entry' | 'idle' | 'entering-page' | 'page-active' | 'exiting-page';
 type PageId = AppPageId | null;
@@ -54,9 +54,14 @@ interface PageTransitionOptions {
 }
 
 interface MainMenuProps {
-  memorandumData: MemorandumData;
   initialPathname: string;
 }
+
+const EMPTY_MEMORANDUM_DATA: MemorandumData = {
+  columns: MEMORANDUM_CATEGORIES.map((cat) => ({ id: cat.id, label: cat.label, entries: [] })),
+  totalEntries: 0,
+  defaultColumnId: 'tech',
+};
 
 const MENU_SELECTED_OFFSET_VH = 1;
 const MENU_BELOW_SELECTED_OFFSET_VH = 2;
@@ -200,14 +205,18 @@ function getBootTargetAppState(
   return 'entry';
 }
 
-export default function MainMenu({ memorandumData, initialPathname }: MainMenuProps) {
+export default function MainMenu({ initialPathname }: MainMenuProps) {
+  const [memorandumData, setMemorandumData] = useState<MemorandumData | null>(null);
+  const effectiveMemorandumData = memorandumData ?? EMPTY_MEMORANDUM_DATA;
+  const memoFetchStartedRef = useRef(false);
+  const memoFetchPromiseRef = useRef<Promise<MemorandumData | null>>(Promise.resolve(null));
   const initialNormalizedPathRef = useRef(normalizePathname(initialPathname));
   const initialTargetPathRef = useRef(
     initialNormalizedPathRef.current
   );
   const initialClientPreferencesRef = useRef(DEFAULT_CLIENT_PREFERENCES);
   const initialTargetRouteRef = useRef(
-    resolveAppRoute(initialTargetPathRef.current, memorandumData)
+    resolveAppRoute(initialTargetPathRef.current, effectiveMemorandumData)
   );
   const initialShouldShowUnsupportedScreenRef = useRef(false);
   const initialAnimationsEnabled = initialClientPreferencesRef.current.animationsEnabled;
@@ -576,7 +585,7 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
 
   const syncRouteFromPath = useCallback((pathname: string) => {
     const nextPath = normalizePathname(pathname);
-    const nextRoute = resolveAppRoute(nextPath, memorandumData);
+    const nextRoute = resolveAppRoute(nextPath, effectiveMemorandumData);
     const nextPage = nextRoute.pageId ?? null;
     const canonicalPath = nextRoute.pathname;
     const nextItemIndex = nextPage
@@ -611,12 +620,25 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
   }, [memorandumData, selectMenuIndex]);
 
   useEffect(() => {
-    const manifest = createAssetPreloadManifest(memorandumData);
+    const isInitialMemoPage = initialNormalizedPathRef.current.startsWith('/memorandum');
+
+    if (!memoFetchStartedRef.current) {
+      memoFetchStartedRef.current = true;
+      memoFetchPromiseRef.current = fetch('/memorandum-data.json')
+        .then((r) => r.json() as Promise<MemorandumData>)
+        .then((data) => {
+          setMemorandumData(data);
+          return data;
+        })
+        .catch(() => null);
+    }
+
+    const manifest = createAssetPreloadManifest(EMPTY_MEMORANDUM_DATA);
     const preloadController = new AbortController();
     const shouldReduceWork = shouldReduceBootWork();
     let cancelled = false;
 
-    Promise.all([
+    const preloadPromises: Promise<unknown>[] = [
       preloadImages(manifest.blockingImageSrcs, {
         concurrency: shouldReduceWork ? 1 : 2,
         signal: preloadController.signal,
@@ -624,7 +646,13 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
       document.fonts.load('400 1em Cinzel'),
       document.fonts.load('700 1em Cinzel'),
       document.fonts.load('900 1em Cinzel'),
-    ]).then(() => {
+    ];
+
+    if (isInitialMemoPage) {
+      preloadPromises.push(memoFetchPromiseRef.current);
+    }
+
+    Promise.all(preloadPromises).then(() => {
       if (cancelled) return;
       if (appStateRef.current !== 'preloading') return;
       requestAnimationFrame(() => requestAnimationFrame(() => {
@@ -647,7 +675,7 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
       cancelled = true;
       preloadController.abort();
     };
-  }, [isCompactViewport, memorandumData, unsupportedScreenDismissed]);
+  }, [isCompactViewport, unsupportedScreenDismissed]);
 
   useEffect(() => {
     if (appState === 'preloading' || deferredImageWarmupStartedRef.current) return;
@@ -656,7 +684,7 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
       return;
     }
 
-    const manifest = createAssetPreloadManifest(memorandumData);
+    const manifest = createAssetPreloadManifest(effectiveMemorandumData);
     if (!manifest.deferredImageSrcs.length) {
       deferredImageWarmupStartedRef.current = true;
       return;
@@ -805,7 +833,7 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
   useLayoutEffect(() => {
     if (!preferencesReady || appState !== 'entry' || !containerRef.current) return;
 
-    const initialRoute = resolveAppRoute(currentLocationPath, memorandumData);
+    const initialRoute = resolveAppRoute(currentLocationPath, effectiveMemorandumData);
     if (initialRoute.pageId) {
       const itemIndex = MENU_ITEMS.findIndex((item) => item.id === initialRoute.pageId);
       if (itemIndex !== -1) selectMenuIndex(itemIndex, { playSound: false });
@@ -1295,7 +1323,7 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
   useEffect(() => {
     if (appState === 'page-active' && activePage) {
       const pendingPath = pendingLocationPageRef.current;
-      const resolvedCurrentRoute = resolveAppRoute(currentLocationPath, memorandumData);
+      const resolvedCurrentRoute = resolveAppRoute(currentLocationPath, effectiveMemorandumData);
       const desiredPath = activePage === 'memorandum'
         ? (resolvedCurrentRoute.pageId === 'memorandum'
             ? resolvedCurrentRoute.pathname
@@ -1372,7 +1400,7 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
         // If the destination path actually changed, keep it in-app.
       }
 
-      const destinationRoute = resolveAppRoute(destinationPath, memorandumData);
+      const destinationRoute = resolveAppRoute(destinationPath, effectiveMemorandumData);
       if (!destinationRoute.pathname) return;
 
       const shouldUseDirectPageLoad =
@@ -1419,7 +1447,7 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
       return;
     }
 
-    const pageId = resolveAppRoute(pendingPath, memorandumData).pageId ?? null;
+    const pageId = resolveAppRoute(pendingPath, effectiveMemorandumData).pageId ?? null;
     if (!pageId) return;
     enterPage(pageId, { fromPopState: true });
   }, [appState, activePage, currentLocationPath, enterPage, memorandumData]);
@@ -1428,7 +1456,7 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
     if (
       appState === 'page-active' &&
       activePage &&
-      resolveAppRoute(pendingLocationPageRef.current ?? '/', memorandumData).pageId === activePage
+      resolveAppRoute(pendingLocationPageRef.current ?? '/', effectiveMemorandumData).pageId === activePage
     ) {
       pendingLocationPageRef.current = null;
       return;
@@ -1438,6 +1466,21 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
       pendingLocationPageRef.current = null;
     }
   }, [appState, activePage, memorandumData]);
+
+  // When memorandum data first loads, re-resolve the current URL. Handles direct deep links
+  // to memorandum entries: the initial resolve used empty data and fell back to /memorandum,
+  // so now we can navigate to the correct entry.
+  const memoDataPrevRef = useRef<MemorandumData | null>(null);
+  useEffect(() => {
+    if (!memorandumData || memoDataPrevRef.current) return;
+    memoDataPrevRef.current = memorandumData;
+
+    const actualPath = getCurrentPathname();
+    const resolvedRoute = resolveAppRoute(actualPath, memorandumData);
+    if (resolvedRoute.pageId === 'memorandum' && resolvedRoute.pathname !== currentLocationPath) {
+      setCurrentLocationPath(resolvedRoute.pathname);
+    }
+  }, [memorandumData, currentLocationPath]);
 
   // Keep the red/white split on the menu index aligned with the diagonal line
   const menuRendered = appState !== 'preloading';
@@ -1607,7 +1650,7 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
     const resolvedPath = fromPopState
       ? resolveAppRoute(
           pendingLocationPageRef.current ?? currentLocationPathRef.current,
-          memorandumData
+          effectiveMemorandumData
         ).pathname
       : nextPath;
 
@@ -1667,7 +1710,7 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
     const pendingLocationPath = pendingLocationPageRef.current;
     const shouldPreserveLocationPath = fromPopState || (
       Boolean(pendingLocationPath) &&
-      resolveAppRoute(pendingLocationPath!, memorandumData).pageId !== currentActivePage
+      resolveAppRoute(pendingLocationPath!, effectiveMemorandumData).pageId !== currentActivePage
     );
 
     if (!shouldPreserveLocationPath) {
@@ -1809,7 +1852,7 @@ export default function MainMenu({ memorandumData, initialPathname }: MainMenuPr
     />
   ) : activePage === 'memorandum' ? (
     <MemorandumPage
-      memorandumData={memorandumData}
+      memorandumData={effectiveMemorandumData}
       isActive={appState === 'page-active'}
       animationsEnabled={animationsEnabled}
       initialEntryDelaySeconds={initialEntryDelaySeconds}

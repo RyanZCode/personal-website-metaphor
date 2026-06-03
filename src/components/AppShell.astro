@@ -1,14 +1,12 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import MainMenu from './menu/MainMenu';
-import { loadMemorandumData } from '../lib/memorandumContent';
 
 interface Props {
   pathname: string;
 }
 
 const { pathname } = Astro.props;
-const memorandumData = await loadMemorandumData();
 ---
 
 <Layout>
@@ -79,5 +77,5 @@ const memorandumData = await loadMemorandumData();
       <div class="loading-bar-fill" />
     </div>
   </div>
-  <MainMenu client:load memorandumData={memorandumData} initialPathname={pathname} />
+  <MainMenu client:load initialPathname={pathname} />
 </Layout>

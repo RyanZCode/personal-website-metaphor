@@ -441,6 +441,42 @@ function PinnedMarker({
   );
 }
 
+const URL_RE = /(https?:\/\/[^\s]+)/g;
+
+function ExternalLink({ href }: { href: string }) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      style={{
+        color: 'hsl(120 50% 55%)',
+        fontWeight: 700,
+        textDecoration: 'underline',
+        textUnderlineOffset: '0.2em',
+        cursor: 'pointer',
+        transition: 'filter 120ms ease, opacity 120ms ease',
+        filter: hovered ? 'brightness(1.3)' : 'brightness(1)',
+        opacity: hovered ? 1 : 0.92,
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onFocus={() => setHovered(true)}
+      onBlur={() => setHovered(false)}
+    >
+      {href}
+    </a>
+  );
+}
+
+function renderWithLinks(text: string): React.ReactNode {
+  const parts = text.split(URL_RE);
+  return parts.map((part, i) =>
+    /^https?:\/\//.test(part) ? <ExternalLink key={i} href={part} /> : part
+  );
+}
+
 export default function MemorandumPage({
   memorandumData,
   isActive,
@@ -532,8 +568,7 @@ export default function MemorandumPage({
   const isDetailOpen = Boolean(detailEntryId);
   const hasDisplayedDetail = Boolean(displayedDetailEntry && displayedDetailPage);
   const isInputLocked = isTransitioning || !pageEntryReady;
-  const trapezoidsActive =
-    animationsEnabled && (isActive || pageState === 'entering-page' || pageState === 'exiting-page');
+  const trapezoidsActive = isActive || pageState === 'entering-page' || pageState === 'exiting-page';
   const detailAnimationBleedLeft = 'clamp(3rem, 4vw, 4rem)';
   const detailAnimationBleedLeftNegative = `calc(${detailAnimationBleedLeft} * -1)`;
   const detailBodyStyle = {
@@ -2552,7 +2587,7 @@ export default function MemorandumPage({
                           >
                             {displayedDetailPage?.body.map((paragraph, index) => (
                               <p key={`${paragraph}-${index}`} style={{ margin: 0 }}>
-                                {paragraph}
+                                {renderWithLinks(paragraph)}
                               </p>
                             ))}
                           </div>
