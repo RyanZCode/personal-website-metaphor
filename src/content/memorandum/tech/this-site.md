@@ -1,10 +1,4 @@
 ---
-# Duplicate this file for each new memorandum entry.
-# Valid category folders:
-# - src/content/memorandum/tech
-# - src/content/memorandum/gaming
-# - src/content/memorandum/lifestyle
-# - src/content/memorandum/misc
 title: This Website
 date: 2026-05-06
 pinned: true
@@ -21,7 +15,7 @@ pages:
       - >-
         I've never been a fan of how most everyone in the (undergrad) tech industry has a website, often devoid of personality.
         Maybe that's the meta for getting jobs, but I think that's boring.
-        That's why I had a basic, 60 line long website since 2023 - since I didn't like the whole idea of a personal portfolio website.
+        That's why I had a basic, 60 lines of code long website since 2023 - since I didn't like the whole idea of a personal portfolio website.
       - >-
         But after playing some ATLUS games (P3R, P5R, Metaphor), I realized that UI doesn't have to be boring and soulless, and I could incorporate my favourite thing (video games) with what I dreaded (personal websites)!
       - >-

@@ -250,13 +250,17 @@ export default function MenuItemBackground({
         style={{ position: 'absolute', inset: 0, clipPath, pointerEvents: 'none', transformOrigin: 'left center' }}
       >
         <div ref={effectsInnerRef} style={{ position: 'absolute', inset: 0, transformOrigin: 'left center' }}>
-          {EFFECT_COMPONENTS.map((EffectComponent, index) => (
-            <EffectComponent
-              key={index}
-              isActive={selectedIndex === index}
-              animationsEnabled={animationsEnabled}
-            />
-          ))}
+          {(() => {
+            const EffectComponent = EFFECT_COMPONENTS[selectedIndex];
+            if (!EffectComponent) return null;
+            return (
+              <EffectComponent
+                key={selectedIndex}
+                isActive={true}
+                animationsEnabled={animationsEnabled}
+              />
+            );
+          })()}
         </div>
       </div>
 
