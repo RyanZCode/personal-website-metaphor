@@ -1,0 +1,484 @@
+import { spawn } from 'node:child_process';
+import { createRequire } from 'node:module';
+import path from 'node:path';
+
+const MENU_ITEMS = ['about', 'skills', 'experience', 'contact', 'memorandum', 'system'];
+const DEFAULT_PORT = 4321;
+const SERVER_READY_TIMEOUT_MS = 45000;
+const STATE_TIMEOUT_MS = 30000;
+const CODEX_PLAYWRIGHT_PATH =
+  'C:/Users/ryanz/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/.pnpm/playwright@1.60.0/node_modules/playwright';
+
+const require = createRequire(import.meta.url);
+
+function loadPlaywright() {
+  const candidates = [
+    'playwright',
+    process.env.PLAYWRIGHT_MODULE_PATH,
+    CODEX_PLAYWRIGHT_PATH,
+  ].filter((candidate) => typeof candidate === 'string' && candidate.length > 0);
+
+  for (const candidate of candidates) {
+    try {
+      return require(candidate);
+    } catch {
+      // Try the next candidate.
+    }
+  }
+
+  throw new Error('Playwright is not available. Install playwright or set PLAYWRIGHT_MODULE_PATH.');
+}
+
+function assert(condition, message) {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
+
+async function wait(ms) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForServer(url) {
+  const start = Date.now();
+  let lastError = null;
+
+  while (Date.now() - start < SERVER_READY_TIMEOUT_MS) {
+    try {
+      const response = await fetch(url);
+      if (response.ok || response.status === 404) return;
+    } catch (error) {
+      lastError = error;
+    }
+
+    await wait(250);
+  }
+
+  throw new Error(`Timed out waiting for Astro dev server at ${url}. Last error: ${lastError}`);
+}
+
+async function startServer() {
+  if (process.env.TEST_BASE_URL) {
+    return {
+      baseUrl: process.env.TEST_BASE_URL.replace(/\/+$/, ''),
+      stop: async () => {},
+    };
+  }
+
+  const port = Number(process.env.TEST_PORT ?? DEFAULT_PORT);
+  const baseUrl = `http://127.0.0.1:${port}`;
+  const astroCli = path.resolve(process.cwd(), 'node_modules/astro/astro.js');
+  const serverMode = process.env.ANIMATION_REGRESSION_SERVER === 'dev'
+    ? 'dev'
+    : 'preview';
+  const output = [];
+  const server = spawn(
+    process.execPath,
+    [astroCli, serverMode, '--host', '127.0.0.1', '--port', String(port)],
+    {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        ASTRO_TELEMETRY_DISABLED: '1',
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  );
+
+  server.stdout.on('data', (chunk) => output.push(chunk.toString()));
+  server.stderr.on('data', (chunk) => output.push(chunk.toString()));
+
+  try {
+    await waitForServer(baseUrl);
+  } catch (error) {
+    server.kill();
+    throw new Error(`${error.message}\n${output.join('')}`);
+  }
+
+  return {
+    baseUrl,
+    stop: async () => {
+      server.kill();
+      await new Promise((resolve) => {
+        server.once('exit', resolve);
+        setTimeout(resolve, 1000);
+      });
+    },
+  };
+}
+
+async function waitForAppState(page, state) {
+  try {
+    await page.waitForFunction(
+      (expectedState) =>
+        document.querySelector('[data-app-root]')?.getAttribute('data-app-state') === expectedState,
+      state,
+      { timeout: STATE_TIMEOUT_MS },
+    );
+  } catch (error) {
+    const snapshot = await page.evaluate(() => {
+      const root = document.querySelector('[data-app-root]');
+      const images = Array.from(document.images).map((image) => ({
+        src: image.currentSrc || image.src,
+        complete: image.complete,
+        naturalWidth: image.naturalWidth,
+      }));
+      return {
+        rootFound: Boolean(root),
+        appState: root?.getAttribute('data-app-state') ?? null,
+        activePage: root?.getAttribute('data-active-page') ?? null,
+        animationsEnabled: root?.getAttribute('data-animations-enabled') ?? null,
+        clientReady: root?.getAttribute('data-client-ready') ?? null,
+        fontsStatus: document.fonts?.status ?? null,
+        fonts: document.fonts
+          ? Array.from(document.fonts).map((fontFace) => ({
+            family: fontFace.family,
+            weight: fontFace.weight,
+            status: fontFace.status,
+          }))
+          : [],
+        images,
+        blockingResources: performance.getEntriesByType('resource')
+          .filter((entry) => (
+            entry.name.includes('coby-main') ||
+            entry.name.toLowerCase().includes('cinzel') ||
+            entry.name.includes('/assets/') ||
+            entry.name.includes('/@vite/') ||
+            entry.name.includes('/src/') ||
+            entry.name.includes('/node_modules/') ||
+            entry.name.includes('/_astro/')
+          ))
+          .map((entry) => ({
+            name: entry.name,
+            duration: Math.round(entry.duration),
+            transferSize: 'transferSize' in entry ? entry.transferSize : 0,
+          })),
+        astroIslandCount: document.querySelectorAll('astro-island').length,
+        astroIslandAttributes: Array.from(document.querySelectorAll('astro-island')).map((island) => ({
+          client: island.getAttribute('client'),
+          componentUrl: island.getAttribute('component-url'),
+          rendererUrl: island.getAttribute('renderer-url'),
+          hydrated: island.hasAttribute('ssr') ? 'ssr' : 'unknown',
+        })),
+        bodyText: document.body.innerText.slice(0, 300),
+      };
+    });
+    const rafWorks = await page.evaluate(() => new Promise((resolve) => {
+      const timeoutId = window.setTimeout(() => resolve(false), 1000);
+      requestAnimationFrame(() => {
+        window.clearTimeout(timeoutId);
+        resolve(true);
+      });
+    }));
+    snapshot.rafWorks = rafWorks;
+    snapshot.islandImports = await page.evaluate(() => {
+      const island = document.querySelector('astro-island');
+      const componentUrl = island?.getAttribute('component-url');
+      const rendererUrl = island?.getAttribute('renderer-url');
+      const importWithTimeout = async (url) => {
+        if (!url) return 'missing';
+        try {
+          const result = await Promise.race([
+            import(url).then((module) => ({ ok: true, keys: Object.keys(module) })),
+            new Promise((resolve) => window.setTimeout(() => resolve({ ok: false, timeout: true }), 1500)),
+          ]);
+          return result;
+        } catch (error) {
+          return {
+            ok: false,
+            message: error instanceof Error ? error.message : String(error),
+          };
+        }
+      };
+
+      return Promise.all([
+        importWithTimeout(componentUrl),
+        importWithTimeout(rendererUrl),
+      ]).then(([component, renderer]) => ({ component, renderer }));
+    });
+    throw new Error(`Timed out waiting for app state "${state}". Snapshot: ${JSON.stringify(snapshot)}`, {
+      cause: error,
+    });
+  }
+}
+
+async function tryWaitForAppState(page, state, timeoutMs) {
+  try {
+    await page.waitForFunction(
+      (expectedState) =>
+        document.querySelector('[data-app-root]')?.getAttribute('data-app-state') === expectedState,
+      state,
+      { timeout: timeoutMs },
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function openMenu(page, baseUrl) {
+  await page.goto(`${baseUrl}/`, { waitUntil: 'domcontentloaded' });
+  await waitForAppState(page, 'idle');
+}
+
+async function selectMenuItem(page, id) {
+  await page.locator(`[data-menu-item="${id}"]`).hover();
+  await page.waitForFunction(
+    (selectedId) => document.querySelector('[data-app-root]')?.getAttribute('data-selected-menu-item') === selectedId,
+    id,
+    { timeout: STATE_TIMEOUT_MS },
+  );
+  await wait(280);
+}
+
+async function assertSplashAligned(page, id) {
+  const result = await page.evaluate((selectedId) => {
+    const label = document.querySelector(`[data-menu-item="${selectedId}"] [data-menu-label]`);
+    const splash = document.querySelector('[data-paint-splash]');
+    if (!(label instanceof HTMLElement) || !(splash instanceof HTMLElement)) {
+      return { ok: false, reason: 'missing label or splash' };
+    }
+
+    const labelRect = label.getBoundingClientRect();
+    const splashRect = splash.getBoundingClientRect();
+    const splashStyle = getComputedStyle(splash);
+    const labelCenterY = labelRect.top + labelRect.height / 2;
+    const deltaY = Math.abs(
+      labelCenterY - (splashRect.top + splashRect.height / 2),
+    );
+
+    return {
+      ok: true,
+      deltaY,
+      labelCenterY,
+      splashTop: splashRect.top,
+      splashBottom: splashRect.bottom,
+      opacity: Number(splashStyle.opacity),
+      labelHeight: labelRect.height,
+      splashHeight: splashRect.height,
+    };
+  }, id);
+
+  assert(result.ok, `Paint splash check failed for ${id}: ${result.reason}`);
+  assert(result.opacity > 0.5, `Paint splash is not visible for ${id}`);
+  assert(result.splashHeight > 20, `Paint splash has an invalid height for ${id}`);
+  assert(
+    result.labelCenterY >= result.splashTop - 12 && result.labelCenterY <= result.splashBottom + 12,
+    `Paint splash does not cover selected label for ${id}. deltaY=${result.deltaY.toFixed(1)}`,
+  );
+}
+
+async function enterPage(page, id) {
+  await selectMenuItem(page, id);
+  await page.locator(`[data-menu-item="${id}"]`).click();
+  await page.waitForSelector(`[data-app-root][data-app-state="page-active"][data-active-page="${id}"]`, {
+    timeout: STATE_TIMEOUT_MS,
+  });
+}
+
+async function exitToMenu(page) {
+  await page.keyboard.press('Escape');
+  if (!await tryWaitForAppState(page, 'idle', 5000)) {
+    await page.keyboard.press('KeyC');
+  }
+  await waitForAppState(page, 'idle');
+  await page.waitForSelector('[data-app-root][data-active-page="none"]', {
+    timeout: STATE_TIMEOUT_MS,
+  });
+}
+
+async function collectConsoleErrors(page) {
+  const errors = [];
+
+  page.on('console', (message) => {
+    if (message.type() === 'error') {
+      errors.push(message.text());
+    }
+  });
+
+  page.on('pageerror', (error) => {
+    errors.push(error.message);
+  });
+
+  return errors;
+}
+
+async function withPage(browser, options, callback) {
+  const context = await browser.newContext({
+    viewport: { width: 1440, height: 900 },
+    deviceScaleFactor: 1,
+    reducedMotion: 'no-preference',
+    ...options,
+  });
+  const page = await context.newPage();
+  const consoleErrors = await collectConsoleErrors(page);
+
+  try {
+    await callback(page);
+    assert(
+      consoleErrors.length === 0,
+      `Console errors were reported:\n${consoleErrors.join('\n')}`,
+    );
+  } catch (error) {
+    if (consoleErrors.length > 0) {
+      throw new Error(
+        `${error instanceof Error ? error.message : String(error)}\nConsole errors:\n${consoleErrors.join('\n')}`,
+        { cause: error },
+      );
+    }
+
+    throw error;
+  } finally {
+    await context.close();
+  }
+}
+
+async function launchChromium(chromium) {
+  const attempts = [
+    {},
+    { channel: 'chrome' },
+    { channel: 'msedge' },
+  ];
+  let lastError = null;
+
+  if (process.env.PLAYWRIGHT_BROWSER_CHANNEL) {
+    attempts.unshift({ channel: process.env.PLAYWRIGHT_BROWSER_CHANNEL });
+  }
+
+  for (const attempt of attempts) {
+    try {
+      return await chromium.launch({
+        headless: true,
+        args: [
+          '--disable-background-timer-throttling',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-renderer-backgrounding',
+        ],
+        ...attempt,
+      });
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError;
+}
+
+async function run() {
+  const { chromium } = loadPlaywright();
+  const server = await startServer();
+  const browser = await launchChromium(chromium);
+  const failures = [];
+  const testFilter = process.env.ANIMATION_REGRESSION_FILTER?.toLowerCase();
+
+  const test = async (name, callback) => {
+    if (testFilter && !name.toLowerCase().includes(testFilter)) return;
+
+    try {
+      await callback();
+      console.log(`ok ${name}`);
+    } catch (error) {
+      failures.push({ name, error });
+      console.error(`not ok ${name}`);
+      console.error(error instanceof Error ? error.stack : error);
+    }
+  };
+
+  try {
+    await test('root menu loads without console errors', async () => {
+      await withPage(browser, {}, async (page) => {
+        await openMenu(page, server.baseUrl);
+        await page.waitForSelector('[data-menu-item="about"]');
+        await page.waitForSelector('[data-paint-splash]');
+      });
+    });
+
+    await test('keyboard selection changes active menu item', async () => {
+      await withPage(browser, {}, async (page) => {
+        await openMenu(page, server.baseUrl);
+        await page.keyboard.press('ArrowDown');
+        await page.waitForSelector('[data-app-root][data-selected-menu-item="skills"]');
+        await assertSplashAligned(page, 'skills');
+      });
+    });
+
+    await test('paint splash stays aligned for every menu item', async () => {
+      await withPage(browser, {}, async (page) => {
+        await openMenu(page, server.baseUrl);
+        for (const id of MENU_ITEMS) {
+          await selectMenuItem(page, id);
+          await assertSplashAligned(page, id);
+        }
+      });
+    });
+
+    await test('page enter and exit states stay coherent', async () => {
+      await withPage(browser, {}, async (page) => {
+        for (const id of MENU_ITEMS) {
+          await openMenu(page, server.baseUrl);
+          await enterPage(page, id);
+          await page.waitForSelector(`[data-page-shell][data-page-id="${id}"]`);
+          await exitToMenu(page);
+          await assertSplashAligned(page, id);
+        }
+      });
+    });
+
+    await test('transition-critical menu nodes stay mounted during page enter', async () => {
+      await withPage(browser, {}, async (page) => {
+        await openMenu(page, server.baseUrl);
+        await selectMenuItem(page, 'about');
+        await page.locator('[data-menu-item="about"]').click();
+        await page.waitForFunction(() => {
+          const state = document.querySelector('[data-app-root]')?.getAttribute('data-app-state');
+          return state === 'entering-page' || state === 'page-active';
+        });
+
+        const nodes = await page.evaluate(() => ({
+          paintSplashWrap: Boolean(document.querySelector('[data-paint-splash-wrap]')),
+          paintSplash: Boolean(document.querySelector('[data-paint-splash]')),
+          menuLeft: Boolean(document.querySelector('[data-menu-left]')),
+          menuIndex: Boolean(document.querySelector('[data-menu-index]')),
+        }));
+
+        assert(nodes.paintSplashWrap, 'paint splash wrapper unmounted during enter');
+        assert(nodes.paintSplash, 'paint splash node unmounted during enter');
+        assert(nodes.menuLeft, 'menu left node unmounted during enter');
+        assert(nodes.menuIndex, 'menu index node unmounted during enter');
+      });
+    });
+
+    await test('active page pauses root ambient loops', async () => {
+      await withPage(browser, {}, async (page) => {
+        await openMenu(page, server.baseUrl);
+        await page.waitForSelector('[data-app-root][data-visual-activity="menu"][data-root-ambient="running"]');
+        await enterPage(page, 'about');
+        await page.waitForSelector('[data-app-root][data-visual-activity="page"][data-root-ambient="paused"]');
+      });
+    });
+
+    await test('reduced motion skips animated mode', async () => {
+      await withPage(browser, { reducedMotion: 'reduce' }, async (page) => {
+        await openMenu(page, server.baseUrl);
+        await page.waitForSelector('[data-app-root][data-animations-enabled="false"]');
+        await page.keyboard.press('Enter');
+        await page.waitForSelector('[data-app-root][data-app-state="page-active"][data-active-page="about"]', {
+          timeout: STATE_TIMEOUT_MS,
+        });
+      });
+    });
+  } finally {
+    await browser.close();
+    await server.stop();
+  }
+
+  if (failures.length > 0) {
+    console.error(`\n${failures.length} animation regression test(s) failed.`);
+    process.exitCode = 1;
+    return;
+  }
+
+  console.log('\nAll animation regression tests passed.');
+}
+
+await run();

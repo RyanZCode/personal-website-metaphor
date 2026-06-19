@@ -12,6 +12,7 @@ import {
   createSystemExitTimeline,
 } from '../../lib/animations';
 import { rafThrottle } from '../../lib/rafThrottle';
+import { usePageAnimationLifecycle } from '../../hooks/usePageAnimationLifecycle';
 
 interface SystemPageProps {
   isActive: boolean;
@@ -292,10 +293,6 @@ export default function SystemPage({
   const panelSlotRef = useRef<HTMLDivElement>(null);
   const panelFrameRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef<Array<HTMLDivElement | null>>([]);
-  const entryTlRef = useRef<gsap.core.Timeline | null>(null);
-  const entryDelayRef = useRef<gsap.core.Tween | null>(null);
-  const exitTlRef = useRef<gsap.core.Timeline | null>(null);
-  const prevIsActive = useRef(isActive);
   const selectedRowIndexRef = useRef(0);
   const [visibleRows, setVisibleRows] = useState(3);
   const [selectedRowIndex, setSelectedRowIndex] = useState(0);
@@ -325,43 +322,16 @@ export default function SystemPage({
     return changed;
   }, [playSoundEffect]);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useLayoutEffect(() => {
-    if (!containerRef.current) return;
-    if (!animationsEnabled) return;
-    const shouldDelayDirectMountPlayback = pageState === 'page-active';
-    let rafId: number | null = null;
-    let nestedRafId: number | null = null;
-    entryTlRef.current = createSystemEntryTimeline(containerRef.current, {
-      paused: initialEntryDelaySeconds > 0 || shouldDelayDirectMountPlayback,
-    });
-    if (onEntryAnimationComplete) {
-      entryTlRef.current.add(() => {
-        onEntryAnimationComplete();
-      });
-    }
-    if (initialEntryDelaySeconds > 0) {
-      entryDelayRef.current = gsap.delayedCall(entryDelaySeconds, () => {
-        entryDelayRef.current = null;
-        entryTlRef.current?.play(0);
-      });
-    } else if (shouldDelayDirectMountPlayback) {
-      rafId = requestAnimationFrame(() => {
-        nestedRafId = requestAnimationFrame(() => {
-          nestedRafId = null;
-          entryTlRef.current?.play(0);
-        });
-      });
-    }
-    return () => {
-      if (rafId !== null) cancelAnimationFrame(rafId);
-      if (nestedRafId !== null) cancelAnimationFrame(nestedRafId);
-      entryDelayRef.current?.kill();
-      entryDelayRef.current = null;
-      entryTlRef.current?.kill();
-      entryTlRef.current = null;
-    };
-  }, []);
+  usePageAnimationLifecycle({
+    isActive,
+    animationsEnabled,
+    initialEntryDelaySeconds,
+    pageState,
+    containerRef,
+    createEntryTimeline: createSystemEntryTimeline,
+    createExitTimeline: createSystemExitTimeline,
+    onEntryAnimationComplete,
+  });
 
   useEffect(() => {
     if (animationsEnabled || !containerRef.current) return;
@@ -369,22 +339,6 @@ export default function SystemPage({
     if (!wipeLine) return;
     gsap.set(wipeLine, { autoAlpha: 0 });
   }, [animationsEnabled]);
-
-  useLayoutEffect(() => {
-    const wasActive = prevIsActive.current;
-    prevIsActive.current = isActive;
-
-    if (!wasActive || isActive || !containerRef.current || !animationsEnabled) return;
-
-    exitTlRef.current?.kill();
-    exitTlRef.current = createSystemExitTimeline(containerRef.current);
-  }, [animationsEnabled, isActive]);
-
-  useEffect(() => {
-    return () => {
-      exitTlRef.current?.kill();
-    };
-  }, []);
 
   useEffect(() => {
     const panelSlot = panelSlotRef.current;

@@ -34,6 +34,11 @@ import {
   type AppPageId,
 } from '../../lib/routes';
 import { SOUND_EFFECT_SOURCES, type PlaySoundEffect, type SoundEffectId } from '../../lib/soundEffects';
+import {
+  getVisualActivity,
+  getVisualQuality,
+  shouldRunAmbientAnimations,
+} from '../../lib/visualActivity';
 import AboutPage from '../pages/AboutPage';
 import SkillsPage from '../pages/SkillsPage';
 import ExperiencePage from '../pages/ExperiencePage';
@@ -234,6 +239,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
     return null;
   })();
   const [selectedIndex, setSelectedIndex] = useState(initialSelectedIndex);
+  const [clientReady, setClientReady] = useState(false);
   const shouldMountPageDirectOnLoadRef = useRef(
     shouldMountPageDirectOnLoad
   );
@@ -329,6 +335,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
     toggle: null,
   });
   const soundWarmupStartedRef = useRef(false);
+  const pendingSoundWarmupPriorityRef = useRef<SoundEffectId | undefined>(undefined);
   const soundWarmupTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const soundWarmupIdleCallbackRef = useRef<number | null>(null);
   const menuReEntryDelayRef = useRef<gsap.core.Tween | null>(null);
@@ -377,6 +384,10 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
     }
     appStateRef.current = nextState;
     setAppState(nextState);
+  }, []);
+
+  useEffect(() => {
+    setClientReady(true);
   }, []);
 
   const cancelPendingPageShellReveal = useCallback(() => {
@@ -460,6 +471,10 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
 
   const scheduleSoundWarmup = useCallback((priorityId?: SoundEffectId) => {
     if (typeof Audio === 'undefined' || soundWarmupStartedRef.current) return;
+    if (appStateRef.current !== 'page-active') {
+      pendingSoundWarmupPriorityRef.current = priorityId;
+      return;
+    }
 
     soundWarmupStartedRef.current = true;
     const idleWindow = window as IdleWindow;
@@ -482,6 +497,16 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
 
     soundWarmupTimeoutRef.current = window.setTimeout(warmRemainingEffects, 200);
   }, [ensureSoundEffect]);
+
+  useEffect(() => {
+    if (appState !== 'page-active') return;
+    if (soundWarmupStartedRef.current) return;
+    if (pendingSoundWarmupPriorityRef.current === undefined) return;
+
+    const priorityId = pendingSoundWarmupPriorityRef.current;
+    pendingSoundWarmupPriorityRef.current = undefined;
+    scheduleSoundWarmup(priorityId);
+  }, [appState, scheduleSoundWarmup]);
 
   useEffect(() => {
     return () => {
@@ -633,7 +658,9 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
         .catch(() => null);
     }
 
-    const manifest = createAssetPreloadManifest(EMPTY_MEMORANDUM_DATA);
+    const manifest = createAssetPreloadManifest(EMPTY_MEMORANDUM_DATA, {
+      initialPageId: initialTargetRouteRef.current.pageId,
+    });
     const preloadController = new AbortController();
     const shouldReduceWork = shouldReduceBootWork();
     let cancelled = false;
@@ -652,7 +679,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
       preloadPromises.push(memoFetchPromiseRef.current);
     }
 
-    Promise.all(preloadPromises).then(() => {
+    Promise.all(preloadPromises).catch(() => undefined).then(() => {
       if (cancelled) return;
       if (appStateRef.current !== 'preloading') return;
       requestAnimationFrame(() => requestAnimationFrame(() => {
@@ -684,7 +711,9 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
       return;
     }
 
-    const manifest = createAssetPreloadManifest(effectiveMemorandumData);
+    const manifest = createAssetPreloadManifest(effectiveMemorandumData, {
+      initialPageId: activePageRef.current,
+    });
     if (!manifest.deferredImageSrcs.length) {
       deferredImageWarmupStartedRef.current = true;
       return;
@@ -1549,6 +1578,9 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
   }, [menuRendered]);
 
   const activeItem = MENU_ITEMS[selectedIndex];
+  const visualActivity = getVisualActivity(appState, animationsEnabled);
+  const visualQuality = getVisualQuality(animationsEnabled);
+  const ambientAnimationsEnabled = shouldRunAmbientAnimations(visualActivity);
   const pageVisible = appState === 'page-active' ||
     appState === 'exiting-page' ||
     (appState === 'entering-page' && initialDirectPageEntryInProgressRef.current);
@@ -1892,6 +1924,14 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
     <div
       ref={containerRef}
       data-app-root
+      data-app-state={appState}
+      data-active-page={activePage ?? 'none'}
+      data-selected-menu-item={activeItem.id}
+      data-animations-enabled={animationsEnabled ? 'true' : 'false'}
+      data-client-ready={clientReady ? 'true' : 'false'}
+      data-visual-activity={visualActivity}
+      data-visual-quality={visualQuality}
+      data-root-ambient={ambientAnimationsEnabled ? 'running' : 'paused'}
       data-layout-mode={viewportProfile.layoutMode}
       data-orientation={viewportProfile.orientation}
       className={`menu-root${inputMode === 'keyboard' ? ' keyboard-mode' : ''}`}
@@ -2021,9 +2061,9 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
         data-portrait-wrap
         style={{ position: 'absolute', inset: 0, zIndex: 1, pointerEvents: 'none' }}
       >
-        <CharacterPortrait animationsEnabled={animationsEnabled} layoutMode={viewportProfile.layoutMode} />
+        <CharacterPortrait animationsEnabled={ambientAnimationsEnabled} layoutMode={viewportProfile.layoutMode} />
       </div>
-      <BackgroundLines animationsEnabled={animationsEnabled} layoutMode={viewportProfile.layoutMode} />
+      <BackgroundLines animationsEnabled={ambientAnimationsEnabled} layoutMode={viewportProfile.layoutMode} />
 
       <div
         data-paint-splash-wrap
@@ -2034,7 +2074,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
           menuStackRef={menuStackRef}
           menuScrollViewportRef={menuScrollViewportRef}
           selectedIndex={selectedIndex}
-          animationsEnabled={animationsEnabled}
+          animationsEnabled={ambientAnimationsEnabled}
           accentH={activeItem.accentH}
           accentS={activeItem.accentS}
           accentL={activeItem.accentL}
@@ -2203,6 +2243,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
       {shouldRenderPageShell && (
         <div
           data-page-shell
+          data-page-id={activePage ?? undefined}
           style={{
             position: 'absolute',
             inset: 0,
