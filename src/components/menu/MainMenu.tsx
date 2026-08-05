@@ -63,13 +63,27 @@ const EMPTY_MEMORANDUM_DATA: MemorandumData = {
   defaultColumnId: 'tech',
 };
 
+const loadedPageComponents = new Set<AppPageId>();
+
+function createPageComponentLoader<T>(pageId: AppPageId, loader: () => Promise<T>) {
+  let promise: Promise<T> | null = null;
+
+  return () => {
+    promise ??= loader().then((module) => {
+      loadedPageComponents.add(pageId);
+      return module;
+    });
+    return promise;
+  };
+}
+
 const PAGE_COMPONENT_LOADERS = {
-  about: () => import('../pages/AboutPage'),
-  skills: () => import('../pages/SkillsPage'),
-  experience: () => import('../pages/ExperiencePage'),
-  contact: () => import('../pages/ContactPage'),
-  memorandum: () => import('../pages/MemorandumPage'),
-  system: () => import('../pages/SystemPage'),
+  about: createPageComponentLoader('about', () => import('../pages/AboutPage')),
+  skills: createPageComponentLoader('skills', () => import('../pages/SkillsPage')),
+  experience: createPageComponentLoader('experience', () => import('../pages/ExperiencePage')),
+  contact: createPageComponentLoader('contact', () => import('../pages/ContactPage')),
+  memorandum: createPageComponentLoader('memorandum', () => import('../pages/MemorandumPage')),
+  system: createPageComponentLoader('system', () => import('../pages/SystemPage')),
 } as const;
 
 const AboutPage = lazy(PAGE_COMPONENT_LOADERS.about);
@@ -83,6 +97,14 @@ const MENU_SELECTED_OFFSET_VH = 1;
 const MENU_BELOW_SELECTED_OFFSET_VH = 2;
 const TOUCH_INPUT_GRACE_MS = 800;
 const MENU_TOUCH_STEP_VH = 4.5;
+type IdleDeadline = {
+  didTimeout: boolean;
+  timeRemaining: () => number;
+};
+type IdleWindow = Window & {
+  requestIdleCallback?: (callback: (deadline: IdleDeadline) => void, options?: { timeout: number }) => number;
+  cancelIdleCallback?: (handle: number) => void;
+};
 type NavigationDestination = {
   url: string;
 };
@@ -683,6 +705,30 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
       entryTlRef.current = null;
     };
   }, [appState, animationsEnabled, activePage]);
+
+  useEffect(() => {
+    if (appState !== 'idle') return;
+
+    const selectedPageId = MENU_ITEMS[selectedIndex].id as AppPageId;
+    void PAGE_COMPONENT_LOADERS[selectedPageId]();
+
+    const idleWindow = window as IdleWindow;
+    const preloadRemainingPages = () => {
+      APP_PAGE_IDS.forEach((pageId) => {
+        if (pageId !== selectedPageId) {
+          void PAGE_COMPONENT_LOADERS[pageId]();
+        }
+      });
+    };
+
+    if (typeof idleWindow.requestIdleCallback === 'function') {
+      const idleCallbackId = idleWindow.requestIdleCallback(preloadRemainingPages, { timeout: 1000 });
+      return () => idleWindow.cancelIdleCallback?.(idleCallbackId);
+    }
+
+    const timeoutId = window.setTimeout(preloadRemainingPages, 250);
+    return () => window.clearTimeout(timeoutId);
+  }, [appState, selectedIndex]);
 
   // Smooth scroll + index fade when selectedIndex changes
   useEffect(() => {
@@ -1493,6 +1539,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
     cancelPendingPageShellReveal();
     splashHandleRef.current?.pauseAmbient();
     pageTlRef.current?.kill();
+    const pageComponentPromise = PAGE_COMPONENT_LOADERS[pageId]();
 
     if (!animationsEnabled) {
       setSubtitleVisible(false);
@@ -1528,6 +1575,10 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
       },
       () => setSubtitleVisible(false),
       revealPageShellSoon,
+      {
+        promise: pageComponentPromise,
+        isReady: () => loadedPageComponents.has(pageId),
+      },
     );
   }
 

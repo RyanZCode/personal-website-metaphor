@@ -249,6 +249,11 @@ function computeCharExitPositions(menuItemEls: HTMLElement[]): CharExitEntry[] {
 // appears in the first frame and covers everything.
 export const PAGE_ENTER_MOUNT_AT = 0.42;
 
+interface PageEnterReadiness {
+  promise: Promise<unknown>;
+  isReady: () => boolean;
+}
+
 export function createPageEnterTimeline(
   container: Element,
   onComplete: () => void,
@@ -256,6 +261,7 @@ export function createPageEnterTimeline(
   onMountPage: () => void,
   onSubtitleHide: () => void,
   onRevealPageShell: () => void,
+  pageReadiness?: PageEnterReadiness,
 ): gsap.core.Timeline {
   const menuIndex    = container.querySelector('[data-menu-index]');
   const statsHints   = container.querySelector('[data-stats-hints]');
@@ -279,8 +285,19 @@ export function createPageEnterTimeline(
   const CONTROL_HINTS_SWITCH_AT = CONTROL_HINTS_OUT_AT + CONTROL_HINTS_OUT_DUR;
   const CONTROL_HINTS_IN_AT = 0.36;
 
-  const tl = gsap.timeline();
+  let interrupted = false;
+  const tl = gsap.timeline({
+    onInterrupt: () => {
+      interrupted = true;
+    },
+  });
   const chars = charExits.map(({ char }) => char);
+
+  const mountAndRevealPage = () => {
+    if (interrupted) return;
+    onMountPage();
+    onRevealPageShell();
+  };
 
   tl.to(chars, {
     x: (index) => charExits[index].localX,
@@ -304,8 +321,24 @@ export function createPageEnterTimeline(
     .call(onSwitchToPageMode, [], CONTROL_HINTS_SWITCH_AT)
     .to(controlHints, { y: 0, opacity: 1, duration: 0.14, ease: 'power2.out' }, CONTROL_HINTS_IN_AT)
     .call(() => {
-      onMountPage();
-      onRevealPageShell();
+      if (!pageReadiness || pageReadiness.isReady()) {
+        mountAndRevealPage();
+        return;
+      }
+
+      tl.pause();
+      void pageReadiness.promise.then(
+        () => {
+          if (interrupted) return;
+          mountAndRevealPage();
+          tl.resume();
+        },
+        () => {
+          if (interrupted) return;
+          mountAndRevealPage();
+          tl.resume();
+        },
+      );
     }, [], MOUNT_AT)
     .call(onComplete, [], DONE_AT);
 

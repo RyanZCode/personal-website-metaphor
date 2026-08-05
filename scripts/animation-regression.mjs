@@ -448,6 +448,39 @@ async function run() {
       });
     });
 
+    await test('cold page load never reveals an empty page shell', async () => {
+      await withPage(browser, {}, async (page) => {
+        await page.route('**/AboutPage.*.js', async (route) => {
+          await wait(1400);
+          await route.continue();
+        });
+
+        await openMenu(page, server.baseUrl);
+        await page.locator('[data-menu-item="about"]').click();
+        await page.waitForSelector('[data-app-root][data-app-state="entering-page"]');
+        await wait(950);
+
+        const transitionState = await page.evaluate(() => {
+          const root = document.querySelector('[data-app-root]');
+          const shell = document.querySelector('[data-page-shell]');
+          return {
+            state: root?.getAttribute('data-app-state'),
+            activePage: root?.getAttribute('data-active-page'),
+            visiblePageShell: shell instanceof HTMLElement && Number(getComputedStyle(shell).opacity) > 0,
+          };
+        });
+
+        assert(transitionState.state === 'entering-page', 'page transition completed before its module loaded');
+        assert(transitionState.activePage === 'none', 'page became active before its module loaded');
+        assert(!transitionState.visiblePageShell, 'empty page shell became visible while its module loaded');
+
+        await page.waitForSelector('[data-app-root][data-app-state="page-active"][data-active-page="about"]', {
+          timeout: STATE_TIMEOUT_MS,
+        });
+        await page.waitForSelector('[data-page-shell][data-page-id="about"]');
+      });
+    });
+
     await test('active page pauses root ambient loops', async () => {
       await withPage(browser, {}, async (page) => {
         await openMenu(page, server.baseUrl);
