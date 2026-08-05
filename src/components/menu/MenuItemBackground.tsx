@@ -1,5 +1,14 @@
 import type { LayoutMode } from '../../lib/deviceProfile';
-import { useEffect, useRef, useState } from 'react';
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type ForwardedRef,
+  type RefObject,
+} from 'react';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import { getMenuItemScaleFactor, getMenuSplashScale } from '../../lib/menuLayout';
@@ -12,10 +21,17 @@ import MemorandumTrapezoids from './splashEffects/MemorandumTrapezoids';
 import SystemGlitch   from './splashEffects/SystemGlitch';
 import { rafThrottle } from '../../lib/rafThrottle';
 
+export interface MenuSplashHandle {
+  measureNow: () => void;
+  pauseAmbient: () => void;
+  resumeAmbient: () => void;
+  resetAmbient: () => void;
+}
+
 interface MenuItemBackgroundProps {
-  itemRefs: React.RefObject<(HTMLDivElement | null)[]>;
-  menuStackRef: React.RefObject<HTMLDivElement | null>;
-  menuScrollViewportRef?: React.RefObject<HTMLDivElement | null>;
+  itemRefs: RefObject<(HTMLDivElement | null)[]>;
+  menuStackRef: RefObject<HTMLDivElement | null>;
+  menuScrollViewportRef?: RefObject<HTMLDivElement | null>;
   selectedIndex: number;
   animationsEnabled: boolean;
   accentH: number;
@@ -50,7 +66,7 @@ const EFFECT_COMPONENTS = [
   SystemGlitch,
 ] as const;
 
-export default function MenuItemBackground({
+function MenuItemBackground({
   itemRefs,
   menuStackRef,
   menuScrollViewportRef,
@@ -68,7 +84,7 @@ export default function MenuItemBackground({
   selectedItemOffsetYVh,
   measureKey,
   layoutMode = 'desktop',
-}: MenuItemBackgroundProps) {
+}: MenuItemBackgroundProps, ref: ForwardedRef<MenuSplashHandle>) {
   const [pos, setPos] = useState<SplashPos | null>(null);
   const splashScale = getMenuSplashScale(layoutMode);
   const itemScale = getMenuItemScaleFactor(layoutMode);
@@ -79,48 +95,68 @@ export default function MenuItemBackground({
   const frontRef        = useRef<HTMLDivElement>(null); // main solid layer
   const effectsWrapRef  = useRef<HTMLDivElement>(null); // mirrors frontRef scaleX so clipPath tracks the right edge
   const effectsInnerRef = useRef<HTMLDivElement>(null); // counter-scales to keep effect content positions stable
+  const ambientAnimationsRef = useRef<gsap.core.Animation[]>([]);
+
+  const computePosition = useCallback(() => {
+    const el = itemRefs.current[selectedIndex];
+    if (!el) return;
+    const anchor = el.querySelector('[data-menu-anchor]') as HTMLElement | null;
+    const label = el.querySelector('[data-menu-label]') as HTMLElement | null;
+    if (!anchor || !label) return;
+
+    const vh = window.innerHeight / 100;
+    const splashH = splashHeightVh * splashScale * vh;
+    const anchorRect = anchor.getBoundingClientRect();
+    const labelRect = label.getBoundingClientRect();
+    const leftEdgeScreen = anchorRect.left;
+    const labelCenterY = labelRect.top + labelRect.height / 2;
+
+    const elementLeftPx = splashLeftVh * vh;
+    const pivotX = leftEdgeScreen - elementLeftPx;
+
+    const nextPos = {
+      top: labelCenterY - splashH / 2 + splashOffsetY * itemScale * vh,
+      height: splashH,
+      pivotX,
+      rotate: ITEM_SCALES[Math.min(selectedIndex, ITEM_SCALES.length - 1)].rotate,
+      rotateY: ITEM_SCALES[Math.min(selectedIndex, ITEM_SCALES.length - 1)].rotateY,
+    };
+
+    setPos((current) => {
+      if (
+        current &&
+        Math.abs(current.top - nextPos.top) < 0.5 &&
+        Math.abs(current.height - nextPos.height) < 0.5 &&
+        Math.abs(current.pivotX - nextPos.pivotX) < 0.5 &&
+        current.rotate === nextPos.rotate &&
+        current.rotateY === nextPos.rotateY
+      ) {
+        return current;
+      }
+
+      return nextPos;
+    });
+  }, [itemRefs, itemScale, selectedIndex, splashHeightVh, splashLeftVh, splashOffsetY, splashScale]);
+
+  useImperativeHandle(ref, () => ({
+    measureNow: computePosition,
+    pauseAmbient: () => {
+      ambientAnimationsRef.current.forEach((animation) => animation.pause());
+    },
+    resumeAmbient: () => {
+      if (!animationsEnabled) return;
+      ambientAnimationsRef.current.forEach((animation) => animation.resume());
+    },
+    resetAmbient: () => {
+      ambientAnimationsRef.current.forEach((animation) => {
+        animation.restart();
+        if (!animationsEnabled) animation.pause();
+      });
+    },
+  }), [animationsEnabled, computePosition]);
 
   useEffect(() => {
-    const compute = rafThrottle(() => {
-      const el = itemRefs.current[selectedIndex];
-      if (!el) return;
-      const anchor = el.querySelector('[data-menu-anchor]') as HTMLElement | null;
-      const label = el.querySelector('[data-menu-label]') as HTMLElement | null;
-      if (!anchor || !label) return;
-
-      const vh = window.innerHeight / 100;
-      const splashH = splashHeightVh * splashScale * vh;
-      const anchorRect = anchor.getBoundingClientRect();
-      const labelRect = label.getBoundingClientRect();
-      const leftEdgeScreen = anchorRect.left;
-      const labelCenterY = labelRect.top + labelRect.height / 2;
-
-      const elementLeftPx = splashLeftVh * vh;
-      const pivotX = leftEdgeScreen - elementLeftPx;
-
-      const nextPos = {
-        top: labelCenterY - splashH / 2 + splashOffsetY * itemScale * vh,
-        height: splashH,
-        pivotX,
-        rotate: ITEM_SCALES[Math.min(selectedIndex, ITEM_SCALES.length - 1)].rotate,
-        rotateY: ITEM_SCALES[Math.min(selectedIndex, ITEM_SCALES.length - 1)].rotateY,
-      };
-
-      setPos((current) => {
-        if (
-          current &&
-          Math.abs(current.top - nextPos.top) < 0.5 &&
-          Math.abs(current.height - nextPos.height) < 0.5 &&
-          Math.abs(current.pivotX - nextPos.pivotX) < 0.5 &&
-          current.rotate === nextPos.rotate &&
-          current.rotateY === nextPos.rotateY
-        ) {
-          return current;
-        }
-
-        return nextPos;
-      });
-    });
+    const compute = rafThrottle(computePosition);
 
     // Menu items and their parent stack tween for ~200ms on selection changes.
     // Re-sample through that settle window so the splash locks to the final text
@@ -161,14 +197,17 @@ export default function MenuItemBackground({
       window.removeEventListener('resize', compute);
       scrollViewport?.removeEventListener('scroll', compute);
     };
-  }, [selectedIndex, splashHeightVh, splashWidthVh, splashOffsetY, splashTipXPct, splashTaperYPct, menuScrollYVh, selectedItemOffsetYVh, measureKey, splashLeftVh, splashScale, itemScale, menuScrollViewportRef]);
+  }, [computePosition, selectedIndex, measureKey, menuScrollViewportRef]);
 
   useGSAP(() => {
     if (!backRef.current || !frontRef.current || !effectsWrapRef.current || !effectsInnerRef.current) return;
     if (!animationsEnabled) return;
 
+    ambientAnimationsRef.current.forEach((animation) => animation.kill());
+    ambientAnimationsRef.current = [];
+
     // --- Back layer: slow bloom ---
-    gsap.to(backRef.current, {
+    const backTween = gsap.to(backRef.current, {
       opacity: 0.1, scale: 1.12,
       duration: 2, ease: 'sine.inOut', repeat: -1, yoyo: true,
       transformOrigin: 'left center',
@@ -207,6 +246,14 @@ export default function MenuItemBackground({
         scaleX: 1.0, scaleY: 1.0,
         duration: 1.8, ease: 'power1.inOut', transformOrigin: 'left center',
       }, '<');
+
+    ambientAnimationsRef.current = [backTween, tl];
+
+    return () => {
+      backTween.kill();
+      tl.kill();
+      ambientAnimationsRef.current = [];
+    };
 
   // pos !== null (not pos itself) - the pulsing animation doesn't use position values,
   // so revertOnUpdate shouldn't fire on every re-measure, only when readiness changes.
@@ -267,3 +314,5 @@ export default function MenuItemBackground({
     </div>
   );
 }
+
+export default forwardRef<MenuSplashHandle, MenuItemBackgroundProps>(MenuItemBackground);

@@ -13,7 +13,7 @@ import CharacterPortrait from '../background/CharacterPortrait';
 import BackgroundLines from '../background/BackgroundLines';
 import MenuItem from './MenuItem';
 import MenuIndex from './MenuIndex';
-import MenuItemBackground from './MenuItemBackground';
+import MenuItemBackground, { type MenuSplashHandle } from './MenuItemBackground';
 import StatsPanel from './StatsPanel';
 import ControlHints from '../shared/ControlHints';
 import LoadingScreen from '../shared/LoadingScreen';
@@ -275,6 +275,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
   const menuScrollViewportRef = useRef<HTMLDivElement>(null);
   const menuScrollOverlayRef = useRef<HTMLDivElement>(null);
   const menuLeftRef = useRef<HTMLDivElement>(null);
+  const splashHandleRef = useRef<MenuSplashHandle | null>(null);
   const entryTlRef = useRef<gsap.core.Timeline | null>(null);
   const indexAnimTlRef = useRef<gsap.core.Timeline | null>(null);
   const pageTlRef = useRef<gsap.core.Timeline | null>(null);
@@ -1351,6 +1352,20 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
   const visualActivity = getVisualActivity(appState, animationsEnabled);
   const visualQuality = getVisualQuality(animationsEnabled);
   const ambientAnimationsEnabled = shouldRunAmbientAnimations(visualActivity);
+
+  useEffect(() => {
+    if (ambientAnimationsEnabled) {
+      splashHandleRef.current?.resumeAmbient();
+      return;
+    }
+
+    splashHandleRef.current?.pauseAmbient();
+  }, [ambientAnimationsEnabled]);
+
+  useEffect(() => {
+    splashHandleRef.current?.measureNow();
+  }, [selectedIndex, splashMeasureKey, viewportProfile.layoutMode, viewportProfile.orientation]);
+
   const pageVisible = appState === 'page-active' ||
     appState === 'exiting-page' ||
     (appState === 'entering-page' && initialDirectPageEntryInProgressRef.current);
@@ -1461,6 +1476,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
     }
     setCurrentLocationPath(resolvedPath);
     cancelPendingPageShellReveal();
+    splashHandleRef.current?.pauseAmbient();
     pageTlRef.current?.kill();
 
     if (!animationsEnabled) {
@@ -1472,6 +1488,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
       setHintsPage(pageId);
       setHintsMode('page');
       setAppState('page-active');
+      splashHandleRef.current?.measureNow();
       return;
     }
 
@@ -1560,6 +1577,8 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
         setCurrentLocationPath('/');
       }
       setSplashMeasureKey(k => k + 1);
+      splashHandleRef.current?.measureNow();
+      splashHandleRef.current?.resetAmbient();
       queueHoveredMenuItemSelectionSync();
       return;
     }
@@ -1567,6 +1586,8 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
     setSubtitleVisible(false);
     setAppState('exiting-page');
     setSplashMeasureKey(k => k + 1);
+    splashHandleRef.current?.measureNow();
+    splashHandleRef.current?.resetAmbient();
     if (pendingMenuSelectionIndexRef.current !== null) {
       selectMenuIndex(pendingMenuSelectionIndexRef.current, { playSound: false });
       pendingMenuSelectionIndexRef.current = null;
@@ -1589,6 +1610,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
         } else {
           setCurrentLocationPath('/');
         }
+        splashHandleRef.current?.measureNow();
         queueHoveredMenuItemSelectionSync();
       },
       () => setSubtitleVisible(true),
@@ -1840,6 +1862,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
         style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 4 }}
       >
         <MenuItemBackground
+          ref={splashHandleRef}
           itemRefs={itemRefs}
           menuStackRef={menuStackRef}
           menuScrollViewportRef={menuScrollViewportRef}
