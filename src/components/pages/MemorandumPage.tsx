@@ -29,6 +29,7 @@ import PageBackground from '../background/PageBackground';
 import MemorandumTrapezoids from '../menu/splashEffects/MemorandumTrapezoids';
 import ScrollViewport from '../shared/ScrollViewport';
 import { rafThrottle } from '../../lib/rafThrottle';
+import { usePageAnimationLifecycle } from '../../hooks/usePageAnimationLifecycle';
 
 interface MemorandumPageProps {
   memorandumData: MemorandumData;
@@ -499,8 +500,6 @@ export default function MemorandumPage({
   const listViewportRef = useRef<HTMLDivElement>(null);
   const detailViewportRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const entryTlRef = useRef<gsap.core.Timeline | null>(null);
-  const entryDelayRef = useRef<gsap.core.Tween | null>(null);
   const exitTlRef = useRef<gsap.core.Timeline | null>(null);
   const detailTlRef = useRef<gsap.core.Timeline | null>(null);
   const categoryTlRef = useRef<gsap.core.Timeline | null>(null);
@@ -510,7 +509,6 @@ export default function MemorandumPage({
   const pendingReadEntryIdRef = useRef<string | null>(null);
   const pendingExternalExitRef = useRef(false);
   const routeSyncPathRef = useRef<string | null>(null);
-  const prevIsActive = useRef(isActive);
   const previousColumnIndexRef = useRef(initialState.columnIndex);
   const initialCategoryPaintRef = useRef(false);
   const pageEntryReadyRef = useRef(!animationsEnabled);
@@ -629,11 +627,9 @@ export default function MemorandumPage({
     if (!containerRef.current) return;
 
     clearDelayedExit();
-    entryTlRef.current?.kill();
     exitTlRef.current?.kill();
     detailTlRef.current?.kill();
     categoryTlRef.current?.kill();
-    entryTlRef.current = null;
     exitTlRef.current = null;
     detailTlRef.current = null;
     categoryTlRef.current = null;
@@ -1149,10 +1145,7 @@ export default function MemorandumPage({
     return true;
   };
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useLayoutEffect(() => {
-    if (!containerRef.current) return;
-
     pageEntryReadyRef.current = !animationsEnabled;
     setPageEntryReady(!animationsEnabled);
 
@@ -1164,57 +1157,55 @@ export default function MemorandumPage({
     }
 
     setIsTransitioning(Boolean(pendingDetailRouteRef.current?.entrySlug));
-    const shouldDelayDirectMountPlayback = pageState === 'page-active';
-    let rafId: number | null = null;
-    let nestedRafId: number | null = null;
-    entryTlRef.current = createMemorandumEntryTimeline(containerRef.current, {
-      paused: initialEntryDelaySeconds > 0 || shouldDelayDirectMountPlayback,
-    });
-    if (onEntryAnimationComplete) {
-      appendTimelineCallback(entryTlRef.current, 'onComplete', onEntryAnimationComplete);
-    }
-    if (initialEntryDelaySeconds > 0) {
-      entryDelayRef.current = gsap.delayedCall(entryDelaySeconds, () => {
-        entryDelayRef.current = null;
-        entryTlRef.current?.play(0);
-      });
-    } else if (shouldDelayDirectMountPlayback) {
-      rafId = requestAnimationFrame(() => {
-        nestedRafId = requestAnimationFrame(() => {
-          nestedRafId = null;
-          entryTlRef.current?.play(0);
-        });
-      });
-    }
-    appendTimelineCallback(entryTlRef.current, 'onComplete', () => {
-      if (!mountedRef.current) return;
-      entryTlRef.current = null;
-      pageEntryReadyRef.current = true;
-      setPageEntryReady(true);
-      flushPendingReadEntry();
-      setIsTransitioning(false);
-      flushPendingDetailRoute();
-    });
-    appendTimelineCallback(entryTlRef.current, 'onInterrupt', () => {
-      if (!mountedRef.current) return;
-      entryTlRef.current = null;
-      pageEntryReadyRef.current = true;
-      setPageEntryReady(true);
-      flushPendingReadEntry();
-      setIsTransitioning(false);
-      flushPendingDetailRoute();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const finishEntryAnimation = () => {
+    if (!mountedRef.current) return;
+    onEntryAnimationComplete?.();
+    pageEntryReadyRef.current = true;
+    setPageEntryReady(true);
+    flushPendingReadEntry();
+    setIsTransitioning(false);
+    flushPendingDetailRoute();
+  };
+
+  const createPageExitTimeline = (container: Element) => {
+    detailTlRef.current?.kill();
+    exitTlRef.current?.kill();
+
+    const pageExitTimeline = gsap.timeline({
+      onComplete: () => {
+        exitTlRef.current = null;
+      },
+      onInterrupt: () => {
+        exitTlRef.current = null;
+      },
     });
 
-    return () => {
-      if (rafId !== null) cancelAnimationFrame(rafId);
-      if (nestedRafId !== null) cancelAnimationFrame(nestedRafId);
-      mountedRef.current = false;
-      entryDelayRef.current?.kill();
-      entryDelayRef.current = null;
-      entryTlRef.current?.kill();
-      entryTlRef.current = null;
-    };
-  }, []);
+    if (hasDisplayedDetail) {
+      pageExitTimeline
+        .add(createMemorandumDetailExitTimeline(container), 0)
+        .add(createMemorandumBrowserReEntryTimeline(container), 0.08)
+        .add(createMemorandumExitTimeline(container), 0.32);
+    } else {
+      pageExitTimeline.add(createMemorandumExitTimeline(container), 0);
+    }
+
+    exitTlRef.current = pageExitTimeline;
+    return pageExitTimeline;
+  };
+
+  usePageAnimationLifecycle({
+    isActive,
+    animationsEnabled,
+    initialEntryDelaySeconds,
+    pageState,
+    containerRef,
+    createEntryTimeline: createMemorandumEntryTimeline,
+    createExitTimeline: createPageExitTimeline,
+    onEntryAnimationComplete: finishEntryAnimation,
+  });
 
   useLayoutEffect(() => {
     if (!detailEnterPending || !hasDisplayedDetail || !containerRef.current) return;
@@ -1321,43 +1312,12 @@ export default function MemorandumPage({
     categoryTlRef.current = createMemorandumCategoryTimeline(background, whiteLabel, darkLabel);
   }, [animationsEnabled, isTransitioning, selectedColumnIndex]);
 
-  useLayoutEffect(() => {
-    const wasActive = prevIsActive.current;
-    prevIsActive.current = isActive;
-
-    if (!wasActive || isActive || !containerRef.current || !animationsEnabled) return;
-
-    detailTlRef.current?.kill();
-    exitTlRef.current?.kill();
-
-    const pageExitTimeline = gsap.timeline({
-      onComplete: () => {
-        exitTlRef.current = null;
-      },
-      onInterrupt: () => {
-        exitTlRef.current = null;
-      },
-    });
-
-    if (hasDisplayedDetail) {
-      pageExitTimeline
-        .add(createMemorandumDetailExitTimeline(containerRef.current), 0)
-        .add(createMemorandumBrowserReEntryTimeline(containerRef.current), 0.08)
-        .add(createMemorandumExitTimeline(containerRef.current), 0.32);
-    } else {
-      pageExitTimeline.add(createMemorandumExitTimeline(containerRef.current), 0);
-    }
-
-    exitTlRef.current = pageExitTimeline;
-  }, [animationsEnabled, hasDisplayedDetail, isActive]);
-
   useEffect(() => {
     return () => {
       mountedRef.current = false;
       clearDelayedExit();
       pendingReadEntryIdRef.current = null;
       pendingExternalExitRef.current = false;
-      entryTlRef.current?.kill();
       exitTlRef.current?.kill();
       detailTlRef.current?.kill();
       categoryTlRef.current?.kill();

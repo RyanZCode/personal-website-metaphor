@@ -10,6 +10,7 @@ import type { RegisterPageNavigation } from '../../lib/pageNavigation';
 import PageBackground from '../background/PageBackground';
 import ExperienceRipples from '../menu/splashEffects/ExperienceRipples';
 import { rafThrottle } from '../../lib/rafThrottle';
+import { usePageAnimationLifecycle } from '../../hooks/usePageAnimationLifecycle';
 
 interface ExperiencePageProps {
   isActive: boolean;
@@ -303,10 +304,6 @@ export default function ExperiencePage({
   const isCompact = viewportProfile.layoutMode === 'compact';
   const geometry = isCompact ? COMPACT_GEOMETRY : DEFAULT_GEOMETRY;
   const containerRef = useRef<HTMLElement | null>(null);
-  const entryTlRef = useRef<gsap.core.Timeline | null>(null);
-  const entryDelayRef = useRef<gsap.core.Tween | null>(null);
-  const exitTlRef = useRef<gsap.core.Timeline | null>(null);
-  const prevIsActive = useRef(isActive);
   const bobAnim  = animationsEnabled ? 'portrait-bob 4s ease-in-out infinite' : 'none';
   const glowAnim = animationsEnabled ? 'portrait-glow 3s ease-in-out infinite' : 'none';
   const viewportRef = useRef<HTMLDivElement | null>(null);
@@ -352,55 +349,29 @@ export default function ExperiencePage({
     return scrollExperienceTo(scrollOffsetRef.current + delta);
   }, [maxScrollOffset, scrollExperienceTo]);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useLayoutEffect(() => {
-    if (!containerRef.current) {
-      return;
-    }
-
-    if (!animationsEnabled) {
-      return;
-    }
-
+  const createEntryTimeline = useCallback((
+    container: Element,
+    options?: { paused?: boolean },
+  ) => {
     const currentLayoutMode = readViewportProfile().layoutMode;
-    containerRef.current.setAttribute(
+    container.setAttribute(
       'data-experience-compact',
       currentLayoutMode === 'compact' ? 'true' : 'false',
     );
 
-    const shouldDelayDirectMountPlayback = pageState === 'page-active';
-    let rafId: number | null = null;
-    let nestedRafId: number | null = null;
-    entryTlRef.current = createExperienceEntryTimeline(containerRef.current, {
-      paused: initialEntryDelaySeconds > 0 || shouldDelayDirectMountPlayback,
-    });
-    if (onEntryAnimationComplete) {
-      entryTlRef.current.add(() => {
-        onEntryAnimationComplete();
-      });
-    }
-    if (initialEntryDelaySeconds > 0) {
-      entryDelayRef.current = gsap.delayedCall(entryDelaySeconds, () => {
-        entryDelayRef.current = null;
-        entryTlRef.current?.play(0);
-      });
-    } else if (shouldDelayDirectMountPlayback) {
-      rafId = requestAnimationFrame(() => {
-        nestedRafId = requestAnimationFrame(() => {
-          nestedRafId = null;
-          entryTlRef.current?.play(0);
-        });
-      });
-    }
-    return () => {
-      if (rafId !== null) cancelAnimationFrame(rafId);
-      if (nestedRafId !== null) cancelAnimationFrame(nestedRafId);
-      entryDelayRef.current?.kill();
-      entryDelayRef.current = null;
-      entryTlRef.current?.kill();
-      entryTlRef.current = null;
-    };
+    return createExperienceEntryTimeline(container, options);
   }, []);
+
+  usePageAnimationLifecycle({
+    isActive,
+    animationsEnabled,
+    initialEntryDelaySeconds,
+    pageState,
+    containerRef,
+    createEntryTimeline,
+    createExitTimeline: createExperienceExitTimeline,
+    onEntryAnimationComplete,
+  });
 
   useEffect(() => {
     if (animationsEnabled || !containerRef.current) {
@@ -414,22 +385,6 @@ export default function ExperiencePage({
 
     gsap.set(wipeLine, { autoAlpha: 0 });
   }, [animationsEnabled]);
-
-  useLayoutEffect(() => {
-    const wasActive = prevIsActive.current;
-    prevIsActive.current = isActive;
-
-    if (!wasActive || isActive || !containerRef.current || !animationsEnabled) return;
-
-    exitTlRef.current?.kill();
-    exitTlRef.current = createExperienceExitTimeline(containerRef.current);
-  }, [animationsEnabled, isActive]);
-
-  useEffect(() => {
-    return () => {
-      exitTlRef.current?.kill();
-    };
-  }, []);
 
   useEffect(() => {
     const update = rafThrottle(() => {

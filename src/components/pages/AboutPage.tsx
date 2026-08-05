@@ -1,4 +1,4 @@
-import { useLayoutEffect, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import gsap from 'gsap';
 import { COLORS } from '../../lib/constants';
 import { MENU_ITEMS } from '../../lib/menuConfig';
@@ -11,8 +11,8 @@ import {
 } from '../../lib/animations';
 import type { RegisterPageNavigation } from '../../lib/pageNavigation';
 import type { PlaySoundEffect } from '../../lib/soundEffects';
-import { rafThrottle } from '../../lib/rafThrottle';
 import { usePageAnimationLifecycle } from '../../hooks/usePageAnimationLifecycle';
+import { useScrollHintNavigation } from '../../hooks/useScrollHintNavigation';
 
 interface AboutPageProps {
   isActive: boolean;
@@ -39,7 +39,6 @@ export default function AboutPage({
 }: AboutPageProps) {
   const containerRef = useRef<HTMLElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
-  const [isScrollable, setIsScrollable] = useState(false);
   const [memorandumLinkHovered, setMemorandumLinkHovered] = useState(false);
   const memorandumItem = MENU_ITEMS.find(item => item.id === 'memorandum');
   const memorandumLinkColor = memorandumItem
@@ -69,62 +68,12 @@ export default function AboutPage({
     gsap.set(wipeLine, { autoAlpha: 0 });
   }, [animationsEnabled]);
 
-  useLayoutEffect(() => {
-    const viewport = viewportRef.current;
-    if (!viewport) return;
-
-    const updateScrollability = rafThrottle(() => {
-      setIsScrollable(viewport.scrollHeight - viewport.clientHeight > 1);
-    });
-
-    updateScrollability();
-
-    const resizeObserver = typeof ResizeObserver === 'undefined'
-      ? null
-      : new ResizeObserver(updateScrollability);
-
-    resizeObserver?.observe(viewport);
-    if (viewport.firstElementChild instanceof HTMLElement) {
-      resizeObserver?.observe(viewport.firstElementChild);
-    }
-
-    window.addEventListener('resize', updateScrollability);
-    return () => {
-      updateScrollability.cancel();
-      resizeObserver?.disconnect();
-      window.removeEventListener('resize', updateScrollability);
-    };
-  }, []);
-
-  useLayoutEffect(() => {
-    if (!isActive) {
-      registerNavigation(null);
-      return;
-    }
-
-    registerNavigation({
-      showScrollHint: isScrollable,
-      onDirection: (direction) => {
-        if (direction !== 'up' && direction !== 'down') return false;
-
-        const viewport = viewportRef.current;
-        if (!viewport) return false;
-
-        const scrollRange = viewport.scrollHeight - viewport.clientHeight;
-        if (scrollRange <= 1) return false;
-
-        const step = Math.max(96, viewport.clientHeight * 0.72);
-        const delta = direction === 'down' ? step : -step;
-        viewport.scrollBy({
-          top: delta,
-          behavior: animationsEnabled ? 'smooth' : 'auto',
-        });
-        return true;
-      },
-    });
-
-    return () => registerNavigation(null);
-  }, [animationsEnabled, isActive, isScrollable, registerNavigation]);
+  useScrollHintNavigation({
+    animationsEnabled,
+    isActive,
+    registerNavigation,
+    viewportRef,
+  });
 
   return (
     <section
