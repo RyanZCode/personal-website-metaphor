@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import gsap from 'gsap';
 import { MENU_ITEMS } from '../../lib/menuConfig';
 import { COLORS } from '../../lib/constants';
@@ -40,12 +40,6 @@ import {
 import { useSoundEffects } from '../../hooks/useSoundEffects';
 import { usePageShellReveal } from '../../hooks/usePageShellReveal';
 import { useMainMenuBootPreload } from '../../hooks/useMainMenuBootPreload';
-import AboutPage from '../pages/AboutPage';
-import SkillsPage from '../pages/SkillsPage';
-import ExperiencePage from '../pages/ExperiencePage';
-import ContactPage from '../pages/ContactPage';
-import MemorandumPage from '../pages/MemorandumPage';
-import SystemPage from '../pages/SystemPage';
 import { MEMORANDUM_CATEGORIES, type MemorandumData } from '../../lib/memorandum';
 
 type AppState = 'preloading' | 'unsupported-screen' | 'entry' | 'idle' | 'entering-page' | 'page-active' | 'exiting-page';
@@ -68,6 +62,22 @@ const EMPTY_MEMORANDUM_DATA: MemorandumData = {
   totalEntries: 0,
   defaultColumnId: 'tech',
 };
+
+const PAGE_COMPONENT_LOADERS = {
+  about: () => import('../pages/AboutPage'),
+  skills: () => import('../pages/SkillsPage'),
+  experience: () => import('../pages/ExperiencePage'),
+  contact: () => import('../pages/ContactPage'),
+  memorandum: () => import('../pages/MemorandumPage'),
+  system: () => import('../pages/SystemPage'),
+} as const;
+
+const AboutPage = lazy(PAGE_COMPONENT_LOADERS.about);
+const SkillsPage = lazy(PAGE_COMPONENT_LOADERS.skills);
+const ExperiencePage = lazy(PAGE_COMPONENT_LOADERS.experience);
+const ContactPage = lazy(PAGE_COMPONENT_LOADERS.contact);
+const MemorandumPage = lazy(PAGE_COMPONENT_LOADERS.memorandum);
+const SystemPage = lazy(PAGE_COMPONENT_LOADERS.system);
 
 const MENU_SELECTED_OFFSET_VH = 1;
 const MENU_BELOW_SELECTED_OFFSET_VH = 2;
@@ -424,6 +434,11 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
     const changed = selectedIndexRef.current !== normalizedIndex;
     selectedIndexRef.current = normalizedIndex;
     setSelectedIndex(normalizedIndex);
+
+    if (appStateRef.current === 'idle') {
+      const pageId = MENU_ITEMS[normalizedIndex].id as AppPageId;
+      void PAGE_COMPONENT_LOADERS[pageId]?.();
+    }
 
     if (changed && options?.playSound !== false) {
       playSoundEffect('switch');
@@ -1635,7 +1650,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
   ) && !unsupportedScreenDismissed;
   const shouldShowLoadingScreen = appState === 'preloading' || appState === 'unsupported-screen';
   const initialEntryDelaySeconds = 0;
-  const activePageContent = activePage === 'about' ? (
+  const activePageInner = activePage === 'about' ? (
     <AboutPage
       isActive={appState === 'page-active'}
       animationsEnabled={animationsEnabled}
@@ -1707,6 +1722,11 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
       playSoundEffect={playSoundEffect}
       onEntryAnimationComplete={directPageEntryCompleteHandler}
     />
+  ) : null;
+  const activePageContent = activePageInner ? (
+    <Suspense fallback={null}>
+      {activePageInner}
+    </Suspense>
   ) : null;
 
   return (
