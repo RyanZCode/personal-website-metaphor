@@ -19,8 +19,7 @@ import ControlHints from '../shared/ControlHints';
 import LoadingScreen from '../shared/LoadingScreen';
 import CustomCursor from '../shared/CustomCursor';
 import UnsupportedScreen from '../shared/UnsupportedScreen';
-import { createAssetPreloadManifest, preloadImages } from '../../lib/assetPreload';
-import { readViewportProfile, shouldReduceBootWork, useViewportProfile } from '../../lib/deviceProfile';
+import { readViewportProfile, useViewportProfile } from '../../lib/deviceProfile';
 import { rafThrottle } from '../../lib/rafThrottle';
 import type { PageNavigationDirection, PageNavigationHandler } from '../../lib/pageNavigation';
 import {
@@ -33,12 +32,14 @@ import {
   resolveAppRoute,
   type AppPageId,
 } from '../../lib/routes';
-import { SOUND_EFFECT_SOURCES, type PlaySoundEffect, type SoundEffectId } from '../../lib/soundEffects';
 import {
   getVisualActivity,
   getVisualQuality,
   shouldRunAmbientAnimations,
 } from '../../lib/visualActivity';
+import { useSoundEffects } from '../../hooks/useSoundEffects';
+import { usePageShellReveal } from '../../hooks/usePageShellReveal';
+import { useMainMenuBootPreload } from '../../hooks/useMainMenuBootPreload';
 import AboutPage from '../pages/AboutPage';
 import SkillsPage from '../pages/SkillsPage';
 import ExperiencePage from '../pages/ExperiencePage';
@@ -72,14 +73,6 @@ const MENU_SELECTED_OFFSET_VH = 1;
 const MENU_BELOW_SELECTED_OFFSET_VH = 2;
 const TOUCH_INPUT_GRACE_MS = 800;
 const MENU_TOUCH_STEP_VH = 4.5;
-type IdleDeadline = {
-  didTimeout: boolean;
-  timeRemaining: () => number;
-};
-type IdleWindow = Window & {
-  requestIdleCallback?: (callback: (deadline: IdleDeadline) => void, options?: { timeout: number }) => number;
-  cancelIdleCallback?: (handle: number) => void;
-};
 type NavigationDestination = {
   url: string;
 };
@@ -139,12 +132,6 @@ function setDirectPageInitialStates(container: Element): void {
 function clearBootMode() {
   if (typeof document === 'undefined') return;
   delete document.documentElement.dataset.bootMode;
-}
-
-function createSoundEffectAudio(src: string) {
-  const audio = new Audio(src);
-  audio.preload = 'auto';
-  return audio;
 }
 
 function getMenuItemWrapOffsetYVh(index: number, selectedIndex: number) {
@@ -213,8 +200,6 @@ function getBootTargetAppState(
 export default function MainMenu({ initialPathname }: MainMenuProps) {
   const [memorandumData, setMemorandumData] = useState<MemorandumData | null>(null);
   const effectiveMemorandumData = memorandumData ?? EMPTY_MEMORANDUM_DATA;
-  const memoFetchStartedRef = useRef(false);
-  const memoFetchPromiseRef = useRef<Promise<MemorandumData | null>>(Promise.resolve(null));
   const initialNormalizedPathRef = useRef(normalizePathname(initialPathname));
   const initialTargetPathRef = useRef(
     initialNormalizedPathRef.current
@@ -328,16 +313,6 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
     null
   );
   const pendingMenuSelectionIndexRef = useRef<number | null>(initialPendingMenuSelectionIndex);
-  const soundRefs = useRef<Record<SoundEffectId, HTMLAudioElement | null>>({
-    switch: null,
-    enter: null,
-    exit: null,
-    toggle: null,
-  });
-  const soundWarmupStartedRef = useRef(false);
-  const pendingSoundWarmupPriorityRef = useRef<SoundEffectId | undefined>(undefined);
-  const soundWarmupTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const soundWarmupIdleCallbackRef = useRef<number | null>(null);
   const menuReEntryDelayRef = useRef<gsap.core.Tween | null>(null);
   const hoverSyncRafRef = useRef<number | null>(null);
   const interceptedNavigationPathRef = useRef<string | null>(null);
@@ -348,13 +323,9 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
   const exitPageRef = useRef<(options?: PageTransitionOptions) => void>(() => {});
   const pageNavigationRef = useRef<PageNavigationHandler | null>(null);
   const [inputMode, setInputMode] = useState<'keyboard' | 'mouse' | 'touch'>('mouse');
-  const deferredImageWarmupStartedRef = useRef(false);
   const lastTouchInputAt = useRef(0);
   const lastPointerTypeRef = useRef<'mouse' | 'touch' | 'pen' | null>(null);
   const lastPointerDownAtRef = useRef(0);
-  const pageShellRevealRafRef = useRef<number | null>(null);
-  const pageShellRevealNestedRafRef = useRef<number | null>(null);
-  const pageShellRevealTokenRef = useRef(0);
   const menuTouchStartYRef = useRef<number | null>(null);
   const menuTouchStartXRef = useRef<number | null>(null);
   const menuTouchStartIndexRef = useRef<number | null>(null);
@@ -390,35 +361,10 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
     setClientReady(true);
   }, []);
 
-  const cancelPendingPageShellReveal = useCallback(() => {
-    pageShellRevealTokenRef.current += 1;
-    if (pageShellRevealRafRef.current !== null) {
-      cancelAnimationFrame(pageShellRevealRafRef.current);
-      pageShellRevealRafRef.current = null;
-    }
-    if (pageShellRevealNestedRafRef.current !== null) {
-      cancelAnimationFrame(pageShellRevealNestedRafRef.current);
-      pageShellRevealNestedRafRef.current = null;
-    }
-  }, []);
-
-  const revealPageShellSoon = useCallback(() => {
-    cancelPendingPageShellReveal();
-    const revealToken = pageShellRevealTokenRef.current;
-
-    pageShellRevealRafRef.current = requestAnimationFrame(() => {
-      pageShellRevealRafRef.current = null;
-
-      pageShellRevealNestedRafRef.current = requestAnimationFrame(() => {
-        pageShellRevealNestedRafRef.current = null;
-        if (pageShellRevealTokenRef.current !== revealToken) return;
-
-        const shell = containerRef.current?.querySelector('[data-page-shell]');
-        if (!shell) return;
-        gsap.set(shell, { opacity: 1 });
-      });
-    });
-  }, [cancelPendingPageShellReveal]);
+  const {
+    cancelPendingPageShellReveal,
+    revealPageShellSoon,
+  } = usePageShellReveal(containerRef);
 
   useEffect(() => {
     appStateRef.current = appState;
@@ -458,90 +404,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
     setAppState('page-active');
   }, []);
 
-  const ensureSoundEffect = useCallback((id: SoundEffectId) => {
-    if (typeof Audio === 'undefined') return null;
-
-    const existing = soundRefs.current[id];
-    if (existing) return existing;
-
-    const audio = createSoundEffectAudio(SOUND_EFFECT_SOURCES[id]);
-    soundRefs.current[id] = audio;
-    return audio;
-  }, []);
-
-  const scheduleSoundWarmup = useCallback((priorityId?: SoundEffectId) => {
-    if (typeof Audio === 'undefined' || soundWarmupStartedRef.current) return;
-    if (appStateRef.current !== 'page-active') {
-      pendingSoundWarmupPriorityRef.current = priorityId;
-      return;
-    }
-
-    soundWarmupStartedRef.current = true;
-    const idleWindow = window as IdleWindow;
-    const warmRemainingEffects = () => {
-      soundWarmupTimeoutRef.current = null;
-      soundWarmupIdleCallbackRef.current = null;
-
-      (Object.keys(SOUND_EFFECT_SOURCES) as SoundEffectId[]).forEach((soundId) => {
-        if (soundId === priorityId) return;
-        const audio = ensureSoundEffect(soundId);
-        if (!audio) return;
-        audio.load();
-      });
-    };
-
-    if (typeof idleWindow.requestIdleCallback === 'function') {
-      soundWarmupIdleCallbackRef.current = idleWindow.requestIdleCallback(warmRemainingEffects, { timeout: 1500 });
-      return;
-    }
-
-    soundWarmupTimeoutRef.current = window.setTimeout(warmRemainingEffects, 200);
-  }, [ensureSoundEffect]);
-
-  useEffect(() => {
-    if (appState !== 'page-active') return;
-    if (soundWarmupStartedRef.current) return;
-    if (pendingSoundWarmupPriorityRef.current === undefined) return;
-
-    const priorityId = pendingSoundWarmupPriorityRef.current;
-    pendingSoundWarmupPriorityRef.current = undefined;
-    scheduleSoundWarmup(priorityId);
-  }, [appState, scheduleSoundWarmup]);
-
-  useEffect(() => {
-    return () => {
-      const idleWindow = window as IdleWindow;
-      if (soundWarmupTimeoutRef.current) {
-        clearTimeout(soundWarmupTimeoutRef.current);
-      }
-      if (
-        soundWarmupIdleCallbackRef.current !== null &&
-        typeof idleWindow.cancelIdleCallback === 'function'
-      ) {
-        idleWindow.cancelIdleCallback(soundWarmupIdleCallbackRef.current);
-      }
-
-      (Object.keys(SOUND_EFFECT_SOURCES) as SoundEffectId[]).forEach((id) => {
-        const audio = soundRefs.current[id];
-        if (!audio) return;
-        audio.pause();
-        audio.currentTime = 0;
-        soundRefs.current[id] = null;
-      });
-    };
-  }, []);
-
-  const playSoundEffect = useCallback<PlaySoundEffect>((id, options) => {
-    if (!options?.force && !soundEnabled) return;
-
-    const audio = ensureSoundEffect(id);
-    if (!audio) return;
-
-    scheduleSoundWarmup(id);
-    audio.pause();
-    audio.currentTime = 0;
-    void audio.play().catch(() => {});
-  }, [ensureSoundEffect, scheduleSoundWarmup, soundEnabled]);
+  const playSoundEffect = useSoundEffects(soundEnabled, appState);
 
   const handleAnimationsToggle = useCallback((options?: { playSound?: boolean }) => {
     if (options?.playSound !== false) {
@@ -644,115 +507,22 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
     }
   }, [memorandumData, selectMenuIndex]);
 
-  useEffect(() => {
-    const isInitialMemoPage = initialNormalizedPathRef.current.startsWith('/memorandum');
-
-    if (!memoFetchStartedRef.current) {
-      memoFetchStartedRef.current = true;
-      memoFetchPromiseRef.current = fetch('/memorandum-data.json')
-        .then((r) => r.json() as Promise<MemorandumData>)
-        .then((data) => {
-          setMemorandumData(data);
-          return data;
-        })
-        .catch(() => null);
-    }
-
-    const manifest = createAssetPreloadManifest(EMPTY_MEMORANDUM_DATA, {
-      initialPageId: initialTargetRouteRef.current.pageId,
-    });
-    const preloadController = new AbortController();
-    const shouldReduceWork = shouldReduceBootWork();
-    let cancelled = false;
-
-    const preloadPromises: Promise<unknown>[] = [
-      preloadImages(manifest.blockingImageSrcs, {
-        concurrency: shouldReduceWork ? 1 : 2,
-        signal: preloadController.signal,
-      }),
-      document.fonts.load('400 1em Cinzel'),
-      document.fonts.load('700 1em Cinzel'),
-      document.fonts.load('900 1em Cinzel'),
-    ];
-
-    if (isInitialMemoPage) {
-      preloadPromises.push(memoFetchPromiseRef.current);
-    }
-
-    Promise.all(preloadPromises).catch(() => undefined).then(() => {
-      if (cancelled) return;
-      if (appStateRef.current !== 'preloading') return;
-      requestAnimationFrame(() => requestAnimationFrame(() => {
-        const bootTargetState = getBootTargetAppState(
-          shouldMountPageDirectOnLoadRef.current,
-          shouldMountPageDirectOnLoadRef.current && animationsEnabled
-        ) as UnsupportedScreenResumeState;
-        const nextState = isCompactViewport && !unsupportedScreenDismissed
-          ? 'unsupported-screen'
-          : bootTargetState;
-        if (nextState === 'unsupported-screen') {
-          unsupportedScreenResumeStateRef.current = bootTargetState;
-        }
-        appStateRef.current = nextState;
-        setAppState(nextState);
-      }));
-    });
-
-    return () => {
-      cancelled = true;
-      preloadController.abort();
-    };
-  }, [isCompactViewport, unsupportedScreenDismissed]);
-
-  useEffect(() => {
-    if (appState === 'preloading' || deferredImageWarmupStartedRef.current) return;
-    if (shouldReduceBootWork()) {
-      deferredImageWarmupStartedRef.current = true;
-      return;
-    }
-
-    const manifest = createAssetPreloadManifest(effectiveMemorandumData, {
-      initialPageId: activePageRef.current,
-    });
-    if (!manifest.deferredImageSrcs.length) {
-      deferredImageWarmupStartedRef.current = true;
-      return;
-    }
-
-    deferredImageWarmupStartedRef.current = true;
-
-    const preloadController = new AbortController();
-    const idleWindow = window as IdleWindow;
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
-    let idleCallbackId: number | null = null;
-
-    const warmDeferredImages = () => {
-      if (preloadController.signal.aborted) return;
-      void preloadImages(manifest.deferredImageSrcs, {
-        concurrency: 2,
-        decode: false,
-        signal: preloadController.signal,
-      });
-    };
-
-    if (typeof idleWindow.requestIdleCallback === 'function') {
-      idleCallbackId = idleWindow.requestIdleCallback(() => {
-        warmDeferredImages();
-      }, { timeout: 1500 });
-    } else {
-      timeoutId = window.setTimeout(warmDeferredImages, 400);
-    }
-
-    return () => {
-      preloadController.abort();
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-      if (idleCallbackId !== null && typeof idleWindow.cancelIdleCallback === 'function') {
-        idleWindow.cancelIdleCallback(idleCallbackId);
-      }
-    };
-  }, [appState, memorandumData]);
+  useMainMenuBootPreload({
+    animationsEnabled,
+    appState,
+    appStateRef,
+    activePageRef,
+    emptyMemorandumData: EMPTY_MEMORANDUM_DATA,
+    effectiveMemorandumData,
+    initialNormalizedPathRef,
+    initialTargetRouteRef,
+    isCompactViewport,
+    setAppState,
+    setMemorandumData,
+    shouldMountPageDirectOnLoadRef,
+    unsupportedScreenDismissed,
+    unsupportedScreenResumeStateRef,
+  });
 
   useLayoutEffect(() => {
     const preferences = readClientPreferences();
