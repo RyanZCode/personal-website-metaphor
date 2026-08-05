@@ -13,6 +13,7 @@ import ContactRings from '../menu/splashEffects/ContactRings';
 import PageBackground from '../background/PageBackground';
 import ScrollViewport from '../shared/ScrollViewport';
 import { rafThrottle } from '../../lib/rafThrottle';
+import { usePageAnimationLifecycle } from '../../hooks/usePageAnimationLifecycle';
 
 interface ContactPageProps {
   isActive: boolean;
@@ -238,10 +239,6 @@ export default function ContactPage({
   const panelSlotRef = useRef<HTMLDivElement>(null);
   const panelFrameRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef<Array<HTMLAnchorElement | null>>([]);
-  const entryTlRef = useRef<gsap.core.Timeline | null>(null);
-  const entryDelayRef = useRef<gsap.core.Tween | null>(null);
-  const exitTlRef = useRef<gsap.core.Timeline | null>(null);
-  const prevIsActive = useRef(isActive);
   const selectedIndexRef = useRef(0);
   const [visibleRows, setVisibleRows] = useState(CONTACTS.length);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -272,43 +269,16 @@ export default function ContactPage({
     return changed;
   }, [playSoundEffect]);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useLayoutEffect(() => {
-    if (!containerRef.current) return;
-    if (!animationsEnabled) return;
-    const shouldDelayDirectMountPlayback = pageState === 'page-active';
-    let rafId: number | null = null;
-    let nestedRafId: number | null = null;
-    entryTlRef.current = createContactEntryTimeline(containerRef.current, {
-      paused: initialEntryDelaySeconds > 0 || shouldDelayDirectMountPlayback,
-    });
-    if (onEntryAnimationComplete) {
-      entryTlRef.current.add(() => {
-        onEntryAnimationComplete();
-      });
-    }
-    if (initialEntryDelaySeconds > 0) {
-      entryDelayRef.current = gsap.delayedCall(entryDelaySeconds, () => {
-        entryDelayRef.current = null;
-        entryTlRef.current?.play(0);
-      });
-    } else if (shouldDelayDirectMountPlayback) {
-      rafId = requestAnimationFrame(() => {
-        nestedRafId = requestAnimationFrame(() => {
-          nestedRafId = null;
-          entryTlRef.current?.play(0);
-        });
-      });
-    }
-    return () => {
-      if (rafId !== null) cancelAnimationFrame(rafId);
-      if (nestedRafId !== null) cancelAnimationFrame(nestedRafId);
-      entryDelayRef.current?.kill();
-      entryDelayRef.current = null;
-      entryTlRef.current?.kill();
-      entryTlRef.current = null;
-    };
-  }, []);
+  usePageAnimationLifecycle({
+    isActive,
+    animationsEnabled,
+    initialEntryDelaySeconds,
+    pageState,
+    containerRef,
+    createEntryTimeline: createContactEntryTimeline,
+    createExitTimeline: createContactExitTimeline,
+    onEntryAnimationComplete,
+  });
 
   useEffect(() => {
     if (animationsEnabled || !containerRef.current) return;
@@ -316,22 +286,6 @@ export default function ContactPage({
     if (!wipeLine) return;
     gsap.set(wipeLine, { autoAlpha: 0 });
   }, [animationsEnabled]);
-
-  useLayoutEffect(() => {
-    const wasActive = prevIsActive.current;
-    prevIsActive.current = isActive;
-
-    if (!wasActive || isActive || !containerRef.current || !animationsEnabled) return;
-
-    exitTlRef.current?.kill();
-    exitTlRef.current = createContactExitTimeline(containerRef.current);
-  }, [animationsEnabled, isActive]);
-
-  useEffect(() => {
-    return () => {
-      exitTlRef.current?.kill();
-    };
-  }, []);
 
   useEffect(() => {
     const row = rowRefs.current[selectedIndex];

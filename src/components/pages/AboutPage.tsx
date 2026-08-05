@@ -12,6 +12,7 @@ import {
 import type { RegisterPageNavigation } from '../../lib/pageNavigation';
 import type { PlaySoundEffect } from '../../lib/soundEffects';
 import { rafThrottle } from '../../lib/rafThrottle';
+import { usePageAnimationLifecycle } from '../../hooks/usePageAnimationLifecycle';
 
 interface AboutPageProps {
   isActive: boolean;
@@ -38,10 +39,6 @@ export default function AboutPage({
 }: AboutPageProps) {
   const containerRef = useRef<HTMLElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
-  const entryTlRef   = useRef<gsap.core.Timeline | null>(null);
-  const entryDelayRef = useRef<gsap.core.Tween | null>(null);
-  const exitTlRef = useRef<gsap.core.Timeline | null>(null);
-  const prevIsActive = useRef(isActive);
   const [isScrollable, setIsScrollable] = useState(false);
   const [memorandumLinkHovered, setMemorandumLinkHovered] = useState(false);
   const memorandumItem = MENU_ITEMS.find(item => item.id === 'memorandum');
@@ -52,45 +49,16 @@ export default function AboutPage({
   const bobAnim  = isActive && animationsEnabled ? 'portrait-bob 4s ease-in-out infinite' : 'none';
   const glowAnim = animationsEnabled ? 'portrait-glow 3s ease-in-out infinite' : 'none';
 
-  // Runs before first paint - sets GSAP initial states so content is invisible until
-  // the wipe reveals it. Using useLayoutEffect prevents a one-frame flash at full opacity.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useLayoutEffect(() => {
-    if (!containerRef.current) return;
-    if (!animationsEnabled) return;
-    const shouldDelayDirectMountPlayback = pageState === 'page-active';
-    let rafId: number | null = null;
-    let nestedRafId: number | null = null;
-    entryTlRef.current = createAboutEntryTimeline(containerRef.current, {
-      paused: initialEntryDelaySeconds > 0 || shouldDelayDirectMountPlayback,
-    });
-    if (onEntryAnimationComplete) {
-      entryTlRef.current.add(() => {
-        onEntryAnimationComplete();
-      });
-    }
-    if (initialEntryDelaySeconds > 0) {
-      entryDelayRef.current = gsap.delayedCall(entryDelaySeconds, () => {
-        entryDelayRef.current = null;
-        entryTlRef.current?.play(0);
-      });
-    } else if (shouldDelayDirectMountPlayback) {
-      rafId = requestAnimationFrame(() => {
-        nestedRafId = requestAnimationFrame(() => {
-          nestedRafId = null;
-          entryTlRef.current?.play(0);
-        });
-      });
-    }
-    return () => {
-      if (rafId !== null) cancelAnimationFrame(rafId);
-      if (nestedRafId !== null) cancelAnimationFrame(nestedRafId);
-      entryDelayRef.current?.kill();
-      entryDelayRef.current = null;
-      entryTlRef.current?.kill();
-      entryTlRef.current = null;
-    };
-  }, []);
+  usePageAnimationLifecycle({
+    isActive,
+    animationsEnabled,
+    initialEntryDelaySeconds,
+    pageState,
+    containerRef,
+    createEntryTimeline: createAboutEntryTimeline,
+    createExitTimeline: createAboutExitTimeline,
+    onEntryAnimationComplete,
+  });
 
   // Park the wipe off-screen whenever animations are disabled so it never flashes
   // visible when toggling animations back on (the entry timeline won't re-run then).
@@ -100,22 +68,6 @@ export default function AboutPage({
     if (!wipeLine) return;
     gsap.set(wipeLine, { autoAlpha: 0 });
   }, [animationsEnabled]);
-
-  useLayoutEffect(() => {
-    const wasActive = prevIsActive.current;
-    prevIsActive.current = isActive;
-
-    if (!wasActive || isActive || !containerRef.current || !animationsEnabled) return;
-
-    exitTlRef.current?.kill();
-    exitTlRef.current = createAboutExitTimeline(containerRef.current);
-  }, [animationsEnabled, isActive]);
-
-  useEffect(() => {
-    return () => {
-      exitTlRef.current?.kill();
-    };
-  }, []);
 
   useLayoutEffect(() => {
     const viewport = viewportRef.current;
