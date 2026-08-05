@@ -4,6 +4,10 @@ export interface TimelinePlaybackHandle {
   cancel: () => void;
 }
 
+export function toDefinedTargets(targets: gsap.TweenTarget): Element[] {
+  return gsap.utils.toArray(targets).filter((target): target is Element => target instanceof Element);
+}
+
 export function getOptionalElement<TElement extends Element = HTMLElement>(
   parent: ParentNode,
   selector: string,
@@ -46,9 +50,7 @@ export function setTemporaryWillChange(
   targets: gsap.TweenTarget,
   value = 'transform, opacity',
 ): () => void {
-  const elements = gsap.utils
-    .toArray(targets)
-    .filter((target): target is Element => target instanceof Element);
+  const elements = toDefinedTargets(targets);
 
   if (!elements.length) return () => {};
 
