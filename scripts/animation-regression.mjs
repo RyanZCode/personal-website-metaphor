@@ -478,6 +478,7 @@ async function run() {
           timeout: STATE_TIMEOUT_MS,
         });
         await page.waitForSelector('[data-page-shell][data-page-id="about"]');
+        await page.waitForSelector('[data-about-layout]');
       });
     });
 

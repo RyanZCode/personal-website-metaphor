@@ -67,17 +67,22 @@ const loadedPageComponents = new Set<AppPageId>();
 
 function createPageComponentLoader<T>(pageId: AppPageId, loader: () => Promise<T>) {
   let promise: Promise<T> | null = null;
+  let loadedModule: T | null = null;
 
-  return () => {
-    promise ??= loader().then((module) => {
-      loadedPageComponents.add(pageId);
-      return module;
-    });
-    return promise;
+  return {
+    load: () => {
+      promise ??= loader().then((module) => {
+        loadedModule = module;
+        loadedPageComponents.add(pageId);
+        return module;
+      });
+      return promise;
+    },
+    getLoadedModule: () => loadedModule,
   };
 }
 
-const PAGE_COMPONENT_LOADERS = {
+const PAGE_COMPONENT_MODULES = {
   about: createPageComponentLoader('about', () => import('../pages/AboutPage')),
   skills: createPageComponentLoader('skills', () => import('../pages/SkillsPage')),
   experience: createPageComponentLoader('experience', () => import('../pages/ExperiencePage')),
@@ -86,12 +91,21 @@ const PAGE_COMPONENT_LOADERS = {
   system: createPageComponentLoader('system', () => import('../pages/SystemPage')),
 } as const;
 
-const AboutPage = lazy(PAGE_COMPONENT_LOADERS.about);
-const SkillsPage = lazy(PAGE_COMPONENT_LOADERS.skills);
-const ExperiencePage = lazy(PAGE_COMPONENT_LOADERS.experience);
-const ContactPage = lazy(PAGE_COMPONENT_LOADERS.contact);
-const MemorandumPage = lazy(PAGE_COMPONENT_LOADERS.memorandum);
-const SystemPage = lazy(PAGE_COMPONENT_LOADERS.system);
+const PAGE_COMPONENT_LOADERS = {
+  about: PAGE_COMPONENT_MODULES.about.load,
+  skills: PAGE_COMPONENT_MODULES.skills.load,
+  experience: PAGE_COMPONENT_MODULES.experience.load,
+  contact: PAGE_COMPONENT_MODULES.contact.load,
+  memorandum: PAGE_COMPONENT_MODULES.memorandum.load,
+  system: PAGE_COMPONENT_MODULES.system.load,
+} as const;
+
+const LazyAboutPage = lazy(PAGE_COMPONENT_LOADERS.about);
+const LazySkillsPage = lazy(PAGE_COMPONENT_LOADERS.skills);
+const LazyExperiencePage = lazy(PAGE_COMPONENT_LOADERS.experience);
+const LazyContactPage = lazy(PAGE_COMPONENT_LOADERS.contact);
+const LazyMemorandumPage = lazy(PAGE_COMPONENT_LOADERS.memorandum);
+const LazySystemPage = lazy(PAGE_COMPONENT_LOADERS.system);
 
 const MENU_SELECTED_OFFSET_VH = 1;
 const MENU_BELOW_SELECTED_OFFSET_VH = 2;
@@ -1701,6 +1715,12 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
   ) && !unsupportedScreenDismissed;
   const shouldShowLoadingScreen = appState === 'preloading' || appState === 'unsupported-screen';
   const initialEntryDelaySeconds = 0;
+  const AboutPage = PAGE_COMPONENT_MODULES.about.getLoadedModule()?.default ?? LazyAboutPage;
+  const SkillsPage = PAGE_COMPONENT_MODULES.skills.getLoadedModule()?.default ?? LazySkillsPage;
+  const ExperiencePage = PAGE_COMPONENT_MODULES.experience.getLoadedModule()?.default ?? LazyExperiencePage;
+  const ContactPage = PAGE_COMPONENT_MODULES.contact.getLoadedModule()?.default ?? LazyContactPage;
+  const MemorandumPage = PAGE_COMPONENT_MODULES.memorandum.getLoadedModule()?.default ?? LazyMemorandumPage;
+  const SystemPage = PAGE_COMPONENT_MODULES.system.getLoadedModule()?.default ?? LazySystemPage;
   const activePageInner = activePage === 'about' ? (
     <AboutPage
       isActive={appState === 'page-active'}
