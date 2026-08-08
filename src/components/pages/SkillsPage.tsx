@@ -1,4 +1,4 @@
-import { useLayoutEffect, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import gsap from 'gsap';
 import { COLORS } from '../../lib/constants';
 import PageBackground from '../background/PageBackground';
@@ -9,8 +9,8 @@ import {
 } from '../../lib/animations';
 import ScrollViewport from '../shared/ScrollViewport';
 import type { RegisterPageNavigation } from '../../lib/pageNavigation';
-import { rafThrottle } from '../../lib/rafThrottle';
 import { usePageAnimationLifecycle } from '../../hooks/usePageAnimationLifecycle';
+import { useScrollHintNavigation } from '../../hooks/useScrollHintNavigation';
 
 interface SkillsPageProps {
   isActive: boolean;
@@ -45,7 +45,6 @@ export default function SkillsPage({
 }: SkillsPageProps) {
   const containerRef  = useRef<HTMLElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
-  const [isScrollable, setIsScrollable] = useState(false);
 
   const bobAnim  = animationsEnabled ? 'portrait-bob 4s ease-in-out infinite' : 'none';
   const glowAnim = animationsEnabled ? 'portrait-glow 3s ease-in-out infinite' : 'none';
@@ -69,61 +68,12 @@ export default function SkillsPage({
     gsap.set(wipeLine, { autoAlpha: 0 });
   }, [animationsEnabled]);
 
-  useLayoutEffect(() => {
-    const viewport = viewportRef.current;
-    if (!viewport) return;
-
-    const updateScrollability = rafThrottle(() => {
-      setIsScrollable(viewport.scrollHeight - viewport.clientHeight > 1);
-    });
-
-    updateScrollability();
-
-    const resizeObserver = typeof ResizeObserver === 'undefined'
-      ? null
-      : new ResizeObserver(updateScrollability);
-
-    resizeObserver?.observe(viewport);
-    if (viewport.firstElementChild instanceof HTMLElement) {
-      resizeObserver?.observe(viewport.firstElementChild);
-    }
-
-    window.addEventListener('resize', updateScrollability);
-    return () => {
-      updateScrollability.cancel();
-      resizeObserver?.disconnect();
-      window.removeEventListener('resize', updateScrollability);
-    };
-  }, []);
-
-  useLayoutEffect(() => {
-    if (!isActive) {
-      registerNavigation(null);
-      return;
-    }
-
-    registerNavigation({
-      showScrollHint: isScrollable,
-      onDirection: (direction) => {
-        if (direction !== 'up' && direction !== 'down') return false;
-
-        const viewport = viewportRef.current;
-        if (!viewport) return false;
-
-        const scrollRange = viewport.scrollHeight - viewport.clientHeight;
-        if (scrollRange <= 1) return false;
-
-        const step = Math.max(96, viewport.clientHeight * 0.72);
-        viewport.scrollBy({
-          top: direction === 'down' ? step : -step,
-          behavior: animationsEnabled ? 'smooth' : 'auto',
-        });
-        return true;
-      },
-    });
-
-    return () => registerNavigation(null);
-  }, [animationsEnabled, isActive, isScrollable, registerNavigation]);
+  useScrollHintNavigation({
+    animationsEnabled,
+    isActive,
+    registerNavigation,
+    viewportRef,
+  });
 
   return (
     <section

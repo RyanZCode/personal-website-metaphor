@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import gsap from 'gsap';
 import { MENU_ITEMS } from '../../lib/menuConfig';
 import { COLORS } from '../../lib/constants';
@@ -13,14 +13,13 @@ import CharacterPortrait from '../background/CharacterPortrait';
 import BackgroundLines from '../background/BackgroundLines';
 import MenuItem from './MenuItem';
 import MenuIndex from './MenuIndex';
-import MenuItemBackground from './MenuItemBackground';
+import MenuItemBackground, { type MenuSplashHandle } from './MenuItemBackground';
 import StatsPanel from './StatsPanel';
 import ControlHints from '../shared/ControlHints';
 import LoadingScreen from '../shared/LoadingScreen';
 import CustomCursor from '../shared/CustomCursor';
 import UnsupportedScreen from '../shared/UnsupportedScreen';
-import { createAssetPreloadManifest, preloadImages } from '../../lib/assetPreload';
-import { readViewportProfile, shouldReduceBootWork, useViewportProfile } from '../../lib/deviceProfile';
+import { readViewportProfile, useViewportProfile } from '../../lib/deviceProfile';
 import { rafThrottle } from '../../lib/rafThrottle';
 import type { PageNavigationDirection, PageNavigationHandler } from '../../lib/pageNavigation';
 import {
@@ -33,18 +32,14 @@ import {
   resolveAppRoute,
   type AppPageId,
 } from '../../lib/routes';
-import { SOUND_EFFECT_SOURCES, type PlaySoundEffect, type SoundEffectId } from '../../lib/soundEffects';
 import {
   getVisualActivity,
   getVisualQuality,
   shouldRunAmbientAnimations,
 } from '../../lib/visualActivity';
-import AboutPage from '../pages/AboutPage';
-import SkillsPage from '../pages/SkillsPage';
-import ExperiencePage from '../pages/ExperiencePage';
-import ContactPage from '../pages/ContactPage';
-import MemorandumPage from '../pages/MemorandumPage';
-import SystemPage from '../pages/SystemPage';
+import { useSoundEffects } from '../../hooks/useSoundEffects';
+import { usePageShellReveal } from '../../hooks/usePageShellReveal';
+import { useMainMenuBootPreload } from '../../hooks/useMainMenuBootPreload';
 import { MEMORANDUM_CATEGORIES, type MemorandumData } from '../../lib/memorandum';
 
 type AppState = 'preloading' | 'unsupported-screen' | 'entry' | 'idle' | 'entering-page' | 'page-active' | 'exiting-page';
@@ -67,6 +62,50 @@ const EMPTY_MEMORANDUM_DATA: MemorandumData = {
   totalEntries: 0,
   defaultColumnId: 'tech',
 };
+
+const loadedPageComponents = new Set<AppPageId>();
+
+function createPageComponentLoader<T>(pageId: AppPageId, loader: () => Promise<T>) {
+  let promise: Promise<T> | null = null;
+  let loadedModule: T | null = null;
+
+  return {
+    load: () => {
+      promise ??= loader().then((module) => {
+        loadedModule = module;
+        loadedPageComponents.add(pageId);
+        return module;
+      });
+      return promise;
+    },
+    getLoadedModule: () => loadedModule,
+  };
+}
+
+const PAGE_COMPONENT_MODULES = {
+  about: createPageComponentLoader('about', () => import('../pages/AboutPage')),
+  skills: createPageComponentLoader('skills', () => import('../pages/SkillsPage')),
+  experience: createPageComponentLoader('experience', () => import('../pages/ExperiencePage')),
+  contact: createPageComponentLoader('contact', () => import('../pages/ContactPage')),
+  memorandum: createPageComponentLoader('memorandum', () => import('../pages/MemorandumPage')),
+  system: createPageComponentLoader('system', () => import('../pages/SystemPage')),
+} as const;
+
+const PAGE_COMPONENT_LOADERS = {
+  about: PAGE_COMPONENT_MODULES.about.load,
+  skills: PAGE_COMPONENT_MODULES.skills.load,
+  experience: PAGE_COMPONENT_MODULES.experience.load,
+  contact: PAGE_COMPONENT_MODULES.contact.load,
+  memorandum: PAGE_COMPONENT_MODULES.memorandum.load,
+  system: PAGE_COMPONENT_MODULES.system.load,
+} as const;
+
+const LazyAboutPage = lazy(PAGE_COMPONENT_LOADERS.about);
+const LazySkillsPage = lazy(PAGE_COMPONENT_LOADERS.skills);
+const LazyExperiencePage = lazy(PAGE_COMPONENT_LOADERS.experience);
+const LazyContactPage = lazy(PAGE_COMPONENT_LOADERS.contact);
+const LazyMemorandumPage = lazy(PAGE_COMPONENT_LOADERS.memorandum);
+const LazySystemPage = lazy(PAGE_COMPONENT_LOADERS.system);
 
 const MENU_SELECTED_OFFSET_VH = 1;
 const MENU_BELOW_SELECTED_OFFSET_VH = 2;
@@ -141,12 +180,6 @@ function clearBootMode() {
   delete document.documentElement.dataset.bootMode;
 }
 
-function createSoundEffectAudio(src: string) {
-  const audio = new Audio(src);
-  audio.preload = 'auto';
-  return audio;
-}
-
 function getMenuItemWrapOffsetYVh(index: number, selectedIndex: number) {
   if (index === selectedIndex) return MENU_SELECTED_OFFSET_VH;
   if (index > selectedIndex) return MENU_BELOW_SELECTED_OFFSET_VH;
@@ -213,8 +246,6 @@ function getBootTargetAppState(
 export default function MainMenu({ initialPathname }: MainMenuProps) {
   const [memorandumData, setMemorandumData] = useState<MemorandumData | null>(null);
   const effectiveMemorandumData = memorandumData ?? EMPTY_MEMORANDUM_DATA;
-  const memoFetchStartedRef = useRef(false);
-  const memoFetchPromiseRef = useRef<Promise<MemorandumData | null>>(Promise.resolve(null));
   const initialNormalizedPathRef = useRef(normalizePathname(initialPathname));
   const initialTargetPathRef = useRef(
     initialNormalizedPathRef.current
@@ -290,6 +321,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
   const menuScrollViewportRef = useRef<HTMLDivElement>(null);
   const menuScrollOverlayRef = useRef<HTMLDivElement>(null);
   const menuLeftRef = useRef<HTMLDivElement>(null);
+  const splashHandleRef = useRef<MenuSplashHandle | null>(null);
   const entryTlRef = useRef<gsap.core.Timeline | null>(null);
   const indexAnimTlRef = useRef<gsap.core.Timeline | null>(null);
   const pageTlRef = useRef<gsap.core.Timeline | null>(null);
@@ -328,16 +360,6 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
     null
   );
   const pendingMenuSelectionIndexRef = useRef<number | null>(initialPendingMenuSelectionIndex);
-  const soundRefs = useRef<Record<SoundEffectId, HTMLAudioElement | null>>({
-    switch: null,
-    enter: null,
-    exit: null,
-    toggle: null,
-  });
-  const soundWarmupStartedRef = useRef(false);
-  const pendingSoundWarmupPriorityRef = useRef<SoundEffectId | undefined>(undefined);
-  const soundWarmupTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const soundWarmupIdleCallbackRef = useRef<number | null>(null);
   const menuReEntryDelayRef = useRef<gsap.core.Tween | null>(null);
   const hoverSyncRafRef = useRef<number | null>(null);
   const interceptedNavigationPathRef = useRef<string | null>(null);
@@ -348,13 +370,9 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
   const exitPageRef = useRef<(options?: PageTransitionOptions) => void>(() => {});
   const pageNavigationRef = useRef<PageNavigationHandler | null>(null);
   const [inputMode, setInputMode] = useState<'keyboard' | 'mouse' | 'touch'>('mouse');
-  const deferredImageWarmupStartedRef = useRef(false);
   const lastTouchInputAt = useRef(0);
   const lastPointerTypeRef = useRef<'mouse' | 'touch' | 'pen' | null>(null);
   const lastPointerDownAtRef = useRef(0);
-  const pageShellRevealRafRef = useRef<number | null>(null);
-  const pageShellRevealNestedRafRef = useRef<number | null>(null);
-  const pageShellRevealTokenRef = useRef(0);
   const menuTouchStartYRef = useRef<number | null>(null);
   const menuTouchStartXRef = useRef<number | null>(null);
   const menuTouchStartIndexRef = useRef<number | null>(null);
@@ -390,35 +408,10 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
     setClientReady(true);
   }, []);
 
-  const cancelPendingPageShellReveal = useCallback(() => {
-    pageShellRevealTokenRef.current += 1;
-    if (pageShellRevealRafRef.current !== null) {
-      cancelAnimationFrame(pageShellRevealRafRef.current);
-      pageShellRevealRafRef.current = null;
-    }
-    if (pageShellRevealNestedRafRef.current !== null) {
-      cancelAnimationFrame(pageShellRevealNestedRafRef.current);
-      pageShellRevealNestedRafRef.current = null;
-    }
-  }, []);
-
-  const revealPageShellSoon = useCallback(() => {
-    cancelPendingPageShellReveal();
-    const revealToken = pageShellRevealTokenRef.current;
-
-    pageShellRevealRafRef.current = requestAnimationFrame(() => {
-      pageShellRevealRafRef.current = null;
-
-      pageShellRevealNestedRafRef.current = requestAnimationFrame(() => {
-        pageShellRevealNestedRafRef.current = null;
-        if (pageShellRevealTokenRef.current !== revealToken) return;
-
-        const shell = containerRef.current?.querySelector('[data-page-shell]');
-        if (!shell) return;
-        gsap.set(shell, { opacity: 1 });
-      });
-    });
-  }, [cancelPendingPageShellReveal]);
+  const {
+    cancelPendingPageShellReveal,
+    revealPageShellSoon,
+  } = usePageShellReveal(containerRef);
 
   useEffect(() => {
     appStateRef.current = appState;
@@ -458,90 +451,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
     setAppState('page-active');
   }, []);
 
-  const ensureSoundEffect = useCallback((id: SoundEffectId) => {
-    if (typeof Audio === 'undefined') return null;
-
-    const existing = soundRefs.current[id];
-    if (existing) return existing;
-
-    const audio = createSoundEffectAudio(SOUND_EFFECT_SOURCES[id]);
-    soundRefs.current[id] = audio;
-    return audio;
-  }, []);
-
-  const scheduleSoundWarmup = useCallback((priorityId?: SoundEffectId) => {
-    if (typeof Audio === 'undefined' || soundWarmupStartedRef.current) return;
-    if (appStateRef.current !== 'page-active') {
-      pendingSoundWarmupPriorityRef.current = priorityId;
-      return;
-    }
-
-    soundWarmupStartedRef.current = true;
-    const idleWindow = window as IdleWindow;
-    const warmRemainingEffects = () => {
-      soundWarmupTimeoutRef.current = null;
-      soundWarmupIdleCallbackRef.current = null;
-
-      (Object.keys(SOUND_EFFECT_SOURCES) as SoundEffectId[]).forEach((soundId) => {
-        if (soundId === priorityId) return;
-        const audio = ensureSoundEffect(soundId);
-        if (!audio) return;
-        audio.load();
-      });
-    };
-
-    if (typeof idleWindow.requestIdleCallback === 'function') {
-      soundWarmupIdleCallbackRef.current = idleWindow.requestIdleCallback(warmRemainingEffects, { timeout: 1500 });
-      return;
-    }
-
-    soundWarmupTimeoutRef.current = window.setTimeout(warmRemainingEffects, 200);
-  }, [ensureSoundEffect]);
-
-  useEffect(() => {
-    if (appState !== 'page-active') return;
-    if (soundWarmupStartedRef.current) return;
-    if (pendingSoundWarmupPriorityRef.current === undefined) return;
-
-    const priorityId = pendingSoundWarmupPriorityRef.current;
-    pendingSoundWarmupPriorityRef.current = undefined;
-    scheduleSoundWarmup(priorityId);
-  }, [appState, scheduleSoundWarmup]);
-
-  useEffect(() => {
-    return () => {
-      const idleWindow = window as IdleWindow;
-      if (soundWarmupTimeoutRef.current) {
-        clearTimeout(soundWarmupTimeoutRef.current);
-      }
-      if (
-        soundWarmupIdleCallbackRef.current !== null &&
-        typeof idleWindow.cancelIdleCallback === 'function'
-      ) {
-        idleWindow.cancelIdleCallback(soundWarmupIdleCallbackRef.current);
-      }
-
-      (Object.keys(SOUND_EFFECT_SOURCES) as SoundEffectId[]).forEach((id) => {
-        const audio = soundRefs.current[id];
-        if (!audio) return;
-        audio.pause();
-        audio.currentTime = 0;
-        soundRefs.current[id] = null;
-      });
-    };
-  }, []);
-
-  const playSoundEffect = useCallback<PlaySoundEffect>((id, options) => {
-    if (!options?.force && !soundEnabled) return;
-
-    const audio = ensureSoundEffect(id);
-    if (!audio) return;
-
-    scheduleSoundWarmup(id);
-    audio.pause();
-    audio.currentTime = 0;
-    void audio.play().catch(() => {});
-  }, [ensureSoundEffect, scheduleSoundWarmup, soundEnabled]);
+  const playSoundEffect = useSoundEffects(soundEnabled, appState);
 
   const handleAnimationsToggle = useCallback((options?: { playSound?: boolean }) => {
     if (options?.playSound !== false) {
@@ -560,6 +470,11 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
     const changed = selectedIndexRef.current !== normalizedIndex;
     selectedIndexRef.current = normalizedIndex;
     setSelectedIndex(normalizedIndex);
+
+    if (appStateRef.current === 'idle') {
+      const pageId = MENU_ITEMS[normalizedIndex].id as AppPageId;
+      void PAGE_COMPONENT_LOADERS[pageId]?.();
+    }
 
     if (changed && options?.playSound !== false) {
       playSoundEffect('switch');
@@ -644,115 +559,22 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
     }
   }, [memorandumData, selectMenuIndex]);
 
-  useEffect(() => {
-    const isInitialMemoPage = initialNormalizedPathRef.current.startsWith('/memorandum');
-
-    if (!memoFetchStartedRef.current) {
-      memoFetchStartedRef.current = true;
-      memoFetchPromiseRef.current = fetch('/memorandum-data.json')
-        .then((r) => r.json() as Promise<MemorandumData>)
-        .then((data) => {
-          setMemorandumData(data);
-          return data;
-        })
-        .catch(() => null);
-    }
-
-    const manifest = createAssetPreloadManifest(EMPTY_MEMORANDUM_DATA, {
-      initialPageId: initialTargetRouteRef.current.pageId,
-    });
-    const preloadController = new AbortController();
-    const shouldReduceWork = shouldReduceBootWork();
-    let cancelled = false;
-
-    const preloadPromises: Promise<unknown>[] = [
-      preloadImages(manifest.blockingImageSrcs, {
-        concurrency: shouldReduceWork ? 1 : 2,
-        signal: preloadController.signal,
-      }),
-      document.fonts.load('400 1em Cinzel'),
-      document.fonts.load('700 1em Cinzel'),
-      document.fonts.load('900 1em Cinzel'),
-    ];
-
-    if (isInitialMemoPage) {
-      preloadPromises.push(memoFetchPromiseRef.current);
-    }
-
-    Promise.all(preloadPromises).catch(() => undefined).then(() => {
-      if (cancelled) return;
-      if (appStateRef.current !== 'preloading') return;
-      requestAnimationFrame(() => requestAnimationFrame(() => {
-        const bootTargetState = getBootTargetAppState(
-          shouldMountPageDirectOnLoadRef.current,
-          shouldMountPageDirectOnLoadRef.current && animationsEnabled
-        ) as UnsupportedScreenResumeState;
-        const nextState = isCompactViewport && !unsupportedScreenDismissed
-          ? 'unsupported-screen'
-          : bootTargetState;
-        if (nextState === 'unsupported-screen') {
-          unsupportedScreenResumeStateRef.current = bootTargetState;
-        }
-        appStateRef.current = nextState;
-        setAppState(nextState);
-      }));
-    });
-
-    return () => {
-      cancelled = true;
-      preloadController.abort();
-    };
-  }, [isCompactViewport, unsupportedScreenDismissed]);
-
-  useEffect(() => {
-    if (appState === 'preloading' || deferredImageWarmupStartedRef.current) return;
-    if (shouldReduceBootWork()) {
-      deferredImageWarmupStartedRef.current = true;
-      return;
-    }
-
-    const manifest = createAssetPreloadManifest(effectiveMemorandumData, {
-      initialPageId: activePageRef.current,
-    });
-    if (!manifest.deferredImageSrcs.length) {
-      deferredImageWarmupStartedRef.current = true;
-      return;
-    }
-
-    deferredImageWarmupStartedRef.current = true;
-
-    const preloadController = new AbortController();
-    const idleWindow = window as IdleWindow;
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
-    let idleCallbackId: number | null = null;
-
-    const warmDeferredImages = () => {
-      if (preloadController.signal.aborted) return;
-      void preloadImages(manifest.deferredImageSrcs, {
-        concurrency: 2,
-        decode: false,
-        signal: preloadController.signal,
-      });
-    };
-
-    if (typeof idleWindow.requestIdleCallback === 'function') {
-      idleCallbackId = idleWindow.requestIdleCallback(() => {
-        warmDeferredImages();
-      }, { timeout: 1500 });
-    } else {
-      timeoutId = window.setTimeout(warmDeferredImages, 400);
-    }
-
-    return () => {
-      preloadController.abort();
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-      if (idleCallbackId !== null && typeof idleWindow.cancelIdleCallback === 'function') {
-        idleWindow.cancelIdleCallback(idleCallbackId);
-      }
-    };
-  }, [appState, memorandumData]);
+  useMainMenuBootPreload({
+    animationsEnabled,
+    appState,
+    appStateRef,
+    activePageRef,
+    emptyMemorandumData: EMPTY_MEMORANDUM_DATA,
+    effectiveMemorandumData,
+    initialNormalizedPathRef,
+    initialTargetRouteRef,
+    isCompactViewport,
+    setAppState,
+    setMemorandumData,
+    shouldMountPageDirectOnLoadRef,
+    unsupportedScreenDismissed,
+    unsupportedScreenResumeStateRef,
+  });
 
   useLayoutEffect(() => {
     const preferences = readClientPreferences();
@@ -897,6 +719,30 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
       entryTlRef.current = null;
     };
   }, [appState, animationsEnabled, activePage]);
+
+  useEffect(() => {
+    if (appState !== 'idle') return;
+
+    const selectedPageId = MENU_ITEMS[selectedIndex].id as AppPageId;
+    void PAGE_COMPONENT_LOADERS[selectedPageId]();
+
+    const idleWindow = window as IdleWindow;
+    const preloadRemainingPages = () => {
+      APP_PAGE_IDS.forEach((pageId) => {
+        if (pageId !== selectedPageId) {
+          void PAGE_COMPONENT_LOADERS[pageId]();
+        }
+      });
+    };
+
+    if (typeof idleWindow.requestIdleCallback === 'function') {
+      const idleCallbackId = idleWindow.requestIdleCallback(preloadRemainingPages, { timeout: 1000 });
+      return () => idleWindow.cancelIdleCallback?.(idleCallbackId);
+    }
+
+    const timeoutId = window.setTimeout(preloadRemainingPages, 250);
+    return () => window.clearTimeout(timeoutId);
+  }, [appState, selectedIndex]);
 
   // Smooth scroll + index fade when selectedIndex changes
   useEffect(() => {
@@ -1581,6 +1427,20 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
   const visualActivity = getVisualActivity(appState, animationsEnabled);
   const visualQuality = getVisualQuality(animationsEnabled);
   const ambientAnimationsEnabled = shouldRunAmbientAnimations(visualActivity);
+
+  useEffect(() => {
+    if (ambientAnimationsEnabled) {
+      splashHandleRef.current?.resumeAmbient();
+      return;
+    }
+
+    splashHandleRef.current?.pauseAmbient();
+  }, [ambientAnimationsEnabled]);
+
+  useEffect(() => {
+    splashHandleRef.current?.measureNow();
+  }, [selectedIndex, splashMeasureKey, viewportProfile.layoutMode, viewportProfile.orientation]);
+
   const pageVisible = appState === 'page-active' ||
     appState === 'exiting-page' ||
     (appState === 'entering-page' && initialDirectPageEntryInProgressRef.current);
@@ -1691,7 +1551,9 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
     }
     setCurrentLocationPath(resolvedPath);
     cancelPendingPageShellReveal();
+    splashHandleRef.current?.pauseAmbient();
     pageTlRef.current?.kill();
+    const pageComponentPromise = PAGE_COMPONENT_LOADERS[pageId]();
 
     if (!animationsEnabled) {
       setSubtitleVisible(false);
@@ -1702,6 +1564,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
       setHintsPage(pageId);
       setHintsMode('page');
       setAppState('page-active');
+      splashHandleRef.current?.measureNow();
       return;
     }
 
@@ -1726,6 +1589,10 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
       },
       () => setSubtitleVisible(false),
       revealPageShellSoon,
+      {
+        promise: pageComponentPromise,
+        isReady: () => loadedPageComponents.has(pageId),
+      },
     );
   }
 
@@ -1790,6 +1657,8 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
         setCurrentLocationPath('/');
       }
       setSplashMeasureKey(k => k + 1);
+      splashHandleRef.current?.measureNow();
+      splashHandleRef.current?.resetAmbient();
       queueHoveredMenuItemSelectionSync();
       return;
     }
@@ -1797,6 +1666,8 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
     setSubtitleVisible(false);
     setAppState('exiting-page');
     setSplashMeasureKey(k => k + 1);
+    splashHandleRef.current?.measureNow();
+    splashHandleRef.current?.resetAmbient();
     if (pendingMenuSelectionIndexRef.current !== null) {
       selectMenuIndex(pendingMenuSelectionIndexRef.current, { playSound: false });
       pendingMenuSelectionIndexRef.current = null;
@@ -1819,6 +1690,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
         } else {
           setCurrentLocationPath('/');
         }
+        splashHandleRef.current?.measureNow();
         queueHoveredMenuItemSelectionSync();
       },
       () => setSubtitleVisible(true),
@@ -1843,7 +1715,13 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
   ) && !unsupportedScreenDismissed;
   const shouldShowLoadingScreen = appState === 'preloading' || appState === 'unsupported-screen';
   const initialEntryDelaySeconds = 0;
-  const activePageContent = activePage === 'about' ? (
+  const AboutPage = PAGE_COMPONENT_MODULES.about.getLoadedModule()?.default ?? LazyAboutPage;
+  const SkillsPage = PAGE_COMPONENT_MODULES.skills.getLoadedModule()?.default ?? LazySkillsPage;
+  const ExperiencePage = PAGE_COMPONENT_MODULES.experience.getLoadedModule()?.default ?? LazyExperiencePage;
+  const ContactPage = PAGE_COMPONENT_MODULES.contact.getLoadedModule()?.default ?? LazyContactPage;
+  const MemorandumPage = PAGE_COMPONENT_MODULES.memorandum.getLoadedModule()?.default ?? LazyMemorandumPage;
+  const SystemPage = PAGE_COMPONENT_MODULES.system.getLoadedModule()?.default ?? LazySystemPage;
+  const activePageInner = activePage === 'about' ? (
     <AboutPage
       isActive={appState === 'page-active'}
       animationsEnabled={animationsEnabled}
@@ -1915,6 +1793,11 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
       playSoundEffect={playSoundEffect}
       onEntryAnimationComplete={directPageEntryCompleteHandler}
     />
+  ) : null;
+  const activePageContent = activePageInner ? (
+    <Suspense fallback={null}>
+      {activePageInner}
+    </Suspense>
   ) : null;
 
   return (
@@ -2070,6 +1953,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
         style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 4 }}
       >
         <MenuItemBackground
+          ref={splashHandleRef}
           itemRefs={itemRefs}
           menuStackRef={menuStackRef}
           menuScrollViewportRef={menuScrollViewportRef}

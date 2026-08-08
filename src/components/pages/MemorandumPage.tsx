@@ -28,7 +28,9 @@ import type { PlaySoundEffect } from '../../lib/soundEffects';
 import PageBackground from '../background/PageBackground';
 import MemorandumTrapezoids from '../menu/splashEffects/MemorandumTrapezoids';
 import ScrollViewport from '../shared/ScrollViewport';
+import BookSpines from './memorandum/BookSpines';
 import { rafThrottle } from '../../lib/rafThrottle';
+import { usePageAnimationLifecycle } from '../../hooks/usePageAnimationLifecycle';
 
 interface MemorandumPageProps {
   memorandumData: MemorandumData;
@@ -67,73 +69,6 @@ const MEMORANDUM_DATE_FORMATTER = new Intl.DateTimeFormat('en-CA', {
   day: '2-digit',
   timeZone: 'UTC',
 });
-const MEMORANDUM_BOOK_SPINES = [
-  {
-    label: 'Record',
-    left: 16,
-    height: 10,
-    fontFamily: '"Cinzel", "Palatino Linotype", "Book Antiqua", Georgia, serif',
-    fontWeight: 700,
-  },
-  {
-    label: 'Archive',
-    left: 8,
-    height: 12,
-    fontFamily: '"Baskerville Old Face", Baskerville, Garamond, Georgia, serif',
-    fontWeight: 700,
-  },
-  {
-    label: 'Index',
-    left: 23,
-    height: 8,
-    fontFamily: '"Book Antiqua", Palatino, "Palatino Linotype", serif',
-    fontWeight: 700,
-  },
-  {
-    label: 'Notes',
-    left: 12,
-    height: 11,
-    fontFamily: 'Garamond, "Times New Roman", Times, serif',
-    fontWeight: 600,
-  },
-  {
-    label: 'Logbook',
-    left: 19,
-    height: 9,
-    fontFamily: 'Cambria, Georgia, serif',
-    fontWeight: 700,
-  },
-  {
-    label: 'Memoranda',
-    left: 4,
-    height: 13,
-    fontFamily: '"Palatino Linotype", Palatino, "Book Antiqua", serif',
-    fontWeight: 700,
-  },
-  {
-    label: 'Journal',
-    left: 26,
-    height: 7,
-    fontFamily: 'Didot, "Bodoni MT", "Times New Roman", serif',
-    fontWeight: 700,
-  },
-  {
-    label: 'Chronicle',
-    left: 10,
-    height: 10,
-    fontFamily: 'Constantia, Cambria, Georgia, serif',
-    fontWeight: 700,
-  },
-] as const;
-const MEMORANDUM_BOOK_SPINE_GAP = 0;
-const MEMORANDUM_BOOK_SPINE_LAYOUT = MEMORANDUM_BOOK_SPINES.map((spine, index) => ({
-  ...spine,
-  index,
-  top: MEMORANDUM_BOOK_SPINES
-    .slice(0, index)
-    .reduce((sum, entry) => sum + entry.height + MEMORANDUM_BOOK_SPINE_GAP, 0),
-}));
-
 function wrapIndex(index: number, length: number) {
   if (length <= 0) return 0;
   return (index + length) % length;
@@ -321,83 +256,6 @@ function ViewedProgressOctagon({
   );
 }
 
-function BookSpine({
-  index,
-  label,
-  left,
-  top,
-  height,
-  fontFamily,
-  fontWeight,
-}: {
-  index: number;
-  label: string;
-  left: number;
-  top: number;
-  height: number;
-  fontFamily: string;
-  fontWeight: number;
-}) {
-  return (
-    <div
-      style={{
-        position: 'absolute',
-        left: `${left}%`,
-        right: 0,
-        top: `${top}%`,
-        height: `${height}%`,
-        background: 'linear-gradient(180deg, rgba(4, 7, 7, 0.94), rgba(0, 0, 0, 0.92))',
-        boxShadow: 'inset 0 0 0 1px rgba(240, 232, 236, 0.32), 0 0.35rem 1rem rgba(0, 0, 0, 0.22)',
-        borderRadius: '0.15rem 0 0 0.15rem',
-        overflow: 'hidden',
-      }}
-    >
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background:
-            index % 2 === 0
-              ? 'linear-gradient(90deg, rgba(255, 210, 90, 0.14), transparent 48%, rgba(255, 255, 255, 0.04))'
-              : 'linear-gradient(90deg, rgba(255, 255, 255, 0.05), transparent 46%, rgba(255, 210, 90, 0.18))',
-        }}
-      />
-      <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '0 1rem 0 1.75rem',
-          color: 'rgba(240, 232, 236, 0.7)',
-          fontFamily,
-          fontSize: 'clamp(0.9rem, 1.8vw, 1.7rem)',
-          fontWeight,
-          letterSpacing: '0.1em',
-          textTransform: 'uppercase',
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          textOverflow: 'clip',
-          textAlign: 'center',
-        }}
-      >
-        {label}
-      </div>
-      <div
-        style={{
-          position: 'absolute',
-          top: '8%',
-          bottom: '8%',
-          left: '0.5rem',
-          width: '2px',
-          background: 'rgba(240, 232, 236, 0.38)',
-        }}
-      />
-    </div>
-  );
-}
-
 function PinnedMarker({
   color,
   active,
@@ -499,8 +357,6 @@ export default function MemorandumPage({
   const listViewportRef = useRef<HTMLDivElement>(null);
   const detailViewportRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const entryTlRef = useRef<gsap.core.Timeline | null>(null);
-  const entryDelayRef = useRef<gsap.core.Tween | null>(null);
   const exitTlRef = useRef<gsap.core.Timeline | null>(null);
   const detailTlRef = useRef<gsap.core.Timeline | null>(null);
   const categoryTlRef = useRef<gsap.core.Timeline | null>(null);
@@ -510,7 +366,6 @@ export default function MemorandumPage({
   const pendingReadEntryIdRef = useRef<string | null>(null);
   const pendingExternalExitRef = useRef(false);
   const routeSyncPathRef = useRef<string | null>(null);
-  const prevIsActive = useRef(isActive);
   const previousColumnIndexRef = useRef(initialState.columnIndex);
   const initialCategoryPaintRef = useRef(false);
   const pageEntryReadyRef = useRef(!animationsEnabled);
@@ -629,11 +484,9 @@ export default function MemorandumPage({
     if (!containerRef.current) return;
 
     clearDelayedExit();
-    entryTlRef.current?.kill();
     exitTlRef.current?.kill();
     detailTlRef.current?.kill();
     categoryTlRef.current?.kill();
-    entryTlRef.current = null;
     exitTlRef.current = null;
     detailTlRef.current = null;
     categoryTlRef.current = null;
@@ -1149,10 +1002,7 @@ export default function MemorandumPage({
     return true;
   };
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useLayoutEffect(() => {
-    if (!containerRef.current) return;
-
     pageEntryReadyRef.current = !animationsEnabled;
     setPageEntryReady(!animationsEnabled);
 
@@ -1164,57 +1014,55 @@ export default function MemorandumPage({
     }
 
     setIsTransitioning(Boolean(pendingDetailRouteRef.current?.entrySlug));
-    const shouldDelayDirectMountPlayback = pageState === 'page-active';
-    let rafId: number | null = null;
-    let nestedRafId: number | null = null;
-    entryTlRef.current = createMemorandumEntryTimeline(containerRef.current, {
-      paused: initialEntryDelaySeconds > 0 || shouldDelayDirectMountPlayback,
-    });
-    if (onEntryAnimationComplete) {
-      appendTimelineCallback(entryTlRef.current, 'onComplete', onEntryAnimationComplete);
-    }
-    if (initialEntryDelaySeconds > 0) {
-      entryDelayRef.current = gsap.delayedCall(entryDelaySeconds, () => {
-        entryDelayRef.current = null;
-        entryTlRef.current?.play(0);
-      });
-    } else if (shouldDelayDirectMountPlayback) {
-      rafId = requestAnimationFrame(() => {
-        nestedRafId = requestAnimationFrame(() => {
-          nestedRafId = null;
-          entryTlRef.current?.play(0);
-        });
-      });
-    }
-    appendTimelineCallback(entryTlRef.current, 'onComplete', () => {
-      if (!mountedRef.current) return;
-      entryTlRef.current = null;
-      pageEntryReadyRef.current = true;
-      setPageEntryReady(true);
-      flushPendingReadEntry();
-      setIsTransitioning(false);
-      flushPendingDetailRoute();
-    });
-    appendTimelineCallback(entryTlRef.current, 'onInterrupt', () => {
-      if (!mountedRef.current) return;
-      entryTlRef.current = null;
-      pageEntryReadyRef.current = true;
-      setPageEntryReady(true);
-      flushPendingReadEntry();
-      setIsTransitioning(false);
-      flushPendingDetailRoute();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const finishEntryAnimation = () => {
+    if (!mountedRef.current) return;
+    onEntryAnimationComplete?.();
+    pageEntryReadyRef.current = true;
+    setPageEntryReady(true);
+    flushPendingReadEntry();
+    setIsTransitioning(false);
+    flushPendingDetailRoute();
+  };
+
+  const createPageExitTimeline = (container: Element) => {
+    detailTlRef.current?.kill();
+    exitTlRef.current?.kill();
+
+    const pageExitTimeline = gsap.timeline({
+      onComplete: () => {
+        exitTlRef.current = null;
+      },
+      onInterrupt: () => {
+        exitTlRef.current = null;
+      },
     });
 
-    return () => {
-      if (rafId !== null) cancelAnimationFrame(rafId);
-      if (nestedRafId !== null) cancelAnimationFrame(nestedRafId);
-      mountedRef.current = false;
-      entryDelayRef.current?.kill();
-      entryDelayRef.current = null;
-      entryTlRef.current?.kill();
-      entryTlRef.current = null;
-    };
-  }, []);
+    if (hasDisplayedDetail) {
+      pageExitTimeline
+        .add(createMemorandumDetailExitTimeline(container), 0)
+        .add(createMemorandumBrowserReEntryTimeline(container), 0.08)
+        .add(createMemorandumExitTimeline(container), 0.32);
+    } else {
+      pageExitTimeline.add(createMemorandumExitTimeline(container), 0);
+    }
+
+    exitTlRef.current = pageExitTimeline;
+    return pageExitTimeline;
+  };
+
+  usePageAnimationLifecycle({
+    isActive,
+    animationsEnabled,
+    initialEntryDelaySeconds,
+    pageState,
+    containerRef,
+    createEntryTimeline: createMemorandumEntryTimeline,
+    createExitTimeline: createPageExitTimeline,
+    onEntryAnimationComplete: finishEntryAnimation,
+  });
 
   useLayoutEffect(() => {
     if (!detailEnterPending || !hasDisplayedDetail || !containerRef.current) return;
@@ -1321,43 +1169,12 @@ export default function MemorandumPage({
     categoryTlRef.current = createMemorandumCategoryTimeline(background, whiteLabel, darkLabel);
   }, [animationsEnabled, isTransitioning, selectedColumnIndex]);
 
-  useLayoutEffect(() => {
-    const wasActive = prevIsActive.current;
-    prevIsActive.current = isActive;
-
-    if (!wasActive || isActive || !containerRef.current || !animationsEnabled) return;
-
-    detailTlRef.current?.kill();
-    exitTlRef.current?.kill();
-
-    const pageExitTimeline = gsap.timeline({
-      onComplete: () => {
-        exitTlRef.current = null;
-      },
-      onInterrupt: () => {
-        exitTlRef.current = null;
-      },
-    });
-
-    if (hasDisplayedDetail) {
-      pageExitTimeline
-        .add(createMemorandumDetailExitTimeline(containerRef.current), 0)
-        .add(createMemorandumBrowserReEntryTimeline(containerRef.current), 0.08)
-        .add(createMemorandumExitTimeline(containerRef.current), 0.32);
-    } else {
-      pageExitTimeline.add(createMemorandumExitTimeline(containerRef.current), 0);
-    }
-
-    exitTlRef.current = pageExitTimeline;
-  }, [animationsEnabled, hasDisplayedDetail, isActive]);
-
   useEffect(() => {
     return () => {
       mountedRef.current = false;
       clearDelayedExit();
       pendingReadEntryIdRef.current = null;
       pendingExternalExitRef.current = false;
-      entryTlRef.current?.kill();
       exitTlRef.current?.kill();
       detailTlRef.current?.kill();
       categoryTlRef.current?.kill();
@@ -2339,28 +2156,7 @@ export default function MemorandumPage({
               </div>
             </div>
 
-            <div
-              data-memorandum-book-spines
-              style={{
-                position: 'absolute',
-                inset: '12rem 0.5rem 0.75rem 8%',
-                zIndex: 1,
-                animation: bobAnim,
-              }}
-            >
-              {MEMORANDUM_BOOK_SPINE_LAYOUT.map((spine) => (
-                <BookSpine
-                  key={spine.label}
-                  index={spine.index}
-                  label={spine.label}
-                  left={spine.left}
-                  top={spine.top}
-                  height={spine.height}
-                  fontFamily={spine.fontFamily}
-                  fontWeight={spine.fontWeight}
-                />
-              ))}
-            </div>
+            <BookSpines animation={bobAnim} />
 
             <div
               style={{
