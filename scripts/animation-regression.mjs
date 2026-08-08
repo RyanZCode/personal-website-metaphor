@@ -393,6 +393,43 @@ async function run() {
       });
     });
 
+    await test('performance debugging records page transition context', async () => {
+      await withPage(browser, {}, async (page) => {
+        await page.goto(`${server.baseUrl}/?perf=1`, { waitUntil: 'domcontentloaded' });
+        await waitForAppState(page, 'idle');
+        await page.waitForFunction(() => Boolean(window.__portfolioPerf?.enabled), null, {
+          timeout: STATE_TIMEOUT_MS,
+        });
+
+        await enterPage(page, 'about');
+        await page.waitForFunction(() => (
+          window.__portfolioPerf?.report().spans.some((span) => span.name === 'page-animation-entry')
+        ), null, { timeout: STATE_TIMEOUT_MS });
+
+        const result = await page.evaluate(() => {
+          const api = window.__portfolioPerf;
+          const report = api?.report();
+          return {
+            enabled: api?.enabled ?? false,
+            exported: api?.export() ?? '',
+            spanNames: report?.spans.map((span) => span.name) ?? [],
+            markNames: report?.samples
+              .filter((sample) => sample.kind === 'mark')
+              .map((sample) => sample.name) ?? [],
+            recordingDurationMs: report?.summary.recordingDurationMs ?? 0,
+          };
+        });
+
+        assert(result.enabled, 'performance debugging API was not enabled');
+        assert(result.recordingDurationMs > 0, 'performance recording duration was empty');
+        assert(result.spanNames.includes('page-enter'), 'page enter span was not recorded');
+        assert(result.spanNames.includes('page-animation-entry'), 'page animation span was not recorded');
+        assert(result.markNames.includes('page-mount-requested'), 'page mount mark was not recorded');
+        assert(result.markNames.includes('page-content-committed'), 'page commit mark was not recorded');
+        assert(result.exported.includes('"summary"'), 'performance report export was invalid');
+      });
+    });
+
     await test('keyboard selection changes active menu item', async () => {
       await withPage(browser, {}, async (page) => {
         await openMenu(page, server.baseUrl);

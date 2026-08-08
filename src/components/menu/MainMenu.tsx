@@ -41,6 +41,10 @@ import { useSoundEffects } from '../../hooks/useSoundEffects';
 import { usePageShellReveal } from '../../hooks/usePageShellReveal';
 import { useMainMenuBootPreload } from '../../hooks/useMainMenuBootPreload';
 import { MEMORANDUM_CATEGORIES, type MemorandumData } from '../../lib/memorandum';
+import type {
+  PerformanceDebugDetails,
+  PortfolioPerformanceDebug,
+} from '../../lib/performanceDebug';
 
 type AppState = 'preloading' | 'unsupported-screen' | 'entry' | 'idle' | 'entering-page' | 'page-active' | 'exiting-page';
 type PageId = AppPageId | null;
@@ -63,6 +67,21 @@ const EMPTY_MEMORANDUM_DATA: MemorandumData = {
   defaultColumnId: 'tech',
 };
 
+function beginPerformanceSpan(name: string, details?: PerformanceDebugDetails): string | null {
+  if (typeof window === 'undefined') return null;
+  return window.__portfolioPerf?.begin(name, details) ?? null;
+}
+
+function endPerformanceSpan(token: string | null, details?: PerformanceDebugDetails): void {
+  if (typeof window === 'undefined') return;
+  window.__portfolioPerf?.end(token, details);
+}
+
+function markPerformanceEvent(name: string, details?: PerformanceDebugDetails): void {
+  if (typeof window === 'undefined') return;
+  window.__portfolioPerf?.mark(name, details);
+}
+
 const loadedPageComponents = new Set<AppPageId>();
 
 function createPageComponentLoader<T>(pageId: AppPageId, loader: () => Promise<T>) {
@@ -71,11 +90,21 @@ function createPageComponentLoader<T>(pageId: AppPageId, loader: () => Promise<T
 
   return {
     load: () => {
-      promise ??= loader().then((module) => {
-        loadedModule = module;
-        loadedPageComponents.add(pageId);
-        return module;
-      });
+      if (!promise) {
+        const perfToken = beginPerformanceSpan('page-module-load', { pageId });
+        promise = loader().then(
+          (module) => {
+            loadedModule = module;
+            loadedPageComponents.add(pageId);
+            endPerformanceSpan(perfToken, { pageId, success: true });
+            return module;
+          },
+          (error: unknown) => {
+            endPerformanceSpan(perfToken, { pageId, success: false });
+            throw error;
+          },
+        );
+      }
       return promise;
     },
     getLoadedModule: () => loadedModule,
@@ -325,6 +354,9 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
   const entryTlRef = useRef<gsap.core.Timeline | null>(null);
   const indexAnimTlRef = useRef<gsap.core.Timeline | null>(null);
   const pageTlRef = useRef<gsap.core.Timeline | null>(null);
+  const menuEntryPerfTokenRef = useRef<string | null>(null);
+  const pageEnterPerfTokenRef = useRef<string | null>(null);
+  const pageExitPerfTokenRef = useRef<string | null>(null);
   const controlHintsRevealTweenRef = useRef<gsap.core.Tween | null>(null);
   const prevSelectedIndexRef = useRef(initialSelectedIndex);
   const selectedIndexRef = useRef(initialSelectedIndex);
@@ -408,6 +440,25 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
     setClientReady(true);
   }, []);
 
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('perf') !== '1') return;
+
+    let disposed = false;
+    let debugApi: PortfolioPerformanceDebug | null = null;
+    void import('../../lib/performanceDebug').then(({ startPerformanceDebug }) => {
+      if (disposed) return;
+      debugApi = startPerformanceDebug();
+    });
+
+    return () => {
+      disposed = true;
+      debugApi?.stop();
+      if (window.__portfolioPerf === debugApi) {
+        delete window.__portfolioPerf;
+      }
+    };
+  }, []);
+
   const {
     cancelPendingPageShellReveal,
     revealPageShellSoon,
@@ -474,6 +525,13 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
     if (appStateRef.current === 'idle') {
       const pageId = MENU_ITEMS[normalizedIndex].id as AppPageId;
       void PAGE_COMPONENT_LOADERS[pageId]?.();
+    }
+
+    if (changed) {
+      markPerformanceEvent('menu-selection', {
+        pageId: MENU_ITEMS[normalizedIndex].id,
+        inputSound: options?.playSound !== false,
+      });
     }
 
     if (changed && options?.playSound !== false) {
@@ -706,19 +764,29 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
   useEffect(() => {
     if (appState !== 'entry' || !containerRef.current || !animationsEnabled || activePage) return;
 
+    menuEntryPerfTokenRef.current = beginPerformanceSpan('menu-entry');
     entryTlRef.current = createEntryTimeline(
       containerRef.current,
       () => {
+        endPerformanceSpan(menuEntryPerfTokenRef.current);
+        menuEntryPerfTokenRef.current = null;
         setAppState('idle');
       },
       () => setSubtitleVisible(true)
     );
 
     return () => {
+      endPerformanceSpan(menuEntryPerfTokenRef.current, { interrupted: true });
+      menuEntryPerfTokenRef.current = null;
       entryTlRef.current?.kill();
       entryTlRef.current = null;
     };
   }, [appState, animationsEnabled, activePage]);
+
+  useEffect(() => {
+    if (!activePage || appState !== 'entering-page') return;
+    markPerformanceEvent('page-content-committed', { pageId: activePage });
+  }, [activePage, appState]);
 
   useEffect(() => {
     if (appState !== 'idle') return;
@@ -1536,6 +1604,12 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
       return;
     }
 
+    endPerformanceSpan(pageEnterPerfTokenRef.current, { interrupted: true });
+    pageEnterPerfTokenRef.current = beginPerformanceSpan('page-enter', {
+      pageId,
+      moduleReady: loadedPageComponents.has(pageId),
+      animationsEnabled,
+    });
     if (playSound) playSoundEffect('enter');
 
     const nextPath = buildPagePath(pageId);
@@ -1565,6 +1639,8 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
       setHintsMode('page');
       setAppState('page-active');
       splashHandleRef.current?.measureNow();
+      endPerformanceSpan(pageEnterPerfTokenRef.current, { pageId });
+      pageEnterPerfTokenRef.current = null;
       return;
     }
 
@@ -1581,9 +1657,15 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
         appStateRef.current = 'page-active';
         transitionPhaseRef.current = 'page-active';
         setAppState('page-active');
+        endPerformanceSpan(pageEnterPerfTokenRef.current, { pageId });
+        pageEnterPerfTokenRef.current = null;
       },
       () => setHintsMode('page'),
       () => {
+        markPerformanceEvent('page-mount-requested', {
+          pageId,
+          moduleReady: loadedPageComponents.has(pageId),
+        });
         activePageRef.current = pageId;
         setActivePage(pageId);
       },
@@ -1606,6 +1688,11 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
     ) {
       return;
     }
+    endPerformanceSpan(pageExitPerfTokenRef.current, { interrupted: true });
+    pageExitPerfTokenRef.current = beginPerformanceSpan('page-exit', {
+      pageId: currentActivePage,
+      animationsEnabled,
+    });
     const pendingLocationPath = pendingLocationPageRef.current;
     const shouldPreserveLocationPath = fromPopState || (
       Boolean(pendingLocationPath) &&
@@ -1660,6 +1747,8 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
       splashHandleRef.current?.measureNow();
       splashHandleRef.current?.resetAmbient();
       queueHoveredMenuItemSelectionSync();
+      endPerformanceSpan(pageExitPerfTokenRef.current, { pageId: currentActivePage });
+      pageExitPerfTokenRef.current = null;
       return;
     }
 
@@ -1692,6 +1781,8 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
         }
         splashHandleRef.current?.measureNow();
         queueHoveredMenuItemSelectionSync();
+        endPerformanceSpan(pageExitPerfTokenRef.current, { pageId: currentActivePage });
+        pageExitPerfTokenRef.current = null;
       },
       () => setSubtitleVisible(true),
       () => setHintsMode('menu'),
