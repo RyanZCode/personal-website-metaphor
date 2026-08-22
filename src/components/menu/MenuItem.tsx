@@ -1,8 +1,8 @@
 import type { LayoutMode } from '../../lib/deviceProfile';
 import { forwardRef, memo } from 'react';
-import { getMenuArcFactor, getMenuItemScaleFactor } from '../../lib/menuLayout';
+import { getMenuItemScaleFactor, getMenuItemTransform } from '../../lib/menuLayout';
 import type { MenuItemConfig } from '../../lib/menuConfig';
-import { ITEM_SCALES, ARC_CURVE_X, COLORS } from '../../lib/constants';
+import { ITEM_SCALES, COLORS } from '../../lib/constants';
 
 interface MenuItemProps {
   item: MenuItemConfig;
@@ -26,9 +26,7 @@ function scaleVhValue(value: string, factor: number) {
 const MenuItem = memo(forwardRef<HTMLDivElement, MenuItemProps>(
   ({ item, index, isSelected, subtitle, subtitleVisible, animationsEnabled, layoutMode = 'desktop', onMouseEnter }, ref) => {
     const scale = ITEM_SCALES[Math.min(index, ITEM_SCALES.length - 1)];
-    const arcX = ARC_CURVE_X[Math.min(index, ARC_CURVE_X.length - 1)];
     const sizeFactor = getMenuItemScaleFactor(layoutMode);
-    const arcFactor = getMenuArcFactor(layoutMode);
     const sizeScale = isSelected
       ? parseFloat(scaleVhValue(item.selectedSize, sizeFactor)) / parseFloat(scaleVhValue(scale.fontSize, sizeFactor))
       : 1;
@@ -43,7 +41,7 @@ const MenuItem = memo(forwardRef<HTMLDivElement, MenuItemProps>(
           fontSize: scaleVhValue(scale.fontSize, sizeFactor),
           fontWeight: isSelected ? scale.selectedFontWeight : scale.fontWeight,
           opacity: isSelected ? 1 : scale.opacity,
-          transform: `translateX(${((arcX * 16 / 9) * arcFactor).toFixed(2)}vh) rotate(${scale.rotate}deg) perspective(20vh) rotateY(${scale.rotateY}deg)`,
+          transform: getMenuItemTransform(index, layoutMode),
           transformOrigin: 'left center',
           lineHeight: 1.0,
           color: isSelected ? COLORS.black : 'var(--text-primary)',
@@ -60,6 +58,20 @@ const MenuItem = memo(forwardRef<HTMLDivElement, MenuItemProps>(
           style={{
             position: 'absolute',
             left: 0,
+            top: '50%',
+            width: '1px',
+            height: '1px',
+            transform: 'translateY(-50%)',
+            pointerEvents: 'none',
+            opacity: 0,
+          }}
+        />
+        <span
+          data-menu-trajectory-end
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            left: '100%',
             top: '50%',
             width: '1px',
             height: '1px',

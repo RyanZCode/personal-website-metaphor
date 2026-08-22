@@ -7,7 +7,7 @@ const DEFAULT_PORT = 4321;
 const SERVER_READY_TIMEOUT_MS = 45000;
 const STATE_TIMEOUT_MS = 30000;
 const CODEX_PLAYWRIGHT_PATH =
-  'C:/Users/ryanz/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/.pnpm/playwright@1.60.0/node_modules/playwright';
+  'C:/Users/ryanz/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright';
 
 const require = createRequire(import.meta.url);
 
@@ -268,6 +268,113 @@ async function assertSplashAligned(page, id) {
   );
 }
 
+async function measureSplashVerticalOffset(page, id) {
+  return page.evaluate((selectedId) => {
+    const label = document.querySelector(`[data-menu-item="${selectedId}"] [data-menu-label]`);
+    const splash = document.querySelector('[data-paint-splash]');
+    if (!(label instanceof HTMLElement) || !(splash instanceof HTMLElement)) {
+      throw new Error(`Missing label or splash for ${selectedId}`);
+    }
+
+    const labelRect = label.getBoundingClientRect();
+    const splashRect = splash.getBoundingClientRect();
+    return splashRect.top + splashRect.height / 2 - (labelRect.top + labelRect.height / 2);
+  }, id);
+}
+
+async function measureSplashTip(page) {
+  return page.evaluate(() => {
+    const root = document.querySelector('[data-app-root]');
+    const selectedId = root?.getAttribute('data-selected-menu-item') ?? 'unknown';
+    const label = document.querySelector(`[data-menu-item="${selectedId}"] [data-menu-label]`);
+    const splash = document.querySelector('[data-paint-splash]');
+    if (!(root instanceof HTMLElement) || !(label instanceof HTMLElement) || !(splash instanceof HTMLElement)) {
+      return {
+        selectedId,
+        tipX: 0,
+        tipY: 0,
+        angleDelta: 360,
+        scaleDelta: Number.POSITIVE_INFINITY,
+        localExtension: 0,
+        expectedExtension: 0,
+      };
+    }
+
+    const createMarker = (left, top = '50%') => {
+      const marker = document.createElement('span');
+      Object.assign(marker.style, {
+        position: 'absolute',
+        left,
+        top,
+        width: '1px',
+        height: '1px',
+      });
+      return marker;
+    };
+    const markerCenter = (marker) => {
+      const rect = marker.getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    };
+
+    const pivotX = Number.parseFloat(splash.style.transformOrigin);
+    const splashLeftTopMarker = createMarker('0%', '0%');
+    const splashLeftBottomMarker = createMarker('0%', '100%');
+    const splashStartMarker = createMarker(`${pivotX}px`);
+    const splashTipMarker = createMarker('60%');
+    splash.append(splashLeftTopMarker, splashLeftBottomMarker, splashStartMarker, splashTipMarker);
+    const splashLeftTop = markerCenter(splashLeftTopMarker);
+    const splashLeftBottom = markerCenter(splashLeftBottomMarker);
+    const splashStart = markerCenter(splashStartMarker);
+    const splashTip = markerCenter(splashTipMarker);
+    const menuItem = label.closest('[data-menu-item]');
+    const menuStartMarker = menuItem?.querySelector('[data-menu-anchor]');
+    const menuEndMarker = menuItem?.querySelector('[data-menu-trajectory-end]');
+    const menuStart = menuStartMarker instanceof HTMLElement ? markerCenter(menuStartMarker) : { x: 0, y: 0 };
+    const menuEnd = menuEndMarker instanceof HTMLElement ? markerCenter(menuEndMarker) : { x: 0, y: 0 };
+    const splashX = splashTip.x - splashStart.x;
+    const splashY = splashTip.y - splashStart.y;
+    const menuX = menuEnd.x - menuStart.x;
+    const menuY = menuEnd.y - menuStart.y;
+    const splashAngle = Math.atan2(splashY, splashX);
+    const menuAngle = Math.atan2(menuY, menuX);
+    const rawAngleDelta = Math.abs((splashAngle - menuAngle) * 180 / Math.PI);
+    const angleDelta = Math.min(rawAngleDelta, 360 - rawAngleDelta);
+    const splashScaleX = Math.hypot(splashX, splashY) / (splash.offsetWidth * 0.6 - pivotX);
+    const menuScaleX = menuItem instanceof HTMLElement
+      ? Math.hypot(menuX, menuY) / menuItem.offsetWidth
+      : 0;
+    const scaleDelta = Math.abs(splashScaleX - menuScaleX);
+    const localExtension = splash.offsetWidth * 0.6 - pivotX - label.offsetLeft - label.offsetWidth;
+    const splashScale = root.dataset.layoutMode === 'compact'
+      ? 0.7
+      : root.dataset.layoutMode === 'tablet'
+        ? 0.84
+        : 1;
+    const tipExtensionVh = Number(splash.dataset.splashTipExtension ?? 0);
+    const expectedExtension = window.innerHeight * tipExtensionVh / 100 * splashScale;
+    const leftEdgeMaxX = Math.max(splashLeftTop.x, splashLeftBottom.x);
+    const tipLength = Number(splash.dataset.splashTipLength ?? 100);
+    const taperInset = Number(splash.dataset.splashTaperInset ?? 0);
+
+    splashLeftTopMarker.remove();
+    splashLeftBottomMarker.remove();
+    splashStartMarker.remove();
+    splashTipMarker.remove();
+    return {
+      selectedId,
+      tipX: splashTip.x,
+      tipY: splashTip.y,
+      angleDelta,
+      scaleDelta,
+      localExtension,
+      expectedExtension,
+      leftEdgeMaxX,
+      tipLength,
+      taperInset,
+    };
+  });
+}
+
 async function enterPage(page, id) {
   await selectMenuItem(page, id);
   await page.locator(`[data-menu-item="${id}"]`).click();
@@ -393,12 +500,128 @@ async function run() {
       });
     });
 
+    await test('performance debugging records page transition context', async () => {
+      await withPage(browser, {}, async (page) => {
+        await page.goto(`${server.baseUrl}/?perf=1`, { waitUntil: 'domcontentloaded' });
+        await waitForAppState(page, 'idle');
+        await page.waitForFunction(() => Boolean(window.__portfolioPerf?.enabled), null, {
+          timeout: STATE_TIMEOUT_MS,
+        });
+
+        await enterPage(page, 'about');
+        await page.waitForFunction(() => (
+          window.__portfolioPerf?.report().spans.some((span) => span.name === 'page-animation-entry')
+        ), null, { timeout: STATE_TIMEOUT_MS });
+
+        const result = await page.evaluate(() => {
+          const api = window.__portfolioPerf;
+          const report = api?.report();
+          return {
+            enabled: api?.enabled ?? false,
+            exported: api?.export() ?? '',
+            spanNames: report?.spans.map((span) => span.name) ?? [],
+            markNames: report?.samples
+              .filter((sample) => sample.kind === 'mark')
+              .map((sample) => sample.name) ?? [],
+            recordingDurationMs: report?.summary.recordingDurationMs ?? 0,
+          };
+        });
+
+        assert(result.enabled, 'performance debugging API was not enabled');
+        assert(result.recordingDurationMs > 0, 'performance recording duration was empty');
+        assert(result.spanNames.includes('page-enter'), 'page enter span was not recorded');
+        assert(result.spanNames.includes('page-animation-entry'), 'page animation span was not recorded');
+        assert(result.markNames.includes('page-mount-requested'), 'page mount mark was not recorded');
+        assert(result.markNames.includes('page-content-committed'), 'page commit mark was not recorded');
+        assert(result.exported.includes('"summary"'), 'performance report export was invalid');
+      });
+    });
+
+    await test('performance debugging records direct page entry', async () => {
+      await withPage(browser, {}, async (page) => {
+        await page.goto(`${server.baseUrl}/experience?perf=1`, { waitUntil: 'domcontentloaded' });
+        await waitForAppState(page, 'page-active');
+        await page.waitForFunction(() => (
+          window.__portfolioPerf?.report().spans.some((span) => span.name === 'page-animation-entry')
+        ), null, { timeout: STATE_TIMEOUT_MS });
+
+        const result = await page.evaluate(() => {
+          const report = window.__portfolioPerf?.report();
+          return {
+            spanNames: report?.spans.map((span) => span.name) ?? [],
+            markNames: report?.samples
+              .filter((sample) => sample.kind === 'mark')
+              .map((sample) => sample.name) ?? [],
+          };
+        });
+
+        assert(result.spanNames.includes('page-animation-entry'), 'direct page animation span was not recorded');
+        assert(result.markNames.includes('page-content-committed'), 'direct page commit mark was not recorded');
+      });
+    });
+
     await test('keyboard selection changes active menu item', async () => {
       await withPage(browser, {}, async (page) => {
         await openMenu(page, server.baseUrl);
         await page.keyboard.press('ArrowDown');
         await page.waitForSelector('[data-app-root][data-selected-menu-item="skills"]');
         await assertSplashAligned(page, 'skills');
+      });
+    });
+
+    await test('menu selection pulses individual letters unevenly', async () => {
+      await withPage(browser, {}, async (page) => {
+        await openMenu(page, server.baseUrl);
+        await page.keyboard.press('ArrowDown');
+        await page.waitForSelector('[data-app-root][data-selected-menu-item="skills"]');
+        await wait(55);
+
+        const pulse = await page.evaluate(() => {
+          const items = Array.from(document.querySelectorAll('[data-menu-item]'));
+          const itemScales = items.map((item) => (
+            Array.from(item.querySelectorAll('[data-char]')).map((char) => {
+              const transform = getComputedStyle(char).transform;
+              return transform === 'none' ? 1 : new DOMMatrix(transform).d;
+            })
+          ));
+          const flattenedValues = itemScales.flat().filter((scaleY) => scaleY < 0.99);
+          return {
+            affectedItems: itemScales.filter((scales) => scales.some((scaleY) => scaleY < 0.99)).length,
+            compressedLetters: flattenedValues.length,
+            totalLetters: itemScales.flat().length,
+            uniqueScales: new Set(flattenedValues.map((scaleY) => scaleY.toFixed(2))).size,
+          };
+        });
+
+        assert(pulse.affectedItems === MENU_ITEMS.length, `${pulse.affectedItems} menu items received a letter pulse`);
+        assert(
+          pulse.compressedLetters < pulse.totalLetters * 0.7,
+          `${pulse.compressedLetters} of ${pulse.totalLetters} letters compressed`,
+        );
+        assert(pulse.uniqueScales >= 4, `letter pulse only produced ${pulse.uniqueScales} distinct scales`);
+
+        const firstPulseScales = await page.evaluate(() => (
+          Array.from(document.querySelectorAll('[data-char]')).map((char) => getComputedStyle(char).transform)
+        ));
+
+        await wait(320);
+        const maxSettledDelta = await page.evaluate(() => (
+          Math.max(...Array.from(document.querySelectorAll('[data-char]')).map((char) => {
+            const transform = getComputedStyle(char).transform;
+            const scaleY = transform === 'none' ? 1 : new DOMMatrix(transform).d;
+            return Math.abs(scaleY - 1);
+          }))
+        ));
+        assert(maxSettledDelta < 0.01, `letter pulse settled ${maxSettledDelta.toFixed(3)} away from its base scale`);
+
+        await page.keyboard.press('ArrowDown');
+        await page.waitForSelector('[data-app-root][data-selected-menu-item="experience"]');
+        await wait(55);
+        const secondPulseScales = await page.evaluate(() => (
+          Array.from(document.querySelectorAll('[data-char]')).map((char) => getComputedStyle(char).transform)
+        ));
+        const changedScaleCount = secondPulseScales.filter((scale, index) => scale !== firstPulseScales[index]).length;
+        assert(changedScaleCount > 10, `only ${changedScaleCount} letters received a new random compression profile`);
       });
     });
 
@@ -409,6 +632,175 @@ async function run() {
           await selectMenuItem(page, id);
           await assertSplashAligned(page, id);
         }
+      });
+    });
+
+    await test('paint splash vertical position is independent of navigation direction', async () => {
+      await withPage(browser, {}, async (page) => {
+        await openMenu(page, server.baseUrl);
+        const downOffsets = new Map();
+
+        for (const id of MENU_ITEMS.slice(1)) {
+          await page.keyboard.press('ArrowDown');
+          await page.waitForSelector(`[data-app-root][data-selected-menu-item="${id}"]`);
+          await wait(280);
+          downOffsets.set(id, await measureSplashVerticalOffset(page, id));
+        }
+
+        for (const id of MENU_ITEMS.slice(0, -1).reverse()) {
+          await page.keyboard.press('ArrowUp');
+          await page.waitForSelector(`[data-app-root][data-selected-menu-item="${id}"]`);
+          await wait(280);
+          const upOffset = await measureSplashVerticalOffset(page, id);
+          const downOffset = downOffsets.get(id);
+          if (downOffset === undefined) continue;
+          assert(
+            Math.abs(upOffset - downOffset) < 1,
+            `${id} splash moved ${Math.abs(upOffset - downOffset).toFixed(1)}px based on navigation direction`,
+          );
+        }
+      });
+    });
+
+    await test('paint splash endpoints follow menu trajectories', async () => {
+      await withPage(browser, {}, async (page) => {
+        await openMenu(page, server.baseUrl);
+        const measurements = [];
+        for (const id of MENU_ITEMS) {
+          await selectMenuItem(page, id);
+          measurements.push(await measureSplashTip(page));
+        }
+
+        measurements.forEach(({ selectedId, angleDelta, scaleDelta, localExtension, expectedExtension, leftEdgeMaxX, tipLength, taperInset }) => {
+          assert(
+            angleDelta < 0.1,
+            `${selectedId} paint splash differs from its word trajectory by ${angleDelta.toFixed(2)} degrees`,
+          );
+          assert(
+            scaleDelta < 0.002,
+            `${selectedId} paint splash trajectory scale differs by ${scaleDelta.toFixed(3)}`,
+          );
+          assert(
+            Math.abs(localExtension - expectedExtension) < 1.5,
+            `${selectedId} paint splash extension is ${localExtension.toFixed(1)}px instead of ${expectedExtension.toFixed(1)}px`,
+          );
+          assert(
+            leftEdgeMaxX <= 1,
+            `${selectedId} paint splash leaves a ${leftEdgeMaxX.toFixed(1)}px gap at the left edge`,
+          );
+          assert(
+            tipLength <= 3,
+            `${selectedId} paint splash tip is ${tipLength.toFixed(1)} percent long`,
+          );
+          assert(
+            taperInset >= 30,
+            `${selectedId} paint splash only tapers ${taperInset.toFixed(1)} percent vertically`,
+          );
+        });
+
+        const experienceExtension = measurements.find(({ selectedId }) => selectedId === 'experience')?.expectedExtension;
+        const otherExtensions = measurements
+          .filter(({ selectedId }) => selectedId !== 'experience')
+          .map(({ expectedExtension }) => expectedExtension);
+        assert(
+          experienceExtension !== undefined && experienceExtension < Math.min(...otherExtensions),
+          'Experience paint splash extension is not shorter than the other menu items',
+        );
+      });
+    });
+
+    await test('paint splash snaps to final selection geometry', async () => {
+      await withPage(browser, {}, async (page) => {
+        await openMenu(page, server.baseUrl);
+        await page.keyboard.press('ArrowDown');
+        await page.waitForSelector('[data-app-root][data-selected-menu-item="skills"]');
+        await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve(null))));
+        const firstFrame = await measureSplashTip(page);
+        await wait(100);
+        const settledFrame = await measureSplashTip(page);
+
+        assert(
+          Math.abs(firstFrame.tipX - settledFrame.tipX) < 1,
+          `paint splash tip moved ${Math.abs(firstFrame.tipX - settledFrame.tipX).toFixed(1)}px after selection`,
+        );
+        assert(
+          Math.abs(firstFrame.tipY - settledFrame.tipY) < 1,
+          `paint splash tip moved ${Math.abs(firstFrame.tipY - settledFrame.tipY).toFixed(1)}px after selection`,
+        );
+      });
+    });
+
+    await test('compact menu splash stays aligned', async () => {
+      await withPage(browser, { viewport: { width: 390, height: 844 } }, async (page) => {
+        await page.goto(`${server.baseUrl}/`, { waitUntil: 'domcontentloaded' });
+        await page.getByRole('button', { name: 'Ok' }).click();
+        await waitForAppState(page, 'idle');
+
+        for (const id of MENU_ITEMS) {
+          const selected = await page.locator('[data-app-root]').getAttribute('data-selected-menu-item');
+          if (selected !== id) {
+            await page.keyboard.press('ArrowDown');
+            await page.waitForSelector(`[data-app-root][data-selected-menu-item="${id}"]`);
+            await wait(280);
+          }
+          await assertSplashAligned(page, id);
+        }
+      });
+    });
+
+    await test('menu selection uses bounded geometry reads', async () => {
+      await withPage(browser, {}, async (page) => {
+        await openMenu(page, server.baseUrl);
+        await page.evaluate(() => {
+          const original = Element.prototype.getBoundingClientRect;
+          let selectionReads = 0;
+          Element.prototype.getBoundingClientRect = function getBoundingClientRect() {
+            if (this.matches('[data-menu-anchor], [data-menu-trajectory-end], [data-menu-label]')) {
+              selectionReads += 1;
+            }
+            return original.call(this);
+          };
+          window.__selectionGeometryProbe = {
+            read: () => selectionReads,
+            restore: () => {
+              Element.prototype.getBoundingClientRect = original;
+            },
+          };
+        });
+
+        await page.keyboard.press('ArrowDown');
+        await page.waitForSelector('[data-app-root][data-selected-menu-item="skills"]');
+        await wait(350);
+
+        const selectionReads = await page.evaluate(() => {
+          const reads = window.__selectionGeometryProbe?.read() ?? Number.POSITIVE_INFINITY;
+          window.__selectionGeometryProbe?.restore();
+          delete window.__selectionGeometryProbe;
+          return reads;
+        });
+
+        assert(selectionReads <= 3, `menu selection performed ${selectionReads} geometry reads`);
+      });
+    });
+
+    await test('splash ambience stays active through selection changes', async () => {
+      await withPage(browser, {}, async (page) => {
+        await openMenu(page, server.baseUrl);
+        await page.waitForSelector('[data-paint-splash][data-splash-ambient-active="true"]');
+
+        await page.keyboard.press('ArrowDown');
+        await page.waitForSelector('[data-app-root][data-selected-menu-item="skills"]');
+        await page.waitForSelector('[data-paint-splash][data-splash-ambient-active="true"]', {
+          timeout: STATE_TIMEOUT_MS,
+        });
+
+        await page.keyboard.press('ArrowDown');
+        await page.keyboard.press('ArrowDown');
+        await page.keyboard.press('ArrowDown');
+        await page.waitForSelector('[data-app-root][data-selected-menu-item="memorandum"]');
+        await page.waitForSelector('[data-paint-splash][data-splash-ambient-active="true"]', {
+          timeout: STATE_TIMEOUT_MS,
+        });
       });
     });
 
@@ -488,6 +880,29 @@ async function run() {
         await page.waitForSelector('[data-app-root][data-visual-activity="menu"][data-root-ambient="running"]');
         await enterPage(page, 'about');
         await page.waitForSelector('[data-app-root][data-visual-activity="page"][data-root-ambient="paused"]');
+      });
+    });
+
+    await test('page ambience only runs in the active state', async () => {
+      await withPage(browser, {}, async (page) => {
+        await openMenu(page, server.baseUrl);
+        await selectMenuItem(page, 'experience');
+        await page.locator('[data-menu-item="experience"]').click();
+        await page.waitForSelector('[data-app-root][data-app-state="entering-page"]');
+        await page.waitForFunction(() => Boolean(
+          document.querySelector(
+            '[data-app-root][data-app-state="entering-page"] [data-experience-page][data-page-ambient="paused"]'
+          )
+        ));
+        await page.waitForSelector('[data-app-root][data-app-state="page-active"] [data-experience-page][data-page-ambient="running"]');
+
+        await page.keyboard.press('Escape');
+        await page.waitForFunction(() => Boolean(
+          document.querySelector(
+            '[data-app-root][data-app-state="exiting-page"] [data-experience-page][data-page-ambient="paused"]'
+          )
+        ));
+        await waitForAppState(page, 'idle');
       });
     });
 

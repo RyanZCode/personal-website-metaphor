@@ -18,6 +18,7 @@ import { usePageAnimationLifecycle } from '../../hooks/usePageAnimationLifecycle
 interface ContactPageProps {
   isActive: boolean;
   animationsEnabled: boolean;
+  ambientAnimationsEnabled: boolean;
   initialEntryDelaySeconds: number;
   pageState: 'entering-page' | 'page-active' | 'exiting-page';
   registerNavigation: RegisterPageNavigation;
@@ -228,6 +229,7 @@ function ContactPortraitRing({ animationsEnabled }: { animationsEnabled: boolean
 export default function ContactPage({
   isActive,
   animationsEnabled,
+  ambientAnimationsEnabled,
   initialEntryDelaySeconds,
   pageState,
   registerNavigation,
@@ -369,15 +371,15 @@ export default function ContactPage({
 
   const listViewportHeight = visibleRows * contactRowHeight;
   const panelHeight = PANEL_TOP_PADDING + PANEL_BOTTOM_PADDING + listViewportHeight;
-  const bobAnim = isActive && animationsEnabled ? 'portrait-bob 4s ease-in-out infinite' : 'none';
-  const glowAnim = animationsEnabled ? 'portrait-glow 3s ease-in-out infinite' : 'none';
-  const ringsActive = isActive || pageState === 'entering-page';
+  const bobAnim = ambientAnimationsEnabled ? 'portrait-bob 4s ease-in-out infinite' : 'none';
+  const glowAnim = ambientAnimationsEnabled ? 'portrait-glow 3s ease-in-out infinite' : 'none';
 
   return (
     <section
       ref={containerRef}
       inert={!isActive}
       data-contact-page
+      data-page-ambient={ambientAnimationsEnabled ? 'running' : 'paused'}
       style={{
         position: 'absolute',
         inset: 0,
@@ -417,7 +419,10 @@ export default function ContactPage({
             opacity: 0.9,
           }}
         >
-          <ContactRings isActive={ringsActive} animationsEnabled={animationsEnabled} />
+          <ContactRings
+            isActive={ambientAnimationsEnabled}
+            animationsEnabled={ambientAnimationsEnabled}
+          />
         </div>
       </div>
 
@@ -727,7 +732,7 @@ export default function ContactPage({
                 pointerEvents: 'none',
               }}
             />
-            <ContactPortraitRing animationsEnabled={animationsEnabled} />
+            <ContactPortraitRing animationsEnabled={ambientAnimationsEnabled} />
             <div
               data-contact-portrait-circle
               style={{

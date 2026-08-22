@@ -17,6 +17,7 @@ import { useScrollHintNavigation } from '../../hooks/useScrollHintNavigation';
 interface AboutPageProps {
   isActive: boolean;
   animationsEnabled: boolean;
+  ambientAnimationsEnabled: boolean;
   initialEntryDelaySeconds: number;
   pageState: 'entering-page' | 'page-active' | 'exiting-page';
   registerNavigation: RegisterPageNavigation;
@@ -30,6 +31,7 @@ const BOTTOM_DIAGONAL_WEDGE_CLIP_PATH = 'polygon(0 100%, 100% 0, 100% 100%)';
 export default function AboutPage({
   isActive,
   animationsEnabled,
+  ambientAnimationsEnabled,
   initialEntryDelaySeconds,
   pageState,
   registerNavigation,
@@ -45,8 +47,8 @@ export default function AboutPage({
     ? `hsl(${memorandumItem.accentH} ${memorandumItem.accentS} ${memorandumItem.accentL})`
     : COLORS.textPrimary;
 
-  const bobAnim  = isActive && animationsEnabled ? 'portrait-bob 4s ease-in-out infinite' : 'none';
-  const glowAnim = animationsEnabled ? 'portrait-glow 3s ease-in-out infinite' : 'none';
+  const bobAnim  = ambientAnimationsEnabled ? 'portrait-bob 4s ease-in-out infinite' : 'none';
+  const glowAnim = ambientAnimationsEnabled ? 'portrait-glow 3s ease-in-out infinite' : 'none';
 
   usePageAnimationLifecycle({
     isActive,
@@ -79,6 +81,8 @@ export default function AboutPage({
     <section
       ref={containerRef}
       inert={!isActive}
+      data-about-page
+      data-page-ambient={ambientAnimationsEnabled ? 'running' : 'paused'}
       style={{
         position: 'absolute',
         inset: 0,
@@ -418,7 +422,10 @@ export default function AboutPage({
             pointerEvents: 'none',
           }}
         >
-          <AboutTriangles isActive={true} animationsEnabled={animationsEnabled} />
+          <AboutTriangles
+            isActive={ambientAnimationsEnabled}
+            animationsEnabled={ambientAnimationsEnabled}
+          />
         </div>
       </div>
     </section>

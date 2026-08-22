@@ -46,6 +46,13 @@ const { pathname } = Astro.props;
         : 'blocking-preload';
     })();
   </script>
+  <script>
+    if (new URLSearchParams(window.location.search).get('perf') === '1') {
+      void import('../lib/performanceDebug').then(({ startPerformanceDebug }) => {
+        startPerformanceDebug();
+      });
+    }
+  </script>
   <div
     data-boot-loading-screen
     aria-hidden="true"

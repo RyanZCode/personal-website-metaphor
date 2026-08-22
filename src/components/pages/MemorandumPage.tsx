@@ -36,6 +36,7 @@ interface MemorandumPageProps {
   memorandumData: MemorandumData;
   isActive: boolean;
   animationsEnabled: boolean;
+  ambientAnimationsEnabled: boolean;
   initialEntryDelaySeconds: number;
   pageState: 'entering-page' | 'page-active' | 'exiting-page';
   registerNavigation: RegisterPageNavigation;
@@ -339,6 +340,7 @@ export default function MemorandumPage({
   memorandumData,
   isActive,
   animationsEnabled,
+  ambientAnimationsEnabled,
   initialEntryDelaySeconds,
   pageState,
   registerNavigation,
@@ -350,7 +352,7 @@ export default function MemorandumPage({
   playSoundEffect,
   onEntryAnimationComplete,
 }: MemorandumPageProps) {
-  const bobAnim = isActive && animationsEnabled ? 'portrait-bob 4s ease-in-out infinite' : 'none';
+  const bobAnim = ambientAnimationsEnabled ? 'portrait-bob 4s ease-in-out infinite' : 'none';
   const columns = memorandumData.columns;
   const initialState = getInitialMemorandumState(locationPath, memorandumData);
   const containerRef = useRef<HTMLElement>(null);
@@ -423,7 +425,7 @@ export default function MemorandumPage({
   const isDetailOpen = Boolean(detailEntryId);
   const hasDisplayedDetail = Boolean(displayedDetailEntry && displayedDetailPage);
   const isInputLocked = isTransitioning || !pageEntryReady;
-  const trapezoidsActive = isActive || pageState === 'entering-page' || pageState === 'exiting-page';
+  const trapezoidsActive = ambientAnimationsEnabled;
   const detailAnimationBleedLeft = 'clamp(3rem, 4vw, 4rem)';
   const detailAnimationBleedLeftNegative = `calc(${detailAnimationBleedLeft} * -1)`;
   const detailBodyStyle = {
@@ -1462,6 +1464,7 @@ export default function MemorandumPage({
       ref={containerRef}
       inert={!isActive}
       data-memorandum-page
+      data-page-ambient={ambientAnimationsEnabled ? 'running' : 'paused'}
       style={{
         position: 'absolute',
         inset: 0,
@@ -1973,7 +1976,11 @@ export default function MemorandumPage({
                       >
                         <span
                           key={`new-${currentColumn.id}-${entry.id}`}
-                          style={{ animation: 'memorandum-new-pulse 1.8s ease-in-out infinite' }}
+                          style={{
+                            animation: ambientAnimationsEnabled
+                              ? 'memorandum-new-pulse 1.8s ease-in-out infinite'
+                              : 'none',
+                          }}
                         >
                           New
                         </span>
@@ -2191,7 +2198,7 @@ export default function MemorandumPage({
       >
         <MemorandumTrapezoids
           isActive={trapezoidsActive}
-          animationsEnabled={animationsEnabled}
+          animationsEnabled={ambientAnimationsEnabled}
         />
       </div>
       </div>

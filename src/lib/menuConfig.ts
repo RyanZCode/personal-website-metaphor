@@ -10,7 +10,7 @@ export interface MenuItemConfig {
   accentS: string;
   accentL: string;
   splashHeightVh: number;   // height of the paint splash as % of viewport height
-  splashWidthVh: number;    // total width of the splash element in vh (left edge stays fixed)
+  splashTipExtensionVh: number;
   splashOffsetY: number;    // vertical fine-tune in vh (positive = down)
   splashTipXPct: number;    // x% where the right edge comes to a point (default 60)
   splashTaperYPct: number;  // y% inset of shoulder points from top/bottom - higher = sharper taper (default 12)
@@ -27,11 +27,11 @@ export const MENU_ITEMS: MenuItemConfig[] = [
     accentH: 4,
     accentS: '88%',
     accentL: '45%',
-    splashHeightVh: 40,
-    splashWidthVh: 300,
-    splashOffsetY: -3,
+    splashHeightVh: 51,
+    splashTipExtensionVh: 23,
+    splashOffsetY: -3.5,
     splashTipXPct: 60,
-    splashTaperYPct: 12,
+    splashTaperYPct: 36,
   },
   {
     id: 'skills',
@@ -43,11 +43,11 @@ export const MENU_ITEMS: MenuItemConfig[] = [
     accentH: 335,
     accentS: '75%',
     accentL: '50%',
-    splashHeightVh: 36,
-    splashWidthVh: 250,
+    splashHeightVh: 47,
+    splashTipExtensionVh: 23,
     splashOffsetY: -1,
     splashTipXPct: 60,
-    splashTaperYPct: 12,
+    splashTaperYPct: 36,
   },
   {
     id: 'experience',
@@ -59,11 +59,11 @@ export const MENU_ITEMS: MenuItemConfig[] = [
     accentH: 215,
     accentS: '72%',
     accentL: '42%',
-    splashHeightVh: 40,
-    splashWidthVh: 310,
+    splashHeightVh: 51,
+    splashTipExtensionVh: 18,
     splashOffsetY: -1.5,
     splashTipXPct: 60,
-    splashTaperYPct: 12,
+    splashTaperYPct: 36,
   },
   {
     id: 'contact',
@@ -75,11 +75,11 @@ export const MENU_ITEMS: MenuItemConfig[] = [
     accentH: 25,
     accentS: '80%',
     accentL: '50%',
-    splashHeightVh: 32,
-    splashWidthVh: 300,
+    splashHeightVh: 48,
+    splashTipExtensionVh: 23,
     splashOffsetY: 2,
     splashTipXPct: 60,
-    splashTaperYPct: 12,
+    splashTaperYPct: 36,
   },
   {
     id: 'memorandum',
@@ -91,11 +91,11 @@ export const MENU_ITEMS: MenuItemConfig[] = [
     accentH: 120,
     accentS: '50%',
     accentL: '40%',
-    splashHeightVh: 35,
-    splashWidthVh: 380,
+    splashHeightVh: 51,
+    splashTipExtensionVh: 23,
     splashOffsetY: 6,
     splashTipXPct: 60,
-    splashTaperYPct: 12,
+    splashTaperYPct: 36,
   },
   {
     id: 'system',
@@ -107,10 +107,10 @@ export const MENU_ITEMS: MenuItemConfig[] = [
     accentH: 175,
     accentS: '55%',
     accentL: '45%',
-    splashHeightVh: 30,
-    splashWidthVh: 300,
+    splashHeightVh: 46,
+    splashTipExtensionVh: 23,
     splashOffsetY: 7,
     splashTipXPct: 60,
-    splashTaperYPct: 12,
+    splashTaperYPct: 36,
   },
 ];

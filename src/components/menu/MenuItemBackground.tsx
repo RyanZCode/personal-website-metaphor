@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useRef,
   useState,
   type ForwardedRef,
@@ -11,8 +12,10 @@ import {
 } from 'react';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
-import { getMenuItemScaleFactor, getMenuSplashScale } from '../../lib/menuLayout';
-import { ITEM_SCALES } from '../../lib/constants';
+import {
+  getMenuItemScaleFactor,
+  getMenuSplashScale,
+} from '../../lib/menuLayout';
 import AboutTriangles from './splashEffects/AboutTriangles';
 import SkillsBands    from './splashEffects/SkillsBands';
 import ExperienceRipples  from './splashEffects/ExperienceRipples';
@@ -23,6 +26,7 @@ import { rafThrottle } from '../../lib/rafThrottle';
 
 export interface MenuSplashHandle {
   measureNow: () => void;
+  moveToSelection: () => void;
   pauseAmbient: () => void;
   resumeAmbient: () => void;
   resetAmbient: () => void;
@@ -33,12 +37,12 @@ interface MenuItemBackgroundProps {
   menuStackRef: RefObject<HTMLDivElement | null>;
   menuScrollViewportRef?: RefObject<HTMLDivElement | null>;
   selectedIndex: number;
-  animationsEnabled: boolean;
+  ambientAnimationsEnabled: boolean;
   accentH: number;
   accentS: string;
   accentL: string;
   splashHeightVh: number;
-  splashWidthVh: number;
+  splashTipExtensionVh: number;
   splashOffsetY: number;
   splashTipXPct: number;
   splashTaperYPct: number;
@@ -48,15 +52,18 @@ interface MenuItemBackgroundProps {
   layoutMode?: LayoutMode;
 }
 
-interface SplashPos {
-  top: number;
+interface SplashGeometry {
+  centerY: number;
+  left: number;
+  width: number;
   height: number;
   pivotX: number;
-  rotate: number;
-  rotateY: number;
+  rotation: number;
+  scaleX: number;
 }
 
-const SPLASH_LEFT_VH = -17.78;
+const SPLASH_LEFT_OVERSCAN_VH = 2;
+const SPLASH_TIP_LENGTH_PCT = 1;
 const EFFECT_COMPONENTS = [
   AboutTriangles,
   SkillsBands,
@@ -66,17 +73,25 @@ const EFFECT_COMPONENTS = [
   SystemGlitch,
 ] as const;
 
+function getRenderedTranslateY(element: HTMLElement) {
+  const transform = window.getComputedStyle(element).transform;
+  if (transform === 'none') return 0;
+
+  const values = transform.slice(transform.indexOf('(') + 1, -1).split(',').map(Number);
+  return transform.startsWith('matrix3d') ? values[13] ?? 0 : values[5] ?? 0;
+}
+
 function MenuItemBackground({
   itemRefs,
   menuStackRef,
   menuScrollViewportRef,
   selectedIndex,
-  animationsEnabled,
+  ambientAnimationsEnabled,
   accentH,
   accentS,
   accentL,
   splashHeightVh,
-  splashWidthVh,
+  splashTipExtensionVh,
   splashOffsetY,
   splashTipXPct,
   splashTaperYPct,
@@ -85,130 +100,154 @@ function MenuItemBackground({
   measureKey,
   layoutMode = 'desktop',
 }: MenuItemBackgroundProps, ref: ForwardedRef<MenuSplashHandle>) {
-  const [pos, setPos] = useState<SplashPos | null>(null);
+  const [ready, setReady] = useState(false);
   const splashScale = getMenuSplashScale(layoutMode);
   const itemScale = getMenuItemScaleFactor(layoutMode);
-  const splashLeftVh = SPLASH_LEFT_VH * splashScale;
 
   // Layer refs
+  const splashRef       = useRef<HTMLDivElement>(null);
   const backRef         = useRef<HTMLDivElement>(null); // back bloom layer
   const frontRef        = useRef<HTMLDivElement>(null); // main solid layer
   const effectsWrapRef  = useRef<HTMLDivElement>(null); // mirrors frontRef scaleX so clipPath tracks the right edge
   const effectsInnerRef = useRef<HTMLDivElement>(null); // counter-scales to keep effect content positions stable
   const ambientAnimationsRef = useRef<gsap.core.Animation[]>([]);
+  const readyRef = useRef(false);
 
-  const computePosition = useCallback(() => {
+  const measureGeometry = useCallback((): SplashGeometry | null => {
     const el = itemRefs.current[selectedIndex];
-    if (!el) return;
+    if (!el) return null;
     const anchor = el.querySelector('[data-menu-anchor]') as HTMLElement | null;
+    const trajectoryEnd = el.querySelector('[data-menu-trajectory-end]') as HTMLElement | null;
     const label = el.querySelector('[data-menu-label]') as HTMLElement | null;
-    if (!anchor || !label) return;
+    const wrap = el.closest('[data-menu-item-wrap]') as HTMLElement | null;
+    const menuStack = menuStackRef.current;
+    const verticalTarget = layoutMode === 'compact'
+      ? menuStack?.closest('[data-menu-scroll-overlay]') as HTMLElement | null
+      : menuStack?.closest('[data-menu-left]') as HTMLElement | null;
+    if (!anchor || !trajectoryEnd || !label || !wrap || !verticalTarget) return null;
 
     const vh = window.innerHeight / 100;
     const splashH = splashHeightVh * splashScale * vh;
     const anchorRect = anchor.getBoundingClientRect();
+    const trajectoryEndRect = trajectoryEnd.getBoundingClientRect();
     const labelRect = label.getBoundingClientRect();
-    const leftEdgeScreen = anchorRect.left;
-    const labelCenterY = labelRect.top + labelRect.height / 2;
+    const currentWrapY = getRenderedTranslateY(wrap);
+    const currentMenuY = getRenderedTranslateY(verticalTarget);
+    const targetWrapY = selectedItemOffsetYVh * vh;
+    const targetMenuY = menuScrollYVh * vh;
+    const pendingY = targetWrapY - currentWrapY + targetMenuY - currentMenuY;
+    const trajectoryStartX = anchorRect.left + anchorRect.width / 2;
+    const trajectoryStartY = anchorRect.top + anchorRect.height / 2;
+    const trajectoryEndX = trajectoryEndRect.left + trajectoryEndRect.width / 2;
+    const trajectoryEndY = trajectoryEndRect.top + trajectoryEndRect.height / 2;
+    const trajectoryX = trajectoryEndX - trajectoryStartX;
+    const trajectoryY = trajectoryEndY - trajectoryStartY;
+    const trajectoryLength = Math.hypot(trajectoryX, trajectoryY);
+    const rotation = Math.atan2(trajectoryY, trajectoryX);
+    const scaleX = trajectoryLength / el.offsetWidth;
+    const leftEdgeScreen = trajectoryStartX;
+    const labelCenterY = labelRect.top + labelRect.height / 2 + pendingY;
 
-    const elementLeftPx = splashLeftVh * vh;
-    const pivotX = leftEdgeScreen - elementLeftPx;
+    const projectedHorizontalScale = Math.max(Math.cos(rotation) * scaleX, 0.01);
+    const rotatedVerticalReach = Math.abs(Math.sin(rotation)) * splashH / 2;
+    const leftOverscan = SPLASH_LEFT_OVERSCAN_VH * vh;
+    const pivotX = (leftEdgeScreen + leftOverscan + rotatedVerticalReach) / projectedHorizontalScale;
+    const elementLeftPx = leftEdgeScreen - pivotX;
+    const labelEndX = label.offsetLeft + label.offsetWidth;
+    const tipExtension = splashTipExtensionVh * splashScale * vh;
+    const splashW = (pivotX + labelEndX + tipExtension) / (splashTipXPct / 100);
 
-    const nextPos = {
-      top: labelCenterY - splashH / 2 + splashOffsetY * itemScale * vh,
+    return {
+      centerY: labelCenterY + splashOffsetY * itemScale * vh,
+      left: elementLeftPx,
+      width: splashW,
       height: splashH,
       pivotX,
-      rotate: ITEM_SCALES[Math.min(selectedIndex, ITEM_SCALES.length - 1)].rotate,
-      rotateY: ITEM_SCALES[Math.min(selectedIndex, ITEM_SCALES.length - 1)].rotateY,
+      rotation: rotation * 180 / Math.PI,
+      scaleX,
     };
+  }, [itemRefs, itemScale, layoutMode, menuScrollYVh, menuStackRef, selectedIndex, selectedItemOffsetYVh, splashHeightVh, splashOffsetY, splashScale, splashTipExtensionVh, splashTipXPct]);
 
-    setPos((current) => {
-      if (
-        current &&
-        Math.abs(current.top - nextPos.top) < 0.5 &&
-        Math.abs(current.height - nextPos.height) < 0.5 &&
-        Math.abs(current.pivotX - nextPos.pivotX) < 0.5 &&
-        current.rotate === nextPos.rotate &&
-        current.rotateY === nextPos.rotateY
-      ) {
-        return current;
-      }
+  const applyGeometry = useCallback((geometry: SplashGeometry) => {
+    const splash = splashRef.current;
+    if (!splash) return;
 
-      return nextPos;
-    });
-  }, [itemRefs, itemScale, selectedIndex, splashHeightVh, splashLeftVh, splashOffsetY, splashScale]);
+    splash.style.left = `${geometry.left}px`;
+    splash.style.width = `${geometry.width}px`;
+    splash.style.height = `${geometry.height}px`;
+    splash.style.transform = `translateY(${geometry.centerY - geometry.height / 2}px) rotate(${geometry.rotation}deg) scaleX(${geometry.scaleX})`;
+    splash.style.transformOrigin = `${geometry.pivotX}px center`;
+    splash.style.opacity = '1';
+    splash.style.removeProperty('will-change');
+    if (!readyRef.current) {
+      readyRef.current = true;
+      setReady(true);
+    }
+  }, []);
+
+  const measureNow = useCallback(() => {
+    const geometry = measureGeometry();
+    if (geometry) applyGeometry(geometry);
+  }, [applyGeometry, measureGeometry]);
+
+  const moveToSelection = useCallback(() => {
+    const geometry = measureGeometry();
+    if (geometry) applyGeometry(geometry);
+  }, [applyGeometry, measureGeometry]);
+  const measureNowRef = useRef(measureNow);
+  measureNowRef.current = measureNow;
 
   useImperativeHandle(ref, () => ({
-    measureNow: computePosition,
+    measureNow,
+    moveToSelection,
     pauseAmbient: () => {
       ambientAnimationsRef.current.forEach((animation) => animation.pause());
     },
     resumeAmbient: () => {
-      if (!animationsEnabled) return;
+      if (!ambientAnimationsEnabled) return;
       ambientAnimationsRef.current.forEach((animation) => animation.resume());
     },
     resetAmbient: () => {
       ambientAnimationsRef.current.forEach((animation) => {
         animation.restart();
-        if (!animationsEnabled) animation.pause();
+        if (!ambientAnimationsEnabled) animation.pause();
       });
     },
-  }), [animationsEnabled, computePosition]);
+  }), [ambientAnimationsEnabled, measureNow, moveToSelection]);
+
+  useLayoutEffect(() => {
+    if (!readyRef.current) measureNowRef.current();
+  }, []);
 
   useEffect(() => {
-    const compute = rafThrottle(computePosition);
-
-    // Menu items and their parent stack tween for ~200ms on selection changes.
-    // Re-sample through that settle window so the splash locks to the final text
-    // position instead of capturing an in-between animation frame.
-    let settleRafId: number | null = null;
-    const rafId = requestAnimationFrame((startTime) => {
-      const tick = (now: number) => {
-        compute();
-        if (now - startTime < 260) {
-          settleRafId = requestAnimationFrame(tick);
-        } else {
-          settleRafId = null;
-          compute();
-        }
-      };
-
-      tick(startTime);
-    });
-
-    // Re-measure whenever the selected item's size changes (e.g. font swap settling)
-    const el = itemRefs.current[selectedIndex];
-    const ro = el ? new ResizeObserver(compute) : null;
-    if (el && ro) ro.observe(el);
-    const label = el?.querySelector('[data-menu-label]') as HTMLElement | null;
-    if (label && ro) ro.observe(label);
+    const compute = rafThrottle(() => measureNowRef.current());
 
     const scrollViewport = menuScrollViewportRef?.current;
+    void document.fonts.ready.then(compute);
 
     window.addEventListener('resize', compute);
     scrollViewport?.addEventListener('scroll', compute, { passive: true });
     return () => {
-      cancelAnimationFrame(rafId);
-      if (settleRafId !== null) {
-        cancelAnimationFrame(settleRafId);
-      }
       compute.cancel();
-      ro?.disconnect();
       window.removeEventListener('resize', compute);
       scrollViewport?.removeEventListener('scroll', compute);
     };
-  }, [computePosition, selectedIndex, measureKey, menuScrollViewportRef]);
+  }, [menuScrollViewportRef]);
+
+  useEffect(() => {
+    if (readyRef.current) measureNowRef.current();
+  }, [layoutMode, measureKey]);
 
   useGSAP(() => {
     if (!backRef.current || !frontRef.current || !effectsWrapRef.current || !effectsInnerRef.current) return;
-    if (!animationsEnabled) return;
+    if (!ambientAnimationsEnabled) return;
 
     ambientAnimationsRef.current.forEach((animation) => animation.kill());
     ambientAnimationsRef.current = [];
 
     // --- Back layer: slow bloom ---
     const backTween = gsap.to(backRef.current, {
-      opacity: 0.1, scale: 1.12,
+      opacity: 0.1, scale: 1.06,
       duration: 2, ease: 'sine.inOut', repeat: -1, yoyo: true,
       transformOrigin: 'left center',
     });
@@ -219,22 +258,22 @@ function MenuItemBackground({
     const tl = gsap.timeline({ repeat: -1 });
 
     tl.to([frontRef.current, effectsWrapRef.current], {
-        scaleX: 1.1, scaleY: 1.02,
+        scaleX: 1.045, scaleY: 1.015,
         duration: 1.2, ease: 'power2.out', transformOrigin: 'left center',
       })
       .to(frontRef.current, { opacity: 0.9, duration: 1.2, ease: 'power2.out' }, '<')
       .to(effectsInnerRef.current, {
-        scaleX: 1 / 1.1, scaleY: 1 / 1.02,
+        scaleX: 1 / 1.045, scaleY: 1 / 1.015,
         duration: 1.2, ease: 'power2.out', transformOrigin: 'left center',
       }, '<')
 
       .to([frontRef.current, effectsWrapRef.current], {
-        scaleX: 0.96, scaleY: 0.99,
+        scaleX: 0.985, scaleY: 0.995,
         duration: 2, ease: 'sine.inOut', transformOrigin: 'left center',
       })
       .to(frontRef.current, { opacity: 1, duration: 2, ease: 'sine.inOut' }, '<')
       .to(effectsInnerRef.current, {
-        scaleX: 1 / 0.96, scaleY: 1 / 0.99,
+        scaleX: 1 / 0.985, scaleY: 1 / 0.995,
         duration: 2, ease: 'sine.inOut', transformOrigin: 'left center',
       }, '<')
 
@@ -255,62 +294,64 @@ function MenuItemBackground({
       ambientAnimationsRef.current = [];
     };
 
-  // pos !== null (not pos itself) - the pulsing animation doesn't use position values,
-  // so revertOnUpdate shouldn't fire on every re-measure, only when readiness changes.
-  }, { dependencies: [pos !== null, animationsEnabled], revertOnUpdate: true });
-
-  const ready = pos !== null;
+  }, { dependencies: [ready, ambientAnimationsEnabled], revertOnUpdate: true });
 
   const color = `hsl(${accentH}, ${accentS}, ${accentL})`;
-  const clipPath = `polygon(0% 0%, ${splashTipXPct - 2}% ${splashTaperYPct}%, ${splashTipXPct}% 50%, ${splashTipXPct - 2}% ${100 - splashTaperYPct}%, 0% 100%)`;
+  const taperStartXPct = splashTipXPct - SPLASH_TIP_LENGTH_PCT;
+  const clipPath = `polygon(0% 0%, ${taperStartXPct}% ${splashTaperYPct}%, ${splashTipXPct}% 50%, ${taperStartXPct}% ${100 - splashTaperYPct}%, 0% 100%)`;
 
   return (
     <div
+      ref={splashRef}
       data-paint-splash
+      data-splash-ambient-active={ambientAnimationsEnabled ? 'true' : 'false'}
+      data-splash-tip-length={SPLASH_TIP_LENGTH_PCT}
+      data-splash-taper-inset={splashTaperYPct}
+      data-splash-tip-extension={splashTipExtensionVh}
       style={{
         position: 'absolute',
-        left: `${splashLeftVh}vh`,
-        top: pos?.top ?? 0,
-        width: `${splashWidthVh * splashScale}vh`,
-        height: pos?.height ?? 0,
-        transform: `rotate(${pos?.rotate ?? 0}deg) perspective(20vh) rotateY(${pos?.rotateY ?? 0}deg)`,
-        transformOrigin: `${pos?.pivotX ?? 0}px center`,
+        left: 0,
+        top: 0,
+        width: 0,
+        height: 0,
         zIndex: 4,
         pointerEvents: 'none',
         opacity: ready ? 1 : 0,
       }}
     >
-      <div
-        ref={backRef}
-        style={{ position: 'absolute', inset: 0, background: color, clipPath, opacity: 0.4 }}
-      />
+      <div style={{ position: 'absolute', inset: 0, transformOrigin: 'left center' }}>
+        <div
+          ref={backRef}
+          style={{ position: 'absolute', inset: 0, background: color, clipPath, opacity: 0.4 }}
+        />
 
-      <div
-        ref={frontRef}
-        style={{ position: 'absolute', inset: 0, background: color, clipPath }}
-      />
+        <div
+          ref={frontRef}
+          data-paint-splash-front
+          style={{ position: 'absolute', inset: 0, background: color, clipPath }}
+        />
 
       {/* effectsWrapRef mirrors frontRef's scaleX so the clipPath right edge tracks correctly.
           effectsInnerRef counter-scales (1/scaleX) to keep effect content positions stable */}
-      <div
-        ref={effectsWrapRef}
-        style={{ position: 'absolute', inset: 0, clipPath, pointerEvents: 'none', transformOrigin: 'left center' }}
-      >
-        <div ref={effectsInnerRef} style={{ position: 'absolute', inset: 0, transformOrigin: 'left center' }}>
-          {(() => {
-            const EffectComponent = EFFECT_COMPONENTS[selectedIndex];
-            if (!EffectComponent) return null;
-            return (
-              <EffectComponent
-                key={selectedIndex}
-                isActive={true}
-                animationsEnabled={animationsEnabled}
-              />
-            );
-          })()}
+        <div
+          ref={effectsWrapRef}
+          style={{ position: 'absolute', inset: 0, clipPath, pointerEvents: 'none', transformOrigin: 'left center' }}
+        >
+          <div ref={effectsInnerRef} style={{ position: 'absolute', inset: 0, transformOrigin: 'left center' }}>
+            {(() => {
+              const EffectComponent = EFFECT_COMPONENTS[selectedIndex];
+              if (!EffectComponent) return null;
+              return (
+                <EffectComponent
+                  key={selectedIndex}
+                  isActive={true}
+                  animationsEnabled={ambientAnimationsEnabled}
+                />
+              );
+            })()}
+          </div>
         </div>
       </div>
-
     </div>
   );
 }

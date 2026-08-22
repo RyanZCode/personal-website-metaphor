@@ -31,6 +31,7 @@ import {
 interface ExperiencePageProps {
   isActive: boolean;
   animationsEnabled: boolean;
+  ambientAnimationsEnabled: boolean;
   initialEntryDelaySeconds: number;
   pageState: 'entering-page' | 'page-active' | 'exiting-page';
   registerNavigation: RegisterPageNavigation;
@@ -41,6 +42,7 @@ interface ExperiencePageProps {
 export default function ExperiencePage({
   isActive,
   animationsEnabled,
+  ambientAnimationsEnabled,
   initialEntryDelaySeconds,
   pageState,
   registerNavigation,
@@ -50,8 +52,8 @@ export default function ExperiencePage({
   const isCompact = viewportProfile.layoutMode === 'compact';
   const geometry = isCompact ? COMPACT_GEOMETRY : DEFAULT_GEOMETRY;
   const containerRef = useRef<HTMLElement | null>(null);
-  const bobAnim  = animationsEnabled ? 'portrait-bob 4s ease-in-out infinite' : 'none';
-  const glowAnim = animationsEnabled ? 'portrait-glow 3s ease-in-out infinite' : 'none';
+  const bobAnim  = ambientAnimationsEnabled ? 'portrait-bob 4s ease-in-out infinite' : 'none';
+  const glowAnim = ambientAnimationsEnabled ? 'portrait-glow 3s ease-in-out infinite' : 'none';
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const rowRefs = useRef<Array<HTMLDivElement | null>>([]);
@@ -355,6 +357,7 @@ export default function ExperiencePage({
       ref={containerRef}
       inert={!isActive}
       data-experience-page
+      data-page-ambient={ambientAnimationsEnabled ? 'running' : 'paused'}
       data-experience-compact={isCompact ? 'true' : 'false'}
       style={{
         position: 'absolute',
@@ -881,7 +884,10 @@ export default function ExperiencePage({
               height: '100%',
             }}
           >
-            <ExperienceRipples isActive={true} animationsEnabled={animationsEnabled} />
+            <ExperienceRipples
+              isActive={ambientAnimationsEnabled}
+              animationsEnabled={ambientAnimationsEnabled}
+            />
           </div>
         </div>
       ) : null}
