@@ -6,6 +6,7 @@ const MENU_ITEMS = ['about', 'skills', 'experience', 'contact', 'memorandum', 's
 const DEFAULT_PORT = 4321;
 const SERVER_READY_TIMEOUT_MS = 45000;
 const STATE_TIMEOUT_MS = 30000;
+const SPLASH_TIP_TARGET_X_RATIO = 0.49;
 const CODEX_PLAYWRIGHT_PATH =
   'C:/Users/ryanz/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright';
 
@@ -268,6 +269,32 @@ async function assertSplashAligned(page, id) {
   );
 }
 
+async function measureSplashTip(page) {
+  return page.evaluate(() => {
+    const root = document.querySelector('[data-app-root]');
+    const selectedId = root?.getAttribute('data-selected-menu-item') ?? 'unknown';
+    const front = document.querySelector('[data-paint-splash-front]');
+    if (!(front instanceof HTMLElement)) {
+      return { selectedId, tipX: 0, tipY: 0 };
+    }
+
+    const marker = document.createElement('span');
+    Object.assign(marker.style, {
+      position: 'absolute',
+      left: '60%',
+      top: '50%',
+      width: '1px',
+      height: '1px',
+    });
+    front.appendChild(marker);
+    const markerRect = marker.getBoundingClientRect();
+    const tipX = markerRect.left;
+    const tipY = markerRect.top;
+    marker.remove();
+    return { selectedId, tipX, tipY };
+  });
+}
+
 async function enterPage(page, id) {
   await selectMenuItem(page, id);
   await page.locator(`[data-menu-item="${id}"]`).click();
@@ -469,6 +496,49 @@ async function run() {
           await selectMenuItem(page, id);
           await assertSplashAligned(page, id);
         }
+      });
+    });
+
+    await test('paint splash endpoints stay aligned', async () => {
+      await withPage(browser, {}, async (page) => {
+        await openMenu(page, server.baseUrl);
+        const measurements = [];
+        for (const id of MENU_ITEMS) {
+          await selectMenuItem(page, id);
+          measurements.push(await measureSplashTip(page));
+        }
+
+        const targetX = 1440 * SPLASH_TIP_TARGET_X_RATIO;
+        const tipPositions = measurements.map(({ tipX }) => tipX);
+        const endpointRange = Math.max(...tipPositions) - Math.min(...tipPositions);
+        assert(endpointRange < 5, `paint splash endpoints differ by ${endpointRange.toFixed(1)}px`);
+        measurements.forEach(({ selectedId, tipX }) => {
+          assert(
+            Math.abs(tipX - targetX) < 8,
+            `${selectedId} paint splash endpoint is ${tipX.toFixed(1)}px instead of ${targetX.toFixed(1)}px`,
+          );
+        });
+      });
+    });
+
+    await test('paint splash snaps to final selection geometry', async () => {
+      await withPage(browser, {}, async (page) => {
+        await openMenu(page, server.baseUrl);
+        await page.keyboard.press('ArrowDown');
+        await page.waitForSelector('[data-app-root][data-selected-menu-item="skills"]');
+        await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve(null))));
+        const firstFrame = await measureSplashTip(page);
+        await wait(100);
+        const settledFrame = await measureSplashTip(page);
+
+        assert(
+          Math.abs(firstFrame.tipX - settledFrame.tipX) < 1,
+          `paint splash tip moved ${Math.abs(firstFrame.tipX - settledFrame.tipX).toFixed(1)}px after selection`,
+        );
+        assert(
+          Math.abs(firstFrame.tipY - settledFrame.tipY) < 1,
+          `paint splash tip moved ${Math.abs(firstFrame.tipY - settledFrame.tipY).toFixed(1)}px after selection`,
+        );
       });
     });
 

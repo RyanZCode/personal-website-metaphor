@@ -21,11 +21,10 @@ import ContactRings   from './splashEffects/ContactRings';
 import MemorandumTrapezoids from './splashEffects/MemorandumTrapezoids';
 import SystemGlitch   from './splashEffects/SystemGlitch';
 import { rafThrottle } from '../../lib/rafThrottle';
-import { createMenuSplashSelectionTimeline } from '../../lib/animations';
 
 export interface MenuSplashHandle {
   measureNow: () => void;
-  moveToSelection: (animate: boolean, onComplete?: () => void) => void;
+  moveToSelection: (settleSelection: boolean, onComplete?: () => void) => void;
   pauseAmbient: () => void;
   resumeAmbient: () => void;
   resetAmbient: () => void;
@@ -36,7 +35,6 @@ interface MenuItemBackgroundProps {
   menuStackRef: RefObject<HTMLDivElement | null>;
   menuScrollViewportRef?: RefObject<HTMLDivElement | null>;
   selectedIndex: number;
-  selectionAnimationsEnabled: boolean;
   ambientAnimationsEnabled: boolean;
   accentH: number;
   accentS: string;
@@ -76,7 +74,6 @@ function MenuItemBackground({
   menuStackRef,
   menuScrollViewportRef,
   selectedIndex,
-  selectionAnimationsEnabled,
   ambientAnimationsEnabled,
   accentH,
   accentS,
@@ -98,14 +95,12 @@ function MenuItemBackground({
 
   // Layer refs
   const splashRef       = useRef<HTMLDivElement>(null);
-  const surfaceRef      = useRef<HTMLDivElement>(null);
   const backRef         = useRef<HTMLDivElement>(null); // back bloom layer
   const frontRef        = useRef<HTMLDivElement>(null); // main solid layer
   const effectsWrapRef  = useRef<HTMLDivElement>(null); // mirrors frontRef scaleX so clipPath tracks the right edge
   const effectsInnerRef = useRef<HTMLDivElement>(null); // counter-scales to keep effect content positions stable
   const ambientAnimationsRef = useRef<gsap.core.Animation[]>([]);
-  const selectionTimelineRef = useRef<gsap.core.Timeline | null>(null);
-  const baseSizeRef = useRef<{ width: number; height: number } | null>(null);
+  const selectionSettleRef = useRef<gsap.core.Tween | null>(null);
   const readyRef = useRef(false);
 
   const measureGeometry = useCallback((): SplashGeometry | null => {
@@ -148,75 +143,54 @@ function MenuItemBackground({
 
   const applyGeometry = useCallback((
     geometry: SplashGeometry,
-    animate: boolean,
+    settleSelection: boolean,
     onComplete?: () => void,
   ) => {
     const splash = splashRef.current;
-    const surface = surfaceRef.current;
-    if (!splash || !surface) return;
+    if (!splash) return;
 
-    selectionTimelineRef.current?.kill();
-    selectionTimelineRef.current = null;
+    selectionSettleRef.current?.kill();
+    selectionSettleRef.current = null;
 
-    const baseSize = baseSizeRef.current;
-    if (!animate || !selectionAnimationsEnabled || !baseSize) {
-      baseSizeRef.current = { width: geometry.width, height: geometry.height };
-      gsap.set(splash, {
-        width: geometry.width,
-        height: geometry.height,
-        y: geometry.centerY - geometry.height / 2,
-        rotation: geometry.rotate,
-        rotationY: geometry.rotateY,
-        transformPerspective: '20vh',
-        transformOrigin: `${geometry.pivotX}px center`,
-        opacity: 1,
-      });
-      gsap.set(surface, { scaleX: 1, scaleY: 1, transformOrigin: 'left center' });
-      if (!readyRef.current) {
-        readyRef.current = true;
-        setReady(true);
-      }
+    gsap.set(splash, {
+      width: geometry.width,
+      height: geometry.height,
+      y: geometry.centerY - geometry.height / 2,
+      rotation: geometry.rotate,
+      rotationY: geometry.rotateY,
+      transformPerspective: '20vh',
+      transformOrigin: `${geometry.pivotX}px center`,
+      opacity: 1,
+      clearProps: 'willChange',
+    });
+    if (!readyRef.current) {
+      readyRef.current = true;
+      setReady(true);
+    }
+
+    if (!settleSelection) {
       onComplete?.();
       return;
     }
 
-    selectionTimelineRef.current = createMenuSplashSelectionTimeline(
-      splash,
-      surface,
-      {
-        y: geometry.centerY - baseSize.height / 2,
-        rotation: geometry.rotate,
-        rotationY: geometry.rotateY,
-        pivotX: geometry.pivotX,
-        scaleX: geometry.width / baseSize.width,
-        scaleY: geometry.height / baseSize.height,
-      },
-      () => {
-        selectionTimelineRef.current = null;
-        baseSizeRef.current = { width: geometry.width, height: geometry.height };
-        gsap.set(splash, {
-          width: geometry.width,
-          height: geometry.height,
-          y: geometry.centerY - geometry.height / 2,
-        });
-        gsap.set(surface, { scaleX: 1, scaleY: 1 });
-        onComplete?.();
-      },
-    );
-  }, [selectionAnimationsEnabled]);
+    selectionSettleRef.current = gsap.delayedCall(0.2, () => {
+      selectionSettleRef.current = null;
+      onComplete?.();
+    });
+  }, []);
 
   const measureNow = useCallback(() => {
     const geometry = measureGeometry();
     if (geometry) applyGeometry(geometry, false);
   }, [applyGeometry, measureGeometry]);
 
-  const moveToSelection = useCallback((animate: boolean, onComplete?: () => void) => {
+  const moveToSelection = useCallback((settleSelection: boolean, onComplete?: () => void) => {
     const geometry = measureGeometry();
     if (!geometry) {
       onComplete?.();
       return;
     }
-    applyGeometry(geometry, animate, onComplete);
+    applyGeometry(geometry, settleSelection, onComplete);
   }, [applyGeometry, measureGeometry]);
   const measureNowRef = useRef(measureNow);
   measureNowRef.current = measureNow;
@@ -263,8 +237,8 @@ function MenuItemBackground({
   }, [layoutMode, measureKey]);
 
   useEffect(() => () => {
-    selectionTimelineRef.current?.kill();
-    selectionTimelineRef.current = null;
+    selectionSettleRef.current?.kill();
+    selectionSettleRef.current = null;
   }, []);
 
   useGSAP(() => {
@@ -344,7 +318,7 @@ function MenuItemBackground({
         opacity: ready ? 1 : 0,
       }}
     >
-      <div ref={surfaceRef} style={{ position: 'absolute', inset: 0, transformOrigin: 'left center' }}>
+      <div style={{ position: 'absolute', inset: 0, transformOrigin: 'left center' }}>
         <div
           ref={backRef}
           style={{ position: 'absolute', inset: 0, background: color, clipPath, opacity: 0.4 }}
@@ -352,6 +326,7 @@ function MenuItemBackground({
 
         <div
           ref={frontRef}
+          data-paint-splash-front
           style={{ position: 'absolute', inset: 0, background: color, clipPath }}
         />
 

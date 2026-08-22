@@ -2047,7 +2047,6 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
           menuStackRef={menuStackRef}
           menuScrollViewportRef={menuScrollViewportRef}
           selectedIndex={selectedIndex}
-          selectionAnimationsEnabled={animationsEnabled}
           ambientAnimationsEnabled={ambientAnimationsEnabled && splashAmbientIndex === selectedIndex}
           accentH={activeItem.accentH}
           accentS={activeItem.accentS}
