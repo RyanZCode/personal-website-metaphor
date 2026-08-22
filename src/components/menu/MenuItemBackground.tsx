@@ -53,6 +53,7 @@ interface MenuItemBackgroundProps {
 
 interface SplashGeometry {
   centerY: number;
+  left: number;
   width: number;
   height: number;
   pivotX: number;
@@ -60,8 +61,9 @@ interface SplashGeometry {
   scaleX: number;
 }
 
-const SPLASH_LEFT_VH = -17.78;
 const SPLASH_TIP_EXTENSION_VH = 60;
+const SPLASH_LEFT_OVERSCAN_VH = 2;
+const SPLASH_TAPER_LENGTH_PCT = 10;
 const EFFECT_COMPONENTS = [
   AboutTriangles,
   SkillsBands,
@@ -92,7 +94,6 @@ function MenuItemBackground({
   const [ready, setReady] = useState(false);
   const splashScale = getMenuSplashScale(layoutMode);
   const itemScale = getMenuItemScaleFactor(layoutMode);
-  const splashLeftVh = SPLASH_LEFT_VH * splashScale;
 
   // Layer refs
   const splashRef       = useRef<HTMLDivElement>(null);
@@ -133,29 +134,36 @@ function MenuItemBackground({
     const trajectoryX = trajectoryEndX - trajectoryStartX;
     const trajectoryY = trajectoryEndY - trajectoryStartY;
     const trajectoryLength = Math.hypot(trajectoryX, trajectoryY);
+    const rotation = Math.atan2(trajectoryY, trajectoryX);
+    const scaleX = trajectoryLength / el.offsetWidth;
     const leftEdgeScreen = trajectoryStartX;
     const labelCenterY = labelRect.top + labelRect.height / 2 + pendingY;
 
-    const elementLeftPx = splashLeftVh * vh;
-    const pivotX = leftEdgeScreen - elementLeftPx;
+    const projectedHorizontalScale = Math.max(Math.cos(rotation) * scaleX, 0.01);
+    const rotatedVerticalReach = Math.abs(Math.sin(rotation)) * splashH / 2;
+    const leftOverscan = SPLASH_LEFT_OVERSCAN_VH * vh;
+    const pivotX = (leftEdgeScreen + leftOverscan + rotatedVerticalReach) / projectedHorizontalScale;
+    const elementLeftPx = leftEdgeScreen - pivotX;
     const labelEndX = label.offsetLeft + label.offsetWidth;
     const tipExtension = SPLASH_TIP_EXTENSION_VH * splashScale * vh;
     const splashW = (pivotX + labelEndX + tipExtension) / (splashTipXPct / 100);
 
     return {
       centerY: labelCenterY + splashOffsetY * itemScale * vh,
+      left: elementLeftPx,
       width: splashW,
       height: splashH,
       pivotX,
-      rotation: Math.atan2(trajectoryY, trajectoryX) * 180 / Math.PI,
-      scaleX: trajectoryLength / el.offsetWidth,
+      rotation: rotation * 180 / Math.PI,
+      scaleX,
     };
-  }, [itemRefs, itemScale, layoutMode, menuScrollYVh, menuStackRef, selectedIndex, selectedItemOffsetYVh, splashHeightVh, splashLeftVh, splashOffsetY, splashScale, splashTipXPct]);
+  }, [itemRefs, itemScale, layoutMode, menuScrollYVh, menuStackRef, selectedIndex, selectedItemOffsetYVh, splashHeightVh, splashOffsetY, splashScale, splashTipXPct]);
 
   const applyGeometry = useCallback((geometry: SplashGeometry) => {
     const splash = splashRef.current;
     if (!splash) return;
 
+    splash.style.left = `${geometry.left}px`;
     splash.style.width = `${geometry.width}px`;
     splash.style.height = `${geometry.height}px`;
     splash.style.transform = `translateY(${geometry.centerY - geometry.height / 2}px) rotate(${geometry.rotation}deg) scaleX(${geometry.scaleX})`;
@@ -280,16 +288,18 @@ function MenuItemBackground({
   }, { dependencies: [ready, ambientAnimationsEnabled], revertOnUpdate: true });
 
   const color = `hsl(${accentH}, ${accentS}, ${accentL})`;
-  const clipPath = `polygon(0% 0%, ${splashTipXPct - 2}% ${splashTaperYPct}%, ${splashTipXPct}% 50%, ${splashTipXPct - 2}% ${100 - splashTaperYPct}%, 0% 100%)`;
+  const taperStartXPct = splashTipXPct - SPLASH_TAPER_LENGTH_PCT;
+  const clipPath = `polygon(0% 0%, ${taperStartXPct}% ${splashTaperYPct}%, ${splashTipXPct}% 50%, ${taperStartXPct}% ${100 - splashTaperYPct}%, 0% 100%)`;
 
   return (
     <div
       ref={splashRef}
       data-paint-splash
       data-splash-ambient-active={ambientAnimationsEnabled ? 'true' : 'false'}
+      data-splash-taper-length={SPLASH_TAPER_LENGTH_PCT}
       style={{
         position: 'absolute',
-        left: `${splashLeftVh}vh`,
+        left: 0,
         top: 0,
         width: 0,
         height: 0,

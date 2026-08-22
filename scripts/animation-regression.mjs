@@ -286,12 +286,12 @@ async function measureSplashTip(page) {
       };
     }
 
-    const createMarker = (left) => {
+    const createMarker = (left, top = '50%') => {
       const marker = document.createElement('span');
       Object.assign(marker.style, {
         position: 'absolute',
         left,
-        top: '50%',
+        top,
         width: '1px',
         height: '1px',
       });
@@ -303,9 +303,13 @@ async function measureSplashTip(page) {
     };
 
     const pivotX = Number.parseFloat(splash.style.transformOrigin);
+    const splashLeftTopMarker = createMarker('0%', '0%');
+    const splashLeftBottomMarker = createMarker('0%', '100%');
     const splashStartMarker = createMarker(`${pivotX}px`);
     const splashTipMarker = createMarker('60%');
-    splash.append(splashStartMarker, splashTipMarker);
+    splash.append(splashLeftTopMarker, splashLeftBottomMarker, splashStartMarker, splashTipMarker);
+    const splashLeftTop = markerCenter(splashLeftTopMarker);
+    const splashLeftBottom = markerCenter(splashLeftBottomMarker);
     const splashStart = markerCenter(splashStartMarker);
     const splashTip = markerCenter(splashTipMarker);
     const menuItem = label.closest('[data-menu-item]');
@@ -333,7 +337,11 @@ async function measureSplashTip(page) {
         ? 0.84
         : 1;
     const expectedExtension = window.innerHeight * 0.6 * splashScale;
+    const leftEdgeMaxX = Math.max(splashLeftTop.x, splashLeftBottom.x);
+    const taperLength = Number(splash.dataset.splashTaperLength ?? 0);
 
+    splashLeftTopMarker.remove();
+    splashLeftBottomMarker.remove();
     splashStartMarker.remove();
     splashTipMarker.remove();
     return {
@@ -344,6 +352,8 @@ async function measureSplashTip(page) {
       scaleDelta,
       localExtension,
       expectedExtension,
+      leftEdgeMaxX,
+      taperLength,
     };
   });
 }
@@ -561,7 +571,7 @@ async function run() {
           measurements.push(await measureSplashTip(page));
         }
 
-        measurements.forEach(({ selectedId, angleDelta, scaleDelta, localExtension, expectedExtension }) => {
+        measurements.forEach(({ selectedId, angleDelta, scaleDelta, localExtension, expectedExtension, leftEdgeMaxX, taperLength }) => {
           assert(
             angleDelta < 0.1,
             `${selectedId} paint splash differs from its word trajectory by ${angleDelta.toFixed(2)} degrees`,
@@ -573,6 +583,14 @@ async function run() {
           assert(
             Math.abs(localExtension - expectedExtension) < 1.5,
             `${selectedId} paint splash extension is ${localExtension.toFixed(1)}px instead of ${expectedExtension.toFixed(1)}px`,
+          );
+          assert(
+            leftEdgeMaxX <= 1,
+            `${selectedId} paint splash leaves a ${leftEdgeMaxX.toFixed(1)}px gap at the left edge`,
+          );
+          assert(
+            taperLength >= 8,
+            `${selectedId} paint splash taper is only ${taperLength.toFixed(1)} percent long`,
           );
         });
       });
