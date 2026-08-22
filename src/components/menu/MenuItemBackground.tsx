@@ -61,7 +61,7 @@ interface SplashGeometry {
   scaleX: number;
 }
 
-const SPLASH_TIP_EXTENSION_VH = 60;
+const SPLASH_TIP_EXTENSION_VH = 52;
 const SPLASH_LEFT_OVERSCAN_VH = 2;
 const SPLASH_TIP_LENGTH_PCT = 2;
 const EFFECT_COMPONENTS = [
@@ -298,6 +298,7 @@ function MenuItemBackground({
       data-splash-ambient-active={ambientAnimationsEnabled ? 'true' : 'false'}
       data-splash-tip-length={SPLASH_TIP_LENGTH_PCT}
       data-splash-taper-inset={splashTaperYPct}
+      data-splash-tip-extension={SPLASH_TIP_EXTENSION_VH}
       style={{
         position: 'absolute',
         left: 0,

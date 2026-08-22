@@ -336,7 +336,8 @@ async function measureSplashTip(page) {
       : root.dataset.layoutMode === 'tablet'
         ? 0.84
         : 1;
-    const expectedExtension = window.innerHeight * 0.6 * splashScale;
+    const tipExtensionVh = Number(splash.dataset.splashTipExtension ?? 0);
+    const expectedExtension = window.innerHeight * tipExtensionVh / 100 * splashScale;
     const leftEdgeMaxX = Math.max(splashLeftTop.x, splashLeftBottom.x);
     const tipLength = Number(splash.dataset.splashTipLength ?? 100);
     const taperInset = Number(splash.dataset.splashTaperInset ?? 0);
