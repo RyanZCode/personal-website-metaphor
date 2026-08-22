@@ -6,7 +6,6 @@ const MENU_ITEMS = ['about', 'skills', 'experience', 'contact', 'memorandum', 's
 const DEFAULT_PORT = 4321;
 const SERVER_READY_TIMEOUT_MS = 45000;
 const STATE_TIMEOUT_MS = 30000;
-const SPLASH_TIP_TARGET_X_RATIO = 0.49;
 const CODEX_PLAYWRIGHT_PATH =
   'C:/Users/ryanz/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright';
 
@@ -273,25 +272,62 @@ async function measureSplashTip(page) {
   return page.evaluate(() => {
     const root = document.querySelector('[data-app-root]');
     const selectedId = root?.getAttribute('data-selected-menu-item') ?? 'unknown';
-    const front = document.querySelector('[data-paint-splash-front]');
-    if (!(front instanceof HTMLElement)) {
-      return { selectedId, tipX: 0, tipY: 0 };
+    const label = document.querySelector(`[data-menu-item="${selectedId}"] [data-menu-label]`);
+    const splash = document.querySelector('[data-paint-splash]');
+    if (!(root instanceof HTMLElement) || !(label instanceof HTMLElement) || !(splash instanceof HTMLElement)) {
+      return {
+        selectedId,
+        tipX: 0,
+        tipY: 0,
+        trajectoryMatches: false,
+        localExtension: 0,
+        expectedExtension: 0,
+      };
     }
 
-    const marker = document.createElement('span');
-    Object.assign(marker.style, {
-      position: 'absolute',
-      left: '60%',
-      top: '50%',
-      width: '1px',
-      height: '1px',
-    });
-    front.appendChild(marker);
-    const markerRect = marker.getBoundingClientRect();
-    const tipX = markerRect.left;
-    const tipY = markerRect.top;
-    marker.remove();
-    return { selectedId, tipX, tipY };
+    const createMarker = (left) => {
+      const marker = document.createElement('span');
+      Object.assign(marker.style, {
+        position: 'absolute',
+        left,
+        top: '50%',
+        width: '1px',
+        height: '1px',
+      });
+      return marker;
+    };
+    const markerCenter = (marker) => {
+      const rect = marker.getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    };
+
+    const pivotX = Number.parseFloat(splash.style.transformOrigin);
+    const splashTipMarker = createMarker('60%');
+    splash.append(splashTipMarker);
+    const splashTip = markerCenter(splashTipMarker);
+    const menuItem = label.closest('[data-menu-item]');
+    const menuTrajectory = menuItem instanceof HTMLElement
+      ? menuItem.style.transform.replace(/^translateX\([^)]*\)\s*/, '')
+      : '';
+    const splashTrajectory = splash.style.transform.replace(/^translateY\([^)]*\)\s*/, '');
+    const trajectoryMatches = menuTrajectory === splashTrajectory;
+    const localExtension = splash.offsetWidth * 0.6 - pivotX - label.offsetLeft - label.offsetWidth;
+    const splashScale = root.dataset.layoutMode === 'compact'
+      ? 0.7
+      : root.dataset.layoutMode === 'tablet'
+        ? 0.84
+        : 1;
+    const expectedExtension = window.innerHeight * 0.6 * splashScale;
+
+    splashTipMarker.remove();
+    return {
+      selectedId,
+      tipX: splashTip.x,
+      tipY: splashTip.y,
+      trajectoryMatches,
+      localExtension,
+      expectedExtension,
+    };
   });
 }
 
@@ -499,7 +535,7 @@ async function run() {
       });
     });
 
-    await test('paint splash endpoints stay aligned', async () => {
+    await test('paint splash endpoints follow menu trajectories', async () => {
       await withPage(browser, {}, async (page) => {
         await openMenu(page, server.baseUrl);
         const measurements = [];
@@ -508,14 +544,14 @@ async function run() {
           measurements.push(await measureSplashTip(page));
         }
 
-        const targetX = 1440 * SPLASH_TIP_TARGET_X_RATIO;
-        const tipPositions = measurements.map(({ tipX }) => tipX);
-        const endpointRange = Math.max(...tipPositions) - Math.min(...tipPositions);
-        assert(endpointRange < 5, `paint splash endpoints differ by ${endpointRange.toFixed(1)}px`);
-        measurements.forEach(({ selectedId, tipX }) => {
+        measurements.forEach(({ selectedId, trajectoryMatches, localExtension, expectedExtension }) => {
           assert(
-            Math.abs(tipX - targetX) < 8,
-            `${selectedId} paint splash endpoint is ${tipX.toFixed(1)}px instead of ${targetX.toFixed(1)}px`,
+            trajectoryMatches,
+            `${selectedId} paint splash does not use its menu word trajectory`,
+          );
+          assert(
+            Math.abs(localExtension - expectedExtension) < 1.5,
+            `${selectedId} paint splash extension is ${localExtension.toFixed(1)}px instead of ${expectedExtension.toFixed(1)}px`,
           );
         });
       });

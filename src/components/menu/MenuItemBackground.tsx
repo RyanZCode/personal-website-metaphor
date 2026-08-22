@@ -12,8 +12,11 @@ import {
 } from 'react';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
-import { getMenuItemScaleFactor, getMenuSplashScale } from '../../lib/menuLayout';
-import { ITEM_SCALES } from '../../lib/constants';
+import {
+  getMenuItemScaleFactor,
+  getMenuItemTrajectory,
+  getMenuSplashScale,
+} from '../../lib/menuLayout';
 import AboutTriangles from './splashEffects/AboutTriangles';
 import SkillsBands    from './splashEffects/SkillsBands';
 import ExperienceRipples  from './splashEffects/ExperienceRipples';
@@ -40,7 +43,6 @@ interface MenuItemBackgroundProps {
   accentS: string;
   accentL: string;
   splashHeightVh: number;
-  splashWidthVh: number;
   splashOffsetY: number;
   splashTipXPct: number;
   splashTaperYPct: number;
@@ -55,11 +57,11 @@ interface SplashGeometry {
   width: number;
   height: number;
   pivotX: number;
-  rotate: number;
-  rotateY: number;
+  trajectoryTransform: string;
 }
 
 const SPLASH_LEFT_VH = -17.78;
+const SPLASH_TIP_EXTENSION_VH = 60;
 const EFFECT_COMPONENTS = [
   AboutTriangles,
   SkillsBands,
@@ -79,7 +81,6 @@ function MenuItemBackground({
   accentS,
   accentL,
   splashHeightVh,
-  splashWidthVh,
   splashOffsetY,
   splashTipXPct,
   splashTaperYPct,
@@ -117,7 +118,6 @@ function MenuItemBackground({
 
     const vh = window.innerHeight / 100;
     const splashH = splashHeightVh * splashScale * vh;
-    const splashW = splashWidthVh * splashScale * vh;
     const anchorRect = anchor.getBoundingClientRect();
     const labelRect = label.getBoundingClientRect();
     const currentWrapY = Number(gsap.getProperty(wrap, 'y')) || 0;
@@ -130,16 +130,18 @@ function MenuItemBackground({
 
     const elementLeftPx = splashLeftVh * vh;
     const pivotX = leftEdgeScreen - elementLeftPx;
+    const labelEndX = label.offsetLeft + label.offsetWidth;
+    const tipExtension = SPLASH_TIP_EXTENSION_VH * splashScale * vh;
+    const splashW = (pivotX + labelEndX + tipExtension) / (splashTipXPct / 100);
 
     return {
       centerY: labelCenterY + splashOffsetY * itemScale * vh,
       width: splashW,
       height: splashH,
       pivotX,
-      rotate: ITEM_SCALES[Math.min(selectedIndex, ITEM_SCALES.length - 1)].rotate,
-      rotateY: ITEM_SCALES[Math.min(selectedIndex, ITEM_SCALES.length - 1)].rotateY,
+      trajectoryTransform: getMenuItemTrajectory(selectedIndex),
     };
-  }, [itemRefs, itemScale, layoutMode, menuScrollYVh, menuStackRef, selectedIndex, selectedItemOffsetYVh, splashHeightVh, splashLeftVh, splashOffsetY, splashScale, splashWidthVh]);
+  }, [itemRefs, itemScale, layoutMode, menuScrollYVh, menuStackRef, selectedIndex, selectedItemOffsetYVh, splashHeightVh, splashLeftVh, splashOffsetY, splashScale, splashTipXPct]);
 
   const applyGeometry = useCallback((
     geometry: SplashGeometry,
@@ -152,17 +154,12 @@ function MenuItemBackground({
     selectionSettleRef.current?.kill();
     selectionSettleRef.current = null;
 
-    gsap.set(splash, {
-      width: geometry.width,
-      height: geometry.height,
-      y: geometry.centerY - geometry.height / 2,
-      rotation: geometry.rotate,
-      rotationY: geometry.rotateY,
-      transformPerspective: '20vh',
-      transformOrigin: `${geometry.pivotX}px center`,
-      opacity: 1,
-      clearProps: 'willChange',
-    });
+    splash.style.width = `${geometry.width}px`;
+    splash.style.height = `${geometry.height}px`;
+    splash.style.transform = `translateY(${geometry.centerY - geometry.height / 2}px) ${geometry.trajectoryTransform}`;
+    splash.style.transformOrigin = `${geometry.pivotX}px center`;
+    splash.style.opacity = '1';
+    splash.style.removeProperty('will-change');
     if (!readyRef.current) {
       readyRef.current = true;
       setReady(true);
