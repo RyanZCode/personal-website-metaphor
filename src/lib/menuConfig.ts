@@ -10,6 +10,7 @@ export interface MenuItemConfig {
   accentS: string;
   accentL: string;
   splashHeightVh: number;   // height of the paint splash as % of viewport height
+  splashTipExtensionVh: number;
   splashOffsetY: number;    // vertical fine-tune in vh (positive = down)
   splashTipXPct: number;    // x% where the right edge comes to a point (default 60)
   splashTaperYPct: number;  // y% inset of shoulder points from top/bottom - higher = sharper taper (default 12)
@@ -27,6 +28,7 @@ export const MENU_ITEMS: MenuItemConfig[] = [
     accentS: '88%',
     accentL: '45%',
     splashHeightVh: 51,
+    splashTipExtensionVh: 23,
     splashOffsetY: -3.5,
     splashTipXPct: 60,
     splashTaperYPct: 36,
@@ -42,6 +44,7 @@ export const MENU_ITEMS: MenuItemConfig[] = [
     accentS: '75%',
     accentL: '50%',
     splashHeightVh: 47,
+    splashTipExtensionVh: 23,
     splashOffsetY: -1,
     splashTipXPct: 60,
     splashTaperYPct: 36,
@@ -57,6 +60,7 @@ export const MENU_ITEMS: MenuItemConfig[] = [
     accentS: '72%',
     accentL: '42%',
     splashHeightVh: 51,
+    splashTipExtensionVh: 18,
     splashOffsetY: -1.5,
     splashTipXPct: 60,
     splashTaperYPct: 36,
@@ -72,6 +76,7 @@ export const MENU_ITEMS: MenuItemConfig[] = [
     accentS: '80%',
     accentL: '50%',
     splashHeightVh: 48,
+    splashTipExtensionVh: 23,
     splashOffsetY: 2,
     splashTipXPct: 60,
     splashTaperYPct: 36,
@@ -87,6 +92,7 @@ export const MENU_ITEMS: MenuItemConfig[] = [
     accentS: '50%',
     accentL: '40%',
     splashHeightVh: 51,
+    splashTipExtensionVh: 23,
     splashOffsetY: 6,
     splashTipXPct: 60,
     splashTaperYPct: 36,
@@ -102,6 +108,7 @@ export const MENU_ITEMS: MenuItemConfig[] = [
     accentS: '55%',
     accentL: '45%',
     splashHeightVh: 46,
+    splashTipExtensionVh: 23,
     splashOffsetY: 7,
     splashTipXPct: 60,
     splashTaperYPct: 36,

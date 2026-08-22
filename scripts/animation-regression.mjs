@@ -587,11 +587,17 @@ async function run() {
           const flattenedValues = itemScales.flat().filter((scaleY) => scaleY < 0.99);
           return {
             affectedItems: itemScales.filter((scales) => scales.some((scaleY) => scaleY < 0.99)).length,
+            compressedLetters: flattenedValues.length,
+            totalLetters: itemScales.flat().length,
             uniqueScales: new Set(flattenedValues.map((scaleY) => scaleY.toFixed(2))).size,
           };
         });
 
         assert(pulse.affectedItems === MENU_ITEMS.length, `${pulse.affectedItems} menu items received a letter pulse`);
+        assert(
+          pulse.compressedLetters < pulse.totalLetters * 0.7,
+          `${pulse.compressedLetters} of ${pulse.totalLetters} letters compressed`,
+        );
         assert(pulse.uniqueScales >= 4, `letter pulse only produced ${pulse.uniqueScales} distinct scales`);
 
         const firstPulseScales = await page.evaluate(() => (
@@ -691,6 +697,15 @@ async function run() {
             `${selectedId} paint splash only tapers ${taperInset.toFixed(1)} percent vertically`,
           );
         });
+
+        const experienceExtension = measurements.find(({ selectedId }) => selectedId === 'experience')?.expectedExtension;
+        const otherExtensions = measurements
+          .filter(({ selectedId }) => selectedId !== 'experience')
+          .map(({ expectedExtension }) => expectedExtension);
+        assert(
+          experienceExtension !== undefined && experienceExtension < Math.min(...otherExtensions),
+          'Experience paint splash extension is not shorter than the other menu items',
+        );
       });
     });
 

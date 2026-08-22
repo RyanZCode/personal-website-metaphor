@@ -6,6 +6,8 @@ function randomBetween(min: number, max: number) {
   return min + Math.random() * (max - min);
 }
 
+const MENU_LETTER_PULSE_RATIO = 0.55;
+
 function toDefinedTargets(targets: gsap.TweenTarget): Element[] {
   return gsap.utils.toArray(targets).filter((target): target is Element => target instanceof Element);
 }
@@ -20,14 +22,19 @@ export function createMenuLetterPulseTimeline(menuItemEls: HTMLElement[]): gsap.
   const allChars = menuItemEls.flatMap((item) => (
     Array.from(item.querySelectorAll('[data-char]')) as HTMLElement[]
   ));
+  const pulseCharsByItem = menuItemEls.map((item) => {
+    const chars = Array.from(item.querySelectorAll('[data-char]')) as HTMLElement[];
+    const pulseCount = Math.max(1, Math.round(chars.length * MENU_LETTER_PULSE_RATIO));
+    return [...chars].sort(() => Math.random() - 0.5).slice(0, pulseCount);
+  });
+  const pulseChars = pulseCharsByItem.flat();
   const reset = () => {
     gsap.set(allChars, { scaleX: 1, scaleY: 1, clearProps: 'willChange' });
   };
   const tl = gsap.timeline({ onInterrupt: reset });
 
-  tl.set(allChars, { willChange: 'transform', transformOrigin: '50% 100%' }, 0);
-  menuItemEls.forEach((item) => {
-    const chars = Array.from(item.querySelectorAll('[data-char]')) as HTMLElement[];
+  tl.set(pulseChars, { willChange: 'transform', transformOrigin: '50% 100%' }, 0);
+  pulseCharsByItem.forEach((chars) => {
     chars.forEach((char, charIndex) => {
       const pulseScaleX = randomBetween(0.975, 0.995);
       const pulseScaleY = randomBetween(0.86, 0.97);
@@ -46,7 +53,7 @@ export function createMenuLetterPulseTimeline(menuItemEls: HTMLElement[]): gsap.
     });
   });
   tl.call(() => {
-    gsap.set(allChars, { clearProps: 'willChange' });
+    gsap.set(pulseChars, { clearProps: 'willChange' });
   });
 
   return tl;

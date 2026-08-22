@@ -42,6 +42,7 @@ interface MenuItemBackgroundProps {
   accentS: string;
   accentL: string;
   splashHeightVh: number;
+  splashTipExtensionVh: number;
   splashOffsetY: number;
   splashTipXPct: number;
   splashTaperYPct: number;
@@ -61,7 +62,6 @@ interface SplashGeometry {
   scaleX: number;
 }
 
-const SPLASH_TIP_EXTENSION_VH = 23;
 const SPLASH_LEFT_OVERSCAN_VH = 2;
 const SPLASH_TIP_LENGTH_PCT = 1;
 const EFFECT_COMPONENTS = [
@@ -91,6 +91,7 @@ function MenuItemBackground({
   accentS,
   accentL,
   splashHeightVh,
+  splashTipExtensionVh,
   splashOffsetY,
   splashTipXPct,
   splashTaperYPct,
@@ -153,7 +154,7 @@ function MenuItemBackground({
     const pivotX = (leftEdgeScreen + leftOverscan + rotatedVerticalReach) / projectedHorizontalScale;
     const elementLeftPx = leftEdgeScreen - pivotX;
     const labelEndX = label.offsetLeft + label.offsetWidth;
-    const tipExtension = SPLASH_TIP_EXTENSION_VH * splashScale * vh;
+    const tipExtension = splashTipExtensionVh * splashScale * vh;
     const splashW = (pivotX + labelEndX + tipExtension) / (splashTipXPct / 100);
 
     return {
@@ -165,7 +166,7 @@ function MenuItemBackground({
       rotation: rotation * 180 / Math.PI,
       scaleX,
     };
-  }, [itemRefs, itemScale, layoutMode, menuScrollYVh, menuStackRef, selectedIndex, selectedItemOffsetYVh, splashHeightVh, splashOffsetY, splashScale, splashTipXPct]);
+  }, [itemRefs, itemScale, layoutMode, menuScrollYVh, menuStackRef, selectedIndex, selectedItemOffsetYVh, splashHeightVh, splashOffsetY, splashScale, splashTipExtensionVh, splashTipXPct]);
 
   const applyGeometry = useCallback((geometry: SplashGeometry) => {
     const splash = splashRef.current;
@@ -306,7 +307,7 @@ function MenuItemBackground({
       data-splash-ambient-active={ambientAnimationsEnabled ? 'true' : 'false'}
       data-splash-tip-length={SPLASH_TIP_LENGTH_PCT}
       data-splash-taper-inset={splashTaperYPct}
-      data-splash-tip-extension={SPLASH_TIP_EXTENSION_VH}
+      data-splash-tip-extension={splashTipExtensionVh}
       style={{
         position: 'absolute',
         left: 0,
