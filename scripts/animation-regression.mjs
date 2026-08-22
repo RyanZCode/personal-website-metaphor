@@ -525,6 +525,27 @@ async function run() {
       });
     });
 
+    await test('splash ambience waits for selection settlement', async () => {
+      await withPage(browser, {}, async (page) => {
+        await openMenu(page, server.baseUrl);
+        await page.waitForSelector('[data-paint-splash][data-splash-ambient-active="true"]');
+
+        await page.keyboard.press('ArrowDown');
+        await page.waitForSelector('[data-paint-splash][data-splash-ambient-active="false"]');
+        await page.waitForSelector('[data-paint-splash][data-splash-ambient-active="true"]', {
+          timeout: STATE_TIMEOUT_MS,
+        });
+
+        await page.keyboard.press('ArrowDown');
+        await page.keyboard.press('ArrowDown');
+        await page.keyboard.press('ArrowDown');
+        await page.waitForSelector('[data-app-root][data-selected-menu-item="memorandum"]');
+        await page.waitForSelector('[data-paint-splash][data-splash-ambient-active="true"]', {
+          timeout: STATE_TIMEOUT_MS,
+        });
+      });
+    });
+
     await test('page enter and exit states stay coherent', async () => {
       await withPage(browser, {}, async (page) => {
         for (const id of MENU_ITEMS) {

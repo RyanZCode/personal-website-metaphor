@@ -25,7 +25,7 @@ import { createMenuSplashSelectionTimeline } from '../../lib/animations';
 
 export interface MenuSplashHandle {
   measureNow: () => void;
-  moveToSelection: (animate: boolean) => void;
+  moveToSelection: (animate: boolean, onComplete?: () => void) => void;
   pauseAmbient: () => void;
   resumeAmbient: () => void;
   resetAmbient: () => void;
@@ -36,7 +36,8 @@ interface MenuItemBackgroundProps {
   menuStackRef: RefObject<HTMLDivElement | null>;
   menuScrollViewportRef?: RefObject<HTMLDivElement | null>;
   selectedIndex: number;
-  animationsEnabled: boolean;
+  selectionAnimationsEnabled: boolean;
+  ambientAnimationsEnabled: boolean;
   accentH: number;
   accentS: string;
   accentL: string;
@@ -75,7 +76,8 @@ function MenuItemBackground({
   menuStackRef,
   menuScrollViewportRef,
   selectedIndex,
-  animationsEnabled,
+  selectionAnimationsEnabled,
+  ambientAnimationsEnabled,
   accentH,
   accentS,
   accentL,
@@ -144,7 +146,11 @@ function MenuItemBackground({
     };
   }, [itemRefs, itemScale, layoutMode, menuScrollYVh, menuStackRef, selectedIndex, selectedItemOffsetYVh, splashHeightVh, splashLeftVh, splashOffsetY, splashScale, splashWidthVh]);
 
-  const applyGeometry = useCallback((geometry: SplashGeometry, animate: boolean) => {
+  const applyGeometry = useCallback((
+    geometry: SplashGeometry,
+    animate: boolean,
+    onComplete?: () => void,
+  ) => {
     const splash = splashRef.current;
     const surface = surfaceRef.current;
     if (!splash || !surface) return;
@@ -153,7 +159,7 @@ function MenuItemBackground({
     selectionTimelineRef.current = null;
 
     const baseSize = baseSizeRef.current;
-    if (!animate || !animationsEnabled || !baseSize) {
+    if (!animate || !selectionAnimationsEnabled || !baseSize) {
       baseSizeRef.current = { width: geometry.width, height: geometry.height };
       gsap.set(splash, {
         width: geometry.width,
@@ -170,6 +176,7 @@ function MenuItemBackground({
         readyRef.current = true;
         setReady(true);
       }
+      onComplete?.();
       return;
     }
 
@@ -193,18 +200,23 @@ function MenuItemBackground({
           y: geometry.centerY - geometry.height / 2,
         });
         gsap.set(surface, { scaleX: 1, scaleY: 1 });
+        onComplete?.();
       },
     );
-  }, [animationsEnabled]);
+  }, [selectionAnimationsEnabled]);
 
   const measureNow = useCallback(() => {
     const geometry = measureGeometry();
     if (geometry) applyGeometry(geometry, false);
   }, [applyGeometry, measureGeometry]);
 
-  const moveToSelection = useCallback((animate: boolean) => {
+  const moveToSelection = useCallback((animate: boolean, onComplete?: () => void) => {
     const geometry = measureGeometry();
-    if (geometry) applyGeometry(geometry, animate);
+    if (!geometry) {
+      onComplete?.();
+      return;
+    }
+    applyGeometry(geometry, animate, onComplete);
   }, [applyGeometry, measureGeometry]);
   const measureNowRef = useRef(measureNow);
   measureNowRef.current = measureNow;
@@ -216,16 +228,16 @@ function MenuItemBackground({
       ambientAnimationsRef.current.forEach((animation) => animation.pause());
     },
     resumeAmbient: () => {
-      if (!animationsEnabled) return;
+      if (!ambientAnimationsEnabled) return;
       ambientAnimationsRef.current.forEach((animation) => animation.resume());
     },
     resetAmbient: () => {
       ambientAnimationsRef.current.forEach((animation) => {
         animation.restart();
-        if (!animationsEnabled) animation.pause();
+        if (!ambientAnimationsEnabled) animation.pause();
       });
     },
-  }), [animationsEnabled, measureNow, moveToSelection]);
+  }), [ambientAnimationsEnabled, measureNow, moveToSelection]);
 
   useLayoutEffect(() => {
     if (!readyRef.current) measureNowRef.current();
@@ -257,7 +269,7 @@ function MenuItemBackground({
 
   useGSAP(() => {
     if (!backRef.current || !frontRef.current || !effectsWrapRef.current || !effectsInnerRef.current) return;
-    if (!animationsEnabled) return;
+    if (!ambientAnimationsEnabled) return;
 
     ambientAnimationsRef.current.forEach((animation) => animation.kill());
     ambientAnimationsRef.current = [];
@@ -311,7 +323,7 @@ function MenuItemBackground({
       ambientAnimationsRef.current = [];
     };
 
-  }, { dependencies: [ready, animationsEnabled], revertOnUpdate: true });
+  }, { dependencies: [ready, ambientAnimationsEnabled], revertOnUpdate: true });
 
   const color = `hsl(${accentH}, ${accentS}, ${accentL})`;
   const clipPath = `polygon(0% 0%, ${splashTipXPct - 2}% ${splashTaperYPct}%, ${splashTipXPct}% 50%, ${splashTipXPct - 2}% ${100 - splashTaperYPct}%, 0% 100%)`;
@@ -320,6 +332,7 @@ function MenuItemBackground({
     <div
       ref={splashRef}
       data-paint-splash
+      data-splash-ambient-active={ambientAnimationsEnabled ? 'true' : 'false'}
       style={{
         position: 'absolute',
         left: `${splashLeftVh}vh`,
@@ -356,7 +369,7 @@ function MenuItemBackground({
                 <EffectComponent
                   key={selectedIndex}
                   isActive={true}
-                  animationsEnabled={animationsEnabled}
+                  animationsEnabled={ambientAnimationsEnabled}
                 />
               );
             })()}
