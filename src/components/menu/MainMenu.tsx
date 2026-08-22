@@ -819,6 +819,8 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
     const changed = prevIdx !== selectedIndex && appState === 'idle' && animationsEnabled;
     const newY = `${(2.5 - selectedIndex) * 1.5}vh`;
 
+    splashHandleRef.current?.moveToSelection(changed);
+
     MENU_ITEMS.forEach((_, i) => {
       const wrap = itemWrapRefs.current[i];
       if (!wrap) return;
@@ -924,28 +926,13 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
       }
     });
 
-    let settleRafId: number | null = null;
-    const settleStartRafId = requestAnimationFrame((startTime) => {
-      const tick = (now: number) => {
-        measureScrollWidth();
-        if (now - startTime < 280) {
-          settleRafId = requestAnimationFrame(tick);
-        } else {
-          settleRafId = null;
-          measureScrollWidth();
-        }
-      };
-
-      tick(startTime);
-    });
+    measureScrollWidth();
+    const settledMeasurement = gsap.delayedCall(0.22, measureScrollWidth);
 
     window.addEventListener('resize', measureScrollWidth);
 
     return () => {
-      cancelAnimationFrame(settleStartRafId);
-      if (settleRafId !== null) {
-        cancelAnimationFrame(settleRafId);
-      }
+      settledMeasurement.kill();
       measureScrollWidth.cancel();
       window.removeEventListener('resize', measureScrollWidth);
     };
@@ -1507,7 +1494,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
 
   useEffect(() => {
     splashHandleRef.current?.measureNow();
-  }, [selectedIndex, splashMeasureKey, viewportProfile.layoutMode, viewportProfile.orientation]);
+  }, [splashMeasureKey, viewportProfile.layoutMode, viewportProfile.orientation]);
 
   const pageVisible = appState === 'page-active' ||
     appState === 'exiting-page' ||

@@ -472,6 +472,59 @@ async function run() {
       });
     });
 
+    await test('compact menu splash stays aligned', async () => {
+      await withPage(browser, { viewport: { width: 390, height: 844 } }, async (page) => {
+        await page.goto(`${server.baseUrl}/`, { waitUntil: 'domcontentloaded' });
+        await page.getByRole('button', { name: 'Ok' }).click();
+        await waitForAppState(page, 'idle');
+
+        for (const id of MENU_ITEMS) {
+          const selected = await page.locator('[data-app-root]').getAttribute('data-selected-menu-item');
+          if (selected !== id) {
+            await page.keyboard.press('ArrowDown');
+            await page.waitForSelector(`[data-app-root][data-selected-menu-item="${id}"]`);
+            await wait(280);
+          }
+          await assertSplashAligned(page, id);
+        }
+      });
+    });
+
+    await test('menu selection uses bounded geometry reads', async () => {
+      await withPage(browser, {}, async (page) => {
+        await openMenu(page, server.baseUrl);
+        await page.evaluate(() => {
+          const original = Element.prototype.getBoundingClientRect;
+          let selectionReads = 0;
+          Element.prototype.getBoundingClientRect = function getBoundingClientRect() {
+            if (this.matches('[data-menu-anchor], [data-menu-label]')) {
+              selectionReads += 1;
+            }
+            return original.call(this);
+          };
+          window.__selectionGeometryProbe = {
+            read: () => selectionReads,
+            restore: () => {
+              Element.prototype.getBoundingClientRect = original;
+            },
+          };
+        });
+
+        await page.keyboard.press('ArrowDown');
+        await page.waitForSelector('[data-app-root][data-selected-menu-item="skills"]');
+        await wait(350);
+
+        const selectionReads = await page.evaluate(() => {
+          const reads = window.__selectionGeometryProbe?.read() ?? Number.POSITIVE_INFINITY;
+          window.__selectionGeometryProbe?.restore();
+          delete window.__selectionGeometryProbe;
+          return reads;
+        });
+
+        assert(selectionReads <= 2, `menu selection performed ${selectionReads} geometry reads`);
+      });
+    });
+
     await test('page enter and exit states stay coherent', async () => {
       await withPage(browser, {}, async (page) => {
         for (const id of MENU_ITEMS) {

@@ -1,5 +1,59 @@
 import gsap from 'gsap';
 
+export interface MenuSplashSelectionTarget {
+  y: number;
+  rotation: number;
+  rotationY: number;
+  pivotX: number;
+  scaleX: number;
+  scaleY: number;
+}
+
+export function createMenuSplashSelectionTimeline(
+  splash: HTMLElement,
+  surface: HTMLElement,
+  target: MenuSplashSelectionTarget,
+  onComplete: () => void,
+): gsap.core.Timeline {
+  const clearWillChange = () => {
+    gsap.set([splash, surface], { clearProps: 'willChange' });
+  };
+
+  const timeline = gsap.timeline({
+    onComplete: () => {
+      clearWillChange();
+      onComplete();
+    },
+    onInterrupt: clearWillChange,
+  });
+
+  timeline
+    .set([splash, surface], { willChange: 'transform' }, 0)
+    .set(splash, {
+      transformOrigin: `${target.pivotX}px center`,
+      transformPerspective: '20vh',
+      smoothOrigin: true,
+    }, 0)
+    .to(splash, {
+      y: target.y,
+      rotation: target.rotation,
+      rotationY: target.rotationY,
+      duration: 0.2,
+      ease: 'power2.inOut',
+      overwrite: 'auto',
+    }, 0)
+    .to(surface, {
+      scaleX: target.scaleX,
+      scaleY: target.scaleY,
+      duration: 0.2,
+      ease: 'power2.inOut',
+      transformOrigin: 'left center',
+      overwrite: 'auto',
+    }, 0);
+
+  return timeline;
+}
+
 type CharEntry = { char: HTMLElement; withinItemIdx: number; itemIdx: number };
 
 function toDefinedTargets(targets: gsap.TweenTarget): Element[] {
