@@ -61,7 +61,7 @@ interface SplashGeometry {
   scaleX: number;
 }
 
-const SPLASH_TIP_EXTENSION_VH = 30;
+const SPLASH_TIP_EXTENSION_VH = 26;
 const SPLASH_LEFT_OVERSCAN_VH = 2;
 const SPLASH_TIP_LENGTH_PCT = 2;
 const EFFECT_COMPONENTS = [
@@ -72,6 +72,14 @@ const EFFECT_COMPONENTS = [
   MemorandumTrapezoids,
   SystemGlitch,
 ] as const;
+
+function getRenderedTranslateY(element: HTMLElement) {
+  const transform = window.getComputedStyle(element).transform;
+  if (transform === 'none') return 0;
+
+  const values = transform.slice(transform.indexOf('(') + 1, -1).split(',').map(Number);
+  return transform.startsWith('matrix3d') ? values[13] ?? 0 : values[5] ?? 0;
+}
 
 function MenuItemBackground({
   itemRefs,
@@ -122,8 +130,8 @@ function MenuItemBackground({
     const anchorRect = anchor.getBoundingClientRect();
     const trajectoryEndRect = trajectoryEnd.getBoundingClientRect();
     const labelRect = label.getBoundingClientRect();
-    const currentWrapY = Number(gsap.getProperty(wrap, 'y')) || 0;
-    const currentMenuY = Number(gsap.getProperty(verticalTarget, 'y')) || 0;
+    const currentWrapY = getRenderedTranslateY(wrap);
+    const currentMenuY = getRenderedTranslateY(verticalTarget);
     const targetWrapY = selectedItemOffsetYVh * vh;
     const targetMenuY = menuScrollYVh * vh;
     const pendingY = targetWrapY - currentWrapY + targetMenuY - currentMenuY;

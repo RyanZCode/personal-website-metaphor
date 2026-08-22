@@ -268,6 +268,20 @@ async function assertSplashAligned(page, id) {
   );
 }
 
+async function measureSplashVerticalOffset(page, id) {
+  return page.evaluate((selectedId) => {
+    const label = document.querySelector(`[data-menu-item="${selectedId}"] [data-menu-label]`);
+    const splash = document.querySelector('[data-paint-splash]');
+    if (!(label instanceof HTMLElement) || !(splash instanceof HTMLElement)) {
+      throw new Error(`Missing label or splash for ${selectedId}`);
+    }
+
+    const labelRect = label.getBoundingClientRect();
+    const splashRect = splash.getBoundingClientRect();
+    return splashRect.top + splashRect.height / 2 - (labelRect.top + labelRect.height / 2);
+  }, id);
+}
+
 async function measureSplashTip(page) {
   return page.evaluate(() => {
     const root = document.querySelector('[data-app-root]');
@@ -598,6 +612,33 @@ async function run() {
         for (const id of MENU_ITEMS) {
           await selectMenuItem(page, id);
           await assertSplashAligned(page, id);
+        }
+      });
+    });
+
+    await test('paint splash vertical position is independent of navigation direction', async () => {
+      await withPage(browser, {}, async (page) => {
+        await openMenu(page, server.baseUrl);
+        const downOffsets = new Map();
+
+        for (const id of MENU_ITEMS.slice(1)) {
+          await page.keyboard.press('ArrowDown');
+          await page.waitForSelector(`[data-app-root][data-selected-menu-item="${id}"]`);
+          await wait(280);
+          downOffsets.set(id, await measureSplashVerticalOffset(page, id));
+        }
+
+        for (const id of MENU_ITEMS.slice(0, -1).reverse()) {
+          await page.keyboard.press('ArrowUp');
+          await page.waitForSelector(`[data-app-root][data-selected-menu-item="${id}"]`);
+          await wait(280);
+          const upOffset = await measureSplashVerticalOffset(page, id);
+          const downOffset = downOffsets.get(id);
+          if (downOffset === undefined) continue;
+          assert(
+            Math.abs(upOffset - downOffset) < 1,
+            `${id} splash moved ${Math.abs(upOffset - downOffset).toFixed(1)}px based on navigation direction`,
+          );
         }
       });
     });
