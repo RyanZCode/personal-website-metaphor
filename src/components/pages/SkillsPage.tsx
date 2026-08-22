@@ -15,6 +15,7 @@ import { useScrollHintNavigation } from '../../hooks/useScrollHintNavigation';
 interface SkillsPageProps {
   isActive: boolean;
   animationsEnabled: boolean;
+  ambientAnimationsEnabled: boolean;
   initialEntryDelaySeconds: number;
   pageState: 'entering-page' | 'page-active' | 'exiting-page';
   registerNavigation: RegisterPageNavigation;
@@ -38,6 +39,7 @@ const BOTTOM_DIAGONAL_WEDGE_CLIP_PATH = 'polygon(0 100%, 100% 0, 100% 100%)';
 export default function SkillsPage({
   isActive,
   animationsEnabled,
+  ambientAnimationsEnabled,
   initialEntryDelaySeconds,
   pageState,
   registerNavigation,
@@ -46,8 +48,8 @@ export default function SkillsPage({
   const containerRef  = useRef<HTMLElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
 
-  const bobAnim  = animationsEnabled ? 'portrait-bob 4s ease-in-out infinite' : 'none';
-  const glowAnim = animationsEnabled ? 'portrait-glow 3s ease-in-out infinite' : 'none';
+  const bobAnim  = ambientAnimationsEnabled ? 'portrait-bob 4s ease-in-out infinite' : 'none';
+  const glowAnim = ambientAnimationsEnabled ? 'portrait-glow 3s ease-in-out infinite' : 'none';
 
   usePageAnimationLifecycle({
     isActive,
@@ -80,6 +82,7 @@ export default function SkillsPage({
       ref={containerRef}
       inert={!isActive}
       data-skills-page
+      data-page-ambient={ambientAnimationsEnabled ? 'running' : 'paused'}
       style={{
         position: 'absolute',
         inset: 0,
@@ -379,7 +382,10 @@ export default function SkillsPage({
             pointerEvents: 'none',
           }}
         >
-          <SkillsBands isActive={true} animationsEnabled={animationsEnabled} />
+          <SkillsBands
+            isActive={ambientAnimationsEnabled}
+            animationsEnabled={ambientAnimationsEnabled}
+          />
         </div>
       </div>
 

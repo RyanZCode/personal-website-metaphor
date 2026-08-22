@@ -23,6 +23,7 @@ interface SystemPageProps {
   bgInverted: boolean;
   onBgInvertedChange: (inverted: boolean) => void;
   animationsEnabled: boolean;
+  ambientAnimationsEnabled: boolean;
   onAnimationsToggle: () => void;
   soundEnabled: boolean;
   onSoundToggle: () => void;
@@ -281,6 +282,7 @@ export default function SystemPage({
   bgInverted,
   onBgInvertedChange,
   animationsEnabled,
+  ambientAnimationsEnabled,
   onAnimationsToggle,
   soundEnabled,
   onSoundToggle,
@@ -304,9 +306,8 @@ export default function SystemPage({
       ? NARROW_COMPACT_SYSTEM_ROW_HEIGHT
       : COMPACT_SYSTEM_ROW_HEIGHT
     : SYSTEM_ROW_HEIGHT;
-  const glitchActive = isActive || pageState === 'entering-page';
-  const bobAnim = animationsEnabled ? 'portrait-bob 4s ease-in-out infinite' : 'none';
-  const glowAnim = animationsEnabled ? 'portrait-glow 3s ease-in-out infinite' : 'none';
+  const bobAnim = ambientAnimationsEnabled ? 'portrait-bob 4s ease-in-out infinite' : 'none';
+  const glowAnim = ambientAnimationsEnabled ? 'portrait-glow 3s ease-in-out infinite' : 'none';
   useEffect(() => {
     selectedRowIndexRef.current = selectedRowIndex;
   }, [selectedRowIndex]);
@@ -488,6 +489,8 @@ export default function SystemPage({
       ref={containerRef}
       inert={!isActive}
       data-system-layout
+      data-system-page
+      data-page-ambient={ambientAnimationsEnabled ? 'running' : 'paused'}
       style={{
         position: 'absolute',
         inset: 0,
@@ -513,7 +516,10 @@ export default function SystemPage({
           pointerEvents: 'none',
         }}
       >
-        <SystemGlitch isActive={glitchActive} animationsEnabled={animationsEnabled} />
+        <SystemGlitch
+          isActive={ambientAnimationsEnabled}
+          animationsEnabled={ambientAnimationsEnabled}
+        />
       </div>
 
       <div

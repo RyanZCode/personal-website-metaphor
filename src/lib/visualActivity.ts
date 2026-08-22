@@ -19,3 +19,7 @@ export function getVisualQuality(animationsEnabled: boolean): VisualQuality {
 export function shouldRunAmbientAnimations(activity: VisualActivity): boolean {
   return activity === 'menu';
 }
+
+export function shouldRunPageAmbientAnimations(activity: VisualActivity): boolean {
+  return activity === 'page';
+}

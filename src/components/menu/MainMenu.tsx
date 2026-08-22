@@ -36,6 +36,7 @@ import {
   getVisualActivity,
   getVisualQuality,
   shouldRunAmbientAnimations,
+  shouldRunPageAmbientAnimations,
 } from '../../lib/visualActivity';
 import { useSoundEffects } from '../../hooks/useSoundEffects';
 import { usePageShellReveal } from '../../hooks/usePageShellReveal';
@@ -1485,6 +1486,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
   const visualActivity = getVisualActivity(appState, animationsEnabled);
   const visualQuality = getVisualQuality(animationsEnabled);
   const ambientAnimationsEnabled = shouldRunAmbientAnimations(visualActivity);
+  const pageAmbientAnimationsEnabled = shouldRunPageAmbientAnimations(visualActivity);
 
   useEffect(() => {
     if (ambientAnimationsEnabled) {
@@ -1806,6 +1808,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
     <AboutPage
       isActive={appState === 'page-active'}
       animationsEnabled={animationsEnabled}
+      ambientAnimationsEnabled={pageAmbientAnimationsEnabled}
       initialEntryDelaySeconds={initialEntryDelaySeconds}
       pageState={pageAnimationState}
       registerNavigation={setPageNavigation}
@@ -1817,6 +1820,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
     <SkillsPage
       isActive={appState === 'page-active'}
       animationsEnabled={animationsEnabled}
+      ambientAnimationsEnabled={pageAmbientAnimationsEnabled}
       initialEntryDelaySeconds={initialEntryDelaySeconds}
       pageState={pageAnimationState}
       registerNavigation={setPageNavigation}
@@ -1826,6 +1830,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
     <ExperiencePage
       isActive={appState === 'page-active'}
       animationsEnabled={animationsEnabled}
+      ambientAnimationsEnabled={pageAmbientAnimationsEnabled}
       initialEntryDelaySeconds={initialEntryDelaySeconds}
       pageState={pageAnimationState}
       registerNavigation={setPageNavigation}
@@ -1835,6 +1840,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
     <ContactPage
       isActive={appState === 'page-active'}
       animationsEnabled={animationsEnabled}
+      ambientAnimationsEnabled={pageAmbientAnimationsEnabled}
       initialEntryDelaySeconds={initialEntryDelaySeconds}
       pageState={pageAnimationState}
       registerNavigation={setPageNavigation}
@@ -1846,6 +1852,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
       memorandumData={effectiveMemorandumData}
       isActive={appState === 'page-active'}
       animationsEnabled={animationsEnabled}
+      ambientAnimationsEnabled={pageAmbientAnimationsEnabled}
       initialEntryDelaySeconds={initialEntryDelaySeconds}
       pageState={pageAnimationState}
       registerNavigation={setPageNavigation}
@@ -1867,6 +1874,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
       bgInverted={bgInverted}
       onBgInvertedChange={handleBgInvertedChange}
       animationsEnabled={animationsEnabled}
+      ambientAnimationsEnabled={pageAmbientAnimationsEnabled}
       onAnimationsToggle={handleAnimationsToggle}
       soundEnabled={soundEnabled}
       onSoundToggle={handleSoundToggle}

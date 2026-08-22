@@ -7,7 +7,7 @@ const DEFAULT_PORT = 4321;
 const SERVER_READY_TIMEOUT_MS = 45000;
 const STATE_TIMEOUT_MS = 30000;
 const CODEX_PLAYWRIGHT_PATH =
-  'C:/Users/ryanz/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/.pnpm/playwright@1.60.0/node_modules/playwright';
+  'C:/Users/ryanz/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright';
 
 const require = createRequire(import.meta.url);
 
@@ -622,6 +622,29 @@ async function run() {
         await page.waitForSelector('[data-app-root][data-visual-activity="menu"][data-root-ambient="running"]');
         await enterPage(page, 'about');
         await page.waitForSelector('[data-app-root][data-visual-activity="page"][data-root-ambient="paused"]');
+      });
+    });
+
+    await test('page ambience only runs in the active state', async () => {
+      await withPage(browser, {}, async (page) => {
+        await openMenu(page, server.baseUrl);
+        await selectMenuItem(page, 'experience');
+        await page.locator('[data-menu-item="experience"]').click();
+        await page.waitForSelector('[data-app-root][data-app-state="entering-page"]');
+        await page.waitForFunction(() => Boolean(
+          document.querySelector(
+            '[data-app-root][data-app-state="entering-page"] [data-experience-page][data-page-ambient="paused"]'
+          )
+        ));
+        await page.waitForSelector('[data-app-root][data-app-state="page-active"] [data-experience-page][data-page-ambient="running"]');
+
+        await page.keyboard.press('Escape');
+        await page.waitForFunction(() => Boolean(
+          document.querySelector(
+            '[data-app-root][data-app-state="exiting-page"] [data-experience-page][data-page-ambient="paused"]'
+          )
+        ));
+        await waitForAppState(page, 'idle');
       });
     });
 
