@@ -783,6 +783,130 @@ async function run() {
       });
     });
 
+    await test('page transitions reuse cached menu character geometry', async () => {
+      await withPage(browser, {}, async (page) => {
+        await openMenu(page, server.baseUrl);
+        await page.waitForSelector('[data-app-root][data-menu-geometry-cache="ready"]');
+        await page.evaluate(() => {
+          const original = Element.prototype.getBoundingClientRect;
+          let characterReads = 0;
+          Element.prototype.getBoundingClientRect = function getBoundingClientRect() {
+            if (this.matches('[data-char]')) characterReads += 1;
+            return original.call(this);
+          };
+          window.__characterGeometryProbe = {
+            read: () => characterReads,
+            reset: () => { characterReads = 0; },
+            restore: () => {
+              Element.prototype.getBoundingClientRect = original;
+            },
+          };
+        });
+
+        await page.keyboard.press('Enter');
+        await waitForAppState(page, 'page-active');
+        const entryResult = await page.evaluate(() => ({
+          reads: window.__characterGeometryProbe?.read() ?? Number.POSITIVE_INFINITY,
+          source: document.querySelector('[data-app-root]')?.getAttribute('data-menu-geometry-source'),
+        }));
+        assert(entryResult.reads === 0, `page entry performed ${entryResult.reads} character geometry reads`);
+        assert(entryResult.source === 'cache', `page entry geometry source was ${entryResult.source}`);
+
+        await page.evaluate(() => window.__characterGeometryProbe?.reset());
+        await page.keyboard.press('Escape');
+        await waitForAppState(page, 'idle');
+        const exitReads = await page.evaluate(() => {
+          const reads = window.__characterGeometryProbe?.read() ?? Number.POSITIVE_INFINITY;
+          window.__characterGeometryProbe?.restore();
+          delete window.__characterGeometryProbe;
+          return reads;
+        });
+        assert(exitReads === 0, `menu re-entry performed ${exitReads} character geometry reads`);
+      });
+    });
+
+    await test('cached character transform bases match rendered menu transforms', async () => {
+      await withPage(browser, {}, async (page) => {
+        await openMenu(page, server.baseUrl);
+        const errors = await page.evaluate(() => (
+          Array.from(document.querySelectorAll('[data-menu-item]')).map((item) => {
+            const char = item.querySelector('[data-char]');
+            const cachedBasis = item.getAttribute('data-menu-character-basis')
+              ?.split(',')
+              .map(Number);
+            if (!(char instanceof HTMLElement) || !cachedBasis || cachedBasis.length !== 4) {
+              return Number.POSITIVE_INFINITY;
+            }
+
+            const originalTransform = char.style.transform;
+            const initial = char.getBoundingClientRect();
+            char.style.transform = 'translate(100px, 0px)';
+            const movedX = char.getBoundingClientRect();
+            char.style.transform = 'translate(0px, 100px)';
+            const movedY = char.getBoundingClientRect();
+            char.style.transform = originalTransform;
+
+            const actualBasis = [
+              (movedX.left - initial.left) / 100,
+              (movedX.top - initial.top) / 100,
+              (movedY.left - initial.left) / 100,
+              (movedY.top - initial.top) / 100,
+            ];
+
+            return Math.max(...actualBasis.map((value, index) => (
+              Math.abs(value - cachedBasis[index])
+            )));
+          })
+        ));
+
+        const maxError = Math.max(...errors);
+        assert(maxError < 0.001, `cached character transform basis differed by ${maxError.toFixed(4)}`);
+      });
+    });
+
+    await test('page entry splash wipe uses compositor transforms', async () => {
+      await withPage(browser, {}, async (page) => {
+        await openMenu(page, server.baseUrl);
+        await page.keyboard.press('Enter');
+        await page.waitForSelector('[data-app-root][data-app-state="entering-page"]');
+        await wait(300);
+
+        const wipe = await page.evaluate(() => {
+          const wrap = document.querySelector('[data-paint-splash-wrap]');
+          const content = document.querySelector('[data-paint-splash-wipe-content]');
+          if (!(wrap instanceof HTMLElement) || !(content instanceof HTMLElement)) {
+            return { ok: false };
+          }
+          const translateX = (element) => {
+            const transform = getComputedStyle(element).transform;
+            if (transform === 'none') return 0;
+            const values = transform.slice(transform.indexOf('(') + 1, -1).split(',').map(Number);
+            return transform.startsWith('matrix3d')
+              ? values[12]
+              : values[4];
+          };
+          const wrapX = translateX(wrap);
+          const contentX = translateX(content);
+          return {
+            ok: true,
+            mode: wrap.dataset.splashWipeMode,
+            inlineClipPath: wrap.style.clipPath,
+            wrapX,
+            composedX: wrapX + contentX,
+          };
+        });
+
+        assert(wipe.ok, 'transform splash wipe nodes were missing');
+        assert(wipe.mode === 'transform', `splash wipe mode was ${wipe.mode}`);
+        assert(wipe.inlineClipPath === '', `splash wipe wrote clip-path ${wipe.inlineClipPath}`);
+        assert(wipe.wrapX > 10, `splash wipe position remained ${wipe.wrapX.toFixed(1)}px`);
+        assert(
+          Math.abs(wipe.composedX) < 1,
+          `splash content shifted by ${wipe.composedX.toFixed(1)}px`,
+        );
+      });
+    });
+
     await test('splash ambience stays active through selection changes', async () => {
       await withPage(browser, {}, async (page) => {
         await openMenu(page, server.baseUrl);

@@ -1,6 +1,17 @@
 import gsap from 'gsap';
+import {
+  getMenuCharacterGeometry,
+  toLocalCharacterOffset,
+  type CachedMenuCharacter,
+  type MenuCharacterGeometry,
+} from '../menuCharacterGeometry';
 
-type CharEntry = { char: HTMLElement; withinItemIdx: number; itemIdx: number };
+type CharEntry = {
+  char: HTMLElement;
+  character: CachedMenuCharacter;
+  withinItemIdx: number;
+  itemIdx: number;
+};
 
 function randomBetween(min: number, max: number) {
   return min + Math.random() * (max - min);
@@ -16,6 +27,52 @@ function setIfPresent(targets: gsap.TweenTarget, vars: gsap.TweenVars): void {
   const elements = toDefinedTargets(targets);
   if (!elements.length) return;
   gsap.set(elements, vars);
+}
+
+function resetSplashWipe(
+  splashWrap: Element | null,
+  splashContent: Element | null,
+  opacity: number,
+) {
+  gsap.set(splashWrap, {
+    opacity,
+    xPercent: 0,
+    clearProps: 'willChange',
+    transformOrigin: 'right center',
+  });
+  gsap.set(splashContent, {
+    xPercent: 0,
+    clearProps: 'willChange',
+    transformOrigin: 'right center',
+  });
+}
+
+function appendSplashWipe(
+  timeline: gsap.core.Timeline,
+  splashWrap: Element | null,
+  splashContent: Element | null,
+  startTime: number,
+) {
+  if (!splashWrap || !splashContent) return;
+
+  const wipe = { progress: 0 };
+  const setWrapPosition = gsap.quickSetter(splashWrap, 'xPercent');
+  const setContentPosition = gsap.quickSetter(splashContent, 'xPercent');
+  timeline.to(wipe, {
+    progress: 100,
+    duration: 0.26,
+    ease: 'power2.inOut',
+    onStart: () => {
+      gsap.set([splashWrap, splashContent], { willChange: 'transform' });
+    },
+    onUpdate: () => {
+      setWrapPosition(wipe.progress);
+      setContentPosition(-wipe.progress);
+    },
+    onComplete: () => {
+      resetSplashWipe(splashWrap, splashContent, 0);
+    },
+  }, startTime);
 }
 
 export function createMenuLetterPulseTimeline(menuItemEls: HTMLElement[]): gsap.core.Timeline {
@@ -59,54 +116,28 @@ export function createMenuLetterPulseTimeline(menuItemEls: HTMLElement[]): gsap.
   return tl;
 }
 
-// Collects all chars from menu items, shuffles them within each item,
-// then displaces each char to a shared screen origin using the local transform matrix.
-// Returns the char entries in animation order.
 function collectAndDisplaceChars(
-  menuItemEls: HTMLElement[],
+  geometry: MenuCharacterGeometry,
   originX: number,
   originY: number,
 ): CharEntry[] {
-  const charEntries: CharEntry[] = [];
-  const entriesByItem: CharEntry[][] = menuItemEls.map(() => []);
-  menuItemEls.forEach((itemEl, itemIdx) => {
-    const chars = Array.from(itemEl.querySelectorAll('[data-char]')) as HTMLElement[];
-    [...chars].sort(() => Math.random() - 0.5).forEach((char, j) => {
-      const entry = { char, withinItemIdx: j, itemIdx };
-      charEntries.push(entry);
-      entriesByItem[itemIdx].push(entry);
-    });
-  });
+  const charEntries = geometry.items.flatMap((item, itemIdx) => (
+    [...item.chars]
+      .sort(() => Math.random() - 0.5)
+      .map((character, withinItemIdx) => ({
+        char: character.char,
+        character,
+        withinItemIdx,
+        itemIdx,
+      }))
+  ));
+  const offsets = charEntries.map(({ character }) => (
+    toLocalCharacterOffset(character, originX, originY)
+  ));
 
-  // Probe each item's local->screen transform matrix, then invert to get the
-  // local displacement needed to move each char to the shared screen origin.
-  menuItemEls.forEach((_, i) => {
-    const items = entriesByItem[i];
-    if (!items.length) return;
-
-    const probe = items[0].char;
-    const r0 = probe.getBoundingClientRect();
-    gsap.set(probe, { x: 100 });
-    const r1 = probe.getBoundingClientRect();
-    gsap.set(probe, { x: 0, y: 100 });
-    const r2 = probe.getBoundingClientRect();
-    gsap.set(probe, { x: 0, y: 0 });
-
-    const a = (r1.left - r0.left) / 100;
-    const b = (r2.left - r0.left) / 100;
-    const c = (r1.top  - r0.top)  / 100;
-    const d = (r2.top  - r0.top)  / 100;
-    const det = a * d - b * c;
-
-    items.forEach(({ char }) => {
-      const rect = char.getBoundingClientRect();
-      const sdx = originX - (rect.left + rect.width  / 2);
-      const sdy = originY - (rect.top  + rect.height / 2);
-      gsap.set(char, {
-        x: ( d * sdx - b * sdy) / det,
-        y: (-c * sdx + a * sdy) / det,
-      });
-    });
+  gsap.set(charEntries.map(({ char }) => char), {
+    x: (index) => offsets[index].x,
+    y: (index) => offsets[index].y,
   });
 
   return charEntries;
@@ -155,7 +186,8 @@ export function setEntryInitialStates(container: Element): void {
   setIfPresent(container.querySelectorAll('[data-char]'), { opacity: 0 });
   setIfPresent(container.querySelectorAll('[data-menu-item-wrap]'), { x: 0, y: 0 });
   setIfPresent(container.querySelector('[data-menu-index]'), { y: '1.5vh', opacity: 0 });
-  setIfPresent(container.querySelector('[data-paint-splash-wrap]'), { opacity: 0 });
+  setIfPresent(container.querySelector('[data-paint-splash-wrap]'), { opacity: 0, xPercent: 0 });
+  setIfPresent(container.querySelector('[data-paint-splash-wipe-content]'), { xPercent: 0 });
   setIfPresent(container.querySelector('[data-stats-hints]'), { y: '1.5vh', opacity: 0 });
   setIfPresent(container.querySelector('[data-control-hints-fixed]'), { y: '1vh', opacity: 0 });
 }
@@ -168,15 +200,15 @@ export function createEntryTimeline(
   const portraitWrap    = container.querySelector('[data-portrait-wrap]');
   const bgLayers        = container.querySelector('[data-bg-layers]');
   const geoOverlays     = Array.from(container.querySelectorAll('[data-geometric-overlays]'));
-  const menuItemEls     = Array.from(container.querySelectorAll('[data-menu-item]')) as HTMLElement[];
   const menuIndex       = container.querySelector('[data-menu-index]');
   const paintSplash     = container.querySelector('[data-paint-splash-wrap]');
   const statsHints      = container.querySelector('[data-stats-hints]');
   const controlHints    = container.querySelector('[data-control-hints-fixed]');
+  const geometry = getMenuCharacterGeometry(container);
 
   const originX = window.innerWidth  * 1.05;
   const originY = window.innerHeight * 0.82;
-  const charEntries = collectAndDisplaceChars(menuItemEls, originX, originY);
+  const charEntries = collectAndDisplaceChars(geometry, originX, originY);
 
   const snapAll = () => {
     charEntries.forEach(({ char }) => gsap.set(char, { x: 0, y: 0, opacity: 1 }));
@@ -201,34 +233,26 @@ export function prepareMenuReEntryInitialStates(container: Element): void {
   const menuLeft = container.querySelector('[data-menu-left]');
   const menuIndex = container.querySelector('[data-menu-index]');
   const paintSplash = container.querySelector('[data-paint-splash-wrap]');
+  const paintSplashContent = container.querySelector('[data-paint-splash-wipe-content]');
   const statsHints = container.querySelector('[data-stats-hints]');
   const controlHints = container.querySelector('[data-control-hints-fixed]');
   const portraitWrap = container.querySelector('[data-portrait-wrap]');
-  const menuItemEls = Array.from(container.querySelectorAll('[data-menu-item]')) as HTMLElement[];
   const allChars = Array.from(container.querySelectorAll('[data-char]')) as HTMLElement[];
+  const geometry = getMenuCharacterGeometry(container);
+  const anchorItem = geometry.items[2] ?? geometry.items[Math.floor(geometry.items.length / 2)];
+  const originX = anchorItem?.centerX ?? window.innerWidth * 0.25;
+  const originY = anchorItem?.centerY ?? window.innerHeight * 0.5;
 
   gsap.set(menuLeft, { x: 0, opacity: 1 });
   gsap.killTweensOf(allChars);
   gsap.set(allChars, { x: 0, y: 0, opacity: 0 });
   gsap.set(menuIndex, { y: '1.5vh', opacity: 0 });
-  gsap.set(paintSplash, { clipPath: 'inset(0 0 0 0%)', opacity: 0 });
+  resetSplashWipe(paintSplash, paintSplashContent, 0);
   gsap.set(statsHints, { y: '1.5vh', opacity: 0 });
   gsap.set(controlHints, { y: '1vh', opacity: 0 });
   gsap.set(portraitWrap, { opacity: 0 });
 
-  const anchorEl = menuItemEls[2] ?? menuItemEls[Math.floor(menuItemEls.length / 2)];
-  let originX: number;
-  let originY: number;
-  if (anchorEl) {
-    const rect = anchorEl.getBoundingClientRect();
-    originX = rect.left + rect.width / 2;
-    originY = rect.top + rect.height / 2;
-  } else {
-    originX = window.innerWidth * 0.25;
-    originY = window.innerHeight * 0.5;
-  }
-
-  collectAndDisplaceChars(menuItemEls, originX, originY);
+  collectAndDisplaceChars(geometry, originX, originY);
 }
 
 export function prefersReducedMotion(): boolean {
@@ -243,47 +267,19 @@ interface CharExitEntry {
   startTime: number;
 }
 
-// Mirror of collectAndDisplaceChars but for exit: probes each item's local->screen
-// matrix, computes local offsets that send each char to a random off-screen-left
-// target, shuffles and staggers them.
-function computeCharExitPositions(menuItemEls: HTMLElement[]): CharExitEntry[] {
+function computeCharExitPositions(geometry: MenuCharacterGeometry): CharExitEntry[] {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
-  const entries: CharExitEntry[] = [];
-
-  menuItemEls.forEach((itemEl) => {
-    const chars = Array.from(itemEl.querySelectorAll('[data-char]')) as HTMLElement[];
-    if (!chars.length) return;
-
-    const probe = chars[0];
-    const r0 = probe.getBoundingClientRect();
-    gsap.set(probe, { x: 100 });
-    const r1 = probe.getBoundingClientRect();
-    gsap.set(probe, { x: 0, y: 100 });
-    const r2 = probe.getBoundingClientRect();
-    gsap.set(probe, { x: 0, y: 0 });
-
-    const a = (r1.left - r0.left) / 100;
-    const b = (r2.left - r0.left) / 100;
-    const c = (r1.top  - r0.top)  / 100;
-    const d = (r2.top  - r0.top)  / 100;
-    const det = a * d - b * c;
-
-    chars.forEach((char) => {
-      const rect = char.getBoundingClientRect();
-      const cx = rect.left + rect.width  / 2;
-      const cy = rect.top  + rect.height / 2;
-      const targetSX = -(vw * (0.30 + Math.random() * 0.12));
-      const targetSY = cy + (Math.random() - 0.5) * vh * 0.06;
-      const sdx = targetSX - cx;
-      const sdy = targetSY - cy;
-      entries.push({
-        char,
-        localX: ( d * sdx - b * sdy) / det,
-        localY: (-c * sdx + a * sdy) / det,
-        startTime: 0,
-      });
-    });
+  const entries = geometry.chars.map((character): CharExitEntry => {
+    const targetSX = -(vw * (0.30 + Math.random() * 0.12));
+    const targetSY = character.centerY + (Math.random() - 0.5) * vh * 0.06;
+    const localOffset = toLocalCharacterOffset(character, targetSX, targetSY);
+    return {
+      char: character.char,
+      localX: localOffset.x,
+      localY: localOffset.y,
+      startTime: 0,
+    };
   });
 
   const shuffled = [...entries].sort(() => Math.random() - 0.5);
@@ -313,14 +309,15 @@ export function createPageEnterTimeline(
   const menuIndex    = container.querySelector('[data-menu-index]');
   const statsHints   = container.querySelector('[data-stats-hints]');
   const paintSplash  = container.querySelector('[data-paint-splash-wrap]');
+  const paintSplashContent = container.querySelector('[data-paint-splash-wipe-content]');
   const controlHints = container.querySelector('[data-control-hints-fixed]');
   const portraitWrap = container.querySelector('[data-portrait-wrap]');
-  const menuItemEls = Array.from(container.querySelectorAll('[data-menu-item]')) as HTMLElement[];
+  const geometry = getMenuCharacterGeometry(container);
 
-  gsap.set(paintSplash, { clipPath: 'inset(0 0 0 0%)' });
+  resetSplashWipe(paintSplash, paintSplashContent, 1);
   gsap.killTweensOf(portraitWrap);
 
-  const charExits = computeCharExitPositions(menuItemEls);
+  const charExits = computeCharExitPositions(geometry);
 
   const FLY_DUR    = 0.55;
   const FADE_DELAY = 0.08;
@@ -336,6 +333,7 @@ export function createPageEnterTimeline(
   const tl = gsap.timeline({
     onInterrupt: () => {
       interrupted = true;
+      resetSplashWipe(paintSplash, paintSplashContent, 1);
     },
   });
   const chars = charExits.map(({ char }) => char);
@@ -359,10 +357,10 @@ export function createPageEnterTimeline(
     ease: 'power1.in',
     stagger: (index) => charExits[index].startTime + FADE_DELAY,
   }, 0);
+  appendSplashWipe(tl, paintSplash, paintSplashContent, 0.20);
 
   tl.to([menuIndex, statsHints], { y: '1.5vh', opacity: 0, duration: 0.18, ease: 'power2.in' }, 0.24)
     .call(onSubtitleHide, [], 0.20)
-    .to(paintSplash,  { clipPath: 'inset(0 0 0 100%)', duration: 0.26, ease: 'power2.inOut' }, 0.20)
     .to(portraitWrap, { opacity: 0, duration: 0.22, ease: 'power2.in' }, 0.22)
     .to(controlHints, { y: '1vh', opacity: 0, duration: CONTROL_HINTS_OUT_DUR, ease: 'power2.in' }, CONTROL_HINTS_OUT_AT)
     .call(onSwitchToPageMode, [], CONTROL_HINTS_SWITCH_AT)
@@ -402,36 +400,25 @@ export function createMenuReEntryTimeline(
   const menuLeft     = container.querySelector('[data-menu-left]');
   const menuIndex    = container.querySelector('[data-menu-index]');
   const paintSplash  = container.querySelector('[data-paint-splash-wrap]');
+  const paintSplashContent = container.querySelector('[data-paint-splash-wipe-content]');
   const statsHints   = container.querySelector('[data-stats-hints]');
   const controlHints = container.querySelector('[data-control-hints-fixed]');
   const pageShell = container.querySelector('[data-page-shell]');
   const portraitWrap = container.querySelector('[data-portrait-wrap]');
-  const menuItemEls  = Array.from(container.querySelectorAll('[data-menu-item]')) as HTMLElement[];
+  const geometry = getMenuCharacterGeometry(container);
+  const anchorItem = geometry.items[2] ?? geometry.items[Math.floor(geometry.items.length / 2)];
+  const originX = anchorItem?.centerX ?? window.innerWidth * 0.25;
+  const originY = anchorItem?.centerY ?? window.innerHeight * 0.5;
 
-  // Reset menu-left to its natural x before measuring char positions.
-  // Also kill any in-flight char tweens from the page-enter animation and reset
-  // x/y so collectAndDisplaceChars gets accurate matrix measurements.
+  // Reset menu elements before applying cached re-entry offsets.
   gsap.set(menuLeft, { x: 0, opacity: 1 });
   const allCharsForReset = Array.from(container.querySelectorAll('[data-char]')) as HTMLElement[];
   gsap.killTweensOf(allCharsForReset);
   gsap.set(allCharsForReset, { x: 0, y: 0, opacity: 0 });
-  gsap.set(paintSplash, { clipPath: 'inset(0 0 0 0%)', opacity: 0 });
+  resetSplashWipe(paintSplash, paintSplashContent, 0);
   gsap.set(portraitWrap, { opacity: 0 });
 
-  // Fly chars in from the center of the Experience item (index 2, the middle of the stack)
-  const anchorEl = menuItemEls[2] ?? menuItemEls[Math.floor(menuItemEls.length / 2)];
-  let originX: number;
-  let originY: number;
-  if (anchorEl) {
-    const rect = anchorEl.getBoundingClientRect();
-    originX = rect.left + rect.width  / 2;
-    originY = rect.top  + rect.height / 2;
-  } else {
-    originX = window.innerWidth  * 0.25;
-    originY = window.innerHeight * 0.5;
-  }
-
-  const charEntries = collectAndDisplaceChars(menuItemEls, originX, originY);
+  const charEntries = collectAndDisplaceChars(geometry, originX, originY);
 
   const snapAll = () => {
     charEntries.forEach(({ char }) => gsap.set(char, { x: 0, y: 0, opacity: 1 }));
