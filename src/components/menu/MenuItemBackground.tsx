@@ -61,9 +61,9 @@ interface SplashGeometry {
   scaleX: number;
 }
 
-const SPLASH_TIP_EXTENSION_VH = 26;
+const SPLASH_TIP_EXTENSION_VH = 23;
 const SPLASH_LEFT_OVERSCAN_VH = 2;
-const SPLASH_TIP_LENGTH_PCT = 2;
+const SPLASH_TIP_LENGTH_PCT = 1;
 const EFFECT_COMPONENTS = [
   AboutTriangles,
   SkillsBands,
