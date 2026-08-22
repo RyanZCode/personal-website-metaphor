@@ -61,7 +61,7 @@ interface SplashGeometry {
   scaleX: number;
 }
 
-const SPLASH_TIP_EXTENSION_VH = 52;
+const SPLASH_TIP_EXTENSION_VH = 44;
 const SPLASH_LEFT_OVERSCAN_VH = 2;
 const SPLASH_TIP_LENGTH_PCT = 2;
 const EFFECT_COMPONENTS = [

@@ -2,6 +2,16 @@ import gsap from 'gsap';
 
 type CharEntry = { char: HTMLElement; withinItemIdx: number; itemIdx: number };
 
+const MENU_LETTER_PULSE_PATTERN = [
+  { scaleX: 0.96, scaleY: 0.82, delay: 0 },
+  { scaleX: 0.99, scaleY: 0.91, delay: 0.014 },
+  { scaleX: 0.94, scaleY: 0.75, delay: 0.006 },
+  { scaleX: 0.97, scaleY: 0.87, delay: 0.021 },
+  { scaleX: 0.95, scaleY: 0.79, delay: 0.01 },
+  { scaleX: 0.98, scaleY: 0.93, delay: 0.024 },
+  { scaleX: 0.93, scaleY: 0.76, delay: 0.003 },
+] as const;
+
 function toDefinedTargets(targets: gsap.TweenTarget): Element[] {
   return gsap.utils.toArray(targets).filter((target): target is Element => target instanceof Element);
 }
@@ -10,6 +20,43 @@ function setIfPresent(targets: gsap.TweenTarget, vars: gsap.TweenVars): void {
   const elements = toDefinedTargets(targets);
   if (!elements.length) return;
   gsap.set(elements, vars);
+}
+
+export function createMenuLetterPulseTimeline(menuItemEls: HTMLElement[]): gsap.core.Timeline {
+  const allChars = menuItemEls.flatMap((item) => (
+    Array.from(item.querySelectorAll('[data-char]')) as HTMLElement[]
+  ));
+  const reset = () => {
+    gsap.set(allChars, { scaleX: 1, scaleY: 1, clearProps: 'willChange' });
+  };
+  const tl = gsap.timeline({ onInterrupt: reset });
+
+  tl.set(allChars, { willChange: 'transform', transformOrigin: '50% 100%' }, 0);
+  menuItemEls.forEach((item, itemIndex) => {
+    const chars = Array.from(item.querySelectorAll('[data-char]')) as HTMLElement[];
+    chars.forEach((char, charIndex) => {
+      const pulse = MENU_LETTER_PULSE_PATTERN[
+        (itemIndex * 3 + charIndex) % MENU_LETTER_PULSE_PATTERN.length
+      ];
+      const start = charIndex * 0.006 + pulse.delay;
+      tl.to(char, {
+        scaleX: pulse.scaleX,
+        scaleY: pulse.scaleY,
+        duration: 0.06,
+        ease: 'power2.in',
+      }, start).to(char, {
+        scaleX: 1,
+        scaleY: 1,
+        duration: 0.12,
+        ease: 'power2.out',
+      }, start + 0.06);
+    });
+  });
+  tl.call(() => {
+    gsap.set(allChars, { clearProps: 'willChange' });
+  });
+
+  return tl;
 }
 
 // Collects all chars from menu items, shuffles them within each item,

@@ -5,6 +5,7 @@ import { COLORS } from '../../lib/constants';
 import {
   setEntryInitialStates,
   createEntryTimeline,
+  createMenuLetterPulseTimeline,
   createPageEnterTimeline,
   createMenuReEntryTimeline,
 } from '../../lib/animations';
@@ -354,6 +355,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
   const splashHandleRef = useRef<MenuSplashHandle | null>(null);
   const entryTlRef = useRef<gsap.core.Timeline | null>(null);
   const indexAnimTlRef = useRef<gsap.core.Timeline | null>(null);
+  const letterPulseTlRef = useRef<gsap.core.Timeline | null>(null);
   const pageTlRef = useRef<gsap.core.Timeline | null>(null);
   const menuEntryPerfTokenRef = useRef<string | null>(null);
   const pageEnterPerfTokenRef = useRef<string | null>(null);
@@ -473,6 +475,8 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
     return () => {
       controlHintsRevealTweenRef.current?.kill();
       controlHintsRevealTweenRef.current = null;
+      letterPulseTlRef.current?.kill();
+      letterPulseTlRef.current = null;
     };
   }, []);
 
@@ -863,31 +867,11 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
       setDisplayIndex(selectedIndex);
     }
 
+    letterPulseTlRef.current?.kill();
+    letterPulseTlRef.current = null;
     if (changed) {
-      const activeItem = itemRefs.current[selectedIndex];
-      const activeChars = activeItem
-        ? Array.from(activeItem.querySelectorAll('[data-char]')) as HTMLElement[]
-        : [];
-
-      if (activeChars.length) {
-        gsap.killTweensOf(activeChars);
-        gsap.fromTo(
-          activeChars,
-          {
-            scaleX: 1.08,
-            scaleY: 0.9,
-            transformOrigin: '50% 100%',
-          },
-          {
-            scaleX: 1,
-            scaleY: 1,
-            duration: 0.18,
-            ease: 'power2.out',
-            stagger: 0.01,
-            overwrite: 'auto',
-          },
-        );
-      }
+      const menuItems = itemRefs.current.filter((item): item is HTMLDivElement => item !== null);
+      letterPulseTlRef.current = createMenuLetterPulseTimeline(menuItems);
     }
   }, [selectedIndex, appState, animationsEnabled, viewportProfile.layoutMode]);
 
@@ -1714,7 +1698,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
         gsap.set(c.querySelector('[data-paint-splash-wrap]'),   { opacity: 1, clipPath: 'inset(0 0 0 0%)' });
         gsap.set(c.querySelector('[data-control-hints-fixed]'), { y: 0, opacity: 1 });
         gsap.set(c.querySelector('[data-portrait-wrap]'),       { y: 0, opacity: 1 });
-        gsap.set(c.querySelectorAll('[data-char]'),             { x: 0, y: 0, opacity: 1 });
+        gsap.set(c.querySelectorAll('[data-char]'),             { x: 0, y: 0, scaleX: 1, scaleY: 1, opacity: 1 });
       }
       setSubtitleVisible(true);
       setHintsMode('menu');

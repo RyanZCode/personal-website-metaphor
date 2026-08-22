@@ -555,6 +555,43 @@ async function run() {
       });
     });
 
+    await test('menu selection pulses individual letters unevenly', async () => {
+      await withPage(browser, {}, async (page) => {
+        await openMenu(page, server.baseUrl);
+        await page.keyboard.press('ArrowDown');
+        await page.waitForSelector('[data-app-root][data-selected-menu-item="skills"]');
+        await wait(55);
+
+        const pulse = await page.evaluate(() => {
+          const items = Array.from(document.querySelectorAll('[data-menu-item]'));
+          const itemScales = items.map((item) => (
+            Array.from(item.querySelectorAll('[data-char]')).map((char) => {
+              const transform = getComputedStyle(char).transform;
+              return transform === 'none' ? 1 : new DOMMatrix(transform).d;
+            })
+          ));
+          const flattenedValues = itemScales.flat().filter((scaleY) => scaleY < 0.99);
+          return {
+            affectedItems: itemScales.filter((scales) => scales.some((scaleY) => scaleY < 0.99)).length,
+            uniqueScales: new Set(flattenedValues.map((scaleY) => scaleY.toFixed(2))).size,
+          };
+        });
+
+        assert(pulse.affectedItems === MENU_ITEMS.length, `${pulse.affectedItems} menu items received a letter pulse`);
+        assert(pulse.uniqueScales >= 4, `letter pulse only produced ${pulse.uniqueScales} distinct scales`);
+
+        await wait(320);
+        const maxSettledDelta = await page.evaluate(() => (
+          Math.max(...Array.from(document.querySelectorAll('[data-char]')).map((char) => {
+            const transform = getComputedStyle(char).transform;
+            const scaleY = transform === 'none' ? 1 : new DOMMatrix(transform).d;
+            return Math.abs(scaleY - 1);
+          }))
+        ));
+        assert(maxSettledDelta < 0.01, `letter pulse settled ${maxSettledDelta.toFixed(3)} away from its base scale`);
+      });
+    });
+
     await test('paint splash stays aligned for every menu item', async () => {
       await withPage(browser, {}, async (page) => {
         await openMenu(page, server.baseUrl);
