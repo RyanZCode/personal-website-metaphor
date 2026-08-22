@@ -430,6 +430,29 @@ async function run() {
       });
     });
 
+    await test('performance debugging records direct page entry', async () => {
+      await withPage(browser, {}, async (page) => {
+        await page.goto(`${server.baseUrl}/experience?perf=1`, { waitUntil: 'domcontentloaded' });
+        await waitForAppState(page, 'page-active');
+        await page.waitForFunction(() => (
+          window.__portfolioPerf?.report().spans.some((span) => span.name === 'page-animation-entry')
+        ), null, { timeout: STATE_TIMEOUT_MS });
+
+        const result = await page.evaluate(() => {
+          const report = window.__portfolioPerf?.report();
+          return {
+            spanNames: report?.spans.map((span) => span.name) ?? [],
+            markNames: report?.samples
+              .filter((sample) => sample.kind === 'mark')
+              .map((sample) => sample.name) ?? [],
+          };
+        });
+
+        assert(result.spanNames.includes('page-animation-entry'), 'direct page animation span was not recorded');
+        assert(result.markNames.includes('page-content-committed'), 'direct page commit mark was not recorded');
+      });
+    });
+
     await test('keyboard selection changes active menu item', async () => {
       await withPage(browser, {}, async (page) => {
         await openMenu(page, server.baseUrl);
