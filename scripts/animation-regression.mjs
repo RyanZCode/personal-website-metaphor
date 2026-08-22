@@ -594,6 +594,10 @@ async function run() {
         assert(pulse.affectedItems === MENU_ITEMS.length, `${pulse.affectedItems} menu items received a letter pulse`);
         assert(pulse.uniqueScales >= 4, `letter pulse only produced ${pulse.uniqueScales} distinct scales`);
 
+        const firstPulseScales = await page.evaluate(() => (
+          Array.from(document.querySelectorAll('[data-char]')).map((char) => getComputedStyle(char).transform)
+        ));
+
         await wait(320);
         const maxSettledDelta = await page.evaluate(() => (
           Math.max(...Array.from(document.querySelectorAll('[data-char]')).map((char) => {
@@ -603,6 +607,15 @@ async function run() {
           }))
         ));
         assert(maxSettledDelta < 0.01, `letter pulse settled ${maxSettledDelta.toFixed(3)} away from its base scale`);
+
+        await page.keyboard.press('ArrowDown');
+        await page.waitForSelector('[data-app-root][data-selected-menu-item="experience"]');
+        await wait(55);
+        const secondPulseScales = await page.evaluate(() => (
+          Array.from(document.querySelectorAll('[data-char]')).map((char) => getComputedStyle(char).transform)
+        ));
+        const changedScaleCount = secondPulseScales.filter((scale, index) => scale !== firstPulseScales[index]).length;
+        assert(changedScaleCount > 10, `only ${changedScaleCount} letters received a new random compression profile`);
       });
     });
 

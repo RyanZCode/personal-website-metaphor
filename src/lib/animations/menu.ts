@@ -2,15 +2,9 @@ import gsap from 'gsap';
 
 type CharEntry = { char: HTMLElement; withinItemIdx: number; itemIdx: number };
 
-const MENU_LETTER_PULSE_PATTERN = [
-  { scaleX: 0.985, scaleY: 0.9, delay: 0 },
-  { scaleX: 0.995, scaleY: 0.96, delay: 0.014 },
-  { scaleX: 0.975, scaleY: 0.86, delay: 0.006 },
-  { scaleX: 0.985, scaleY: 0.93, delay: 0.021 },
-  { scaleX: 0.98, scaleY: 0.89, delay: 0.01 },
-  { scaleX: 0.99, scaleY: 0.97, delay: 0.024 },
-  { scaleX: 0.975, scaleY: 0.88, delay: 0.003 },
-] as const;
+function randomBetween(min: number, max: number) {
+  return min + Math.random() * (max - min);
+}
 
 function toDefinedTargets(targets: gsap.TweenTarget): Element[] {
   return gsap.utils.toArray(targets).filter((target): target is Element => target instanceof Element);
@@ -32,16 +26,15 @@ export function createMenuLetterPulseTimeline(menuItemEls: HTMLElement[]): gsap.
   const tl = gsap.timeline({ onInterrupt: reset });
 
   tl.set(allChars, { willChange: 'transform', transformOrigin: '50% 100%' }, 0);
-  menuItemEls.forEach((item, itemIndex) => {
+  menuItemEls.forEach((item) => {
     const chars = Array.from(item.querySelectorAll('[data-char]')) as HTMLElement[];
     chars.forEach((char, charIndex) => {
-      const pulse = MENU_LETTER_PULSE_PATTERN[
-        (itemIndex * 3 + charIndex) % MENU_LETTER_PULSE_PATTERN.length
-      ];
-      const start = charIndex * 0.006 + pulse.delay;
+      const pulseScaleX = randomBetween(0.975, 0.995);
+      const pulseScaleY = randomBetween(0.86, 0.97);
+      const start = charIndex * 0.006 + randomBetween(0, 0.024);
       tl.to(char, {
-        scaleX: pulse.scaleX,
-        scaleY: pulse.scaleY,
+        scaleX: pulseScaleX,
+        scaleY: pulseScaleY,
         duration: 0.06,
         ease: 'power2.in',
       }, start).to(char, {
