@@ -14,7 +14,6 @@ import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import {
   getMenuItemScaleFactor,
-  getMenuItemTrajectory,
   getMenuSplashScale,
 } from '../../lib/menuLayout';
 import AboutTriangles from './splashEffects/AboutTriangles';
@@ -27,7 +26,7 @@ import { rafThrottle } from '../../lib/rafThrottle';
 
 export interface MenuSplashHandle {
   measureNow: () => void;
-  moveToSelection: (settleSelection: boolean, onComplete?: () => void) => void;
+  moveToSelection: () => void;
   pauseAmbient: () => void;
   resumeAmbient: () => void;
   resetAmbient: () => void;
@@ -57,7 +56,8 @@ interface SplashGeometry {
   width: number;
   height: number;
   pivotX: number;
-  trajectoryTransform: string;
+  rotation: number;
+  scaleX: number;
 }
 
 const SPLASH_LEFT_VH = -17.78;
@@ -101,31 +101,39 @@ function MenuItemBackground({
   const effectsWrapRef  = useRef<HTMLDivElement>(null); // mirrors frontRef scaleX so clipPath tracks the right edge
   const effectsInnerRef = useRef<HTMLDivElement>(null); // counter-scales to keep effect content positions stable
   const ambientAnimationsRef = useRef<gsap.core.Animation[]>([]);
-  const selectionSettleRef = useRef<gsap.core.Tween | null>(null);
   const readyRef = useRef(false);
 
   const measureGeometry = useCallback((): SplashGeometry | null => {
     const el = itemRefs.current[selectedIndex];
     if (!el) return null;
     const anchor = el.querySelector('[data-menu-anchor]') as HTMLElement | null;
+    const trajectoryEnd = el.querySelector('[data-menu-trajectory-end]') as HTMLElement | null;
     const label = el.querySelector('[data-menu-label]') as HTMLElement | null;
     const wrap = el.closest('[data-menu-item-wrap]') as HTMLElement | null;
     const menuStack = menuStackRef.current;
     const verticalTarget = layoutMode === 'compact'
       ? menuStack?.closest('[data-menu-scroll-overlay]') as HTMLElement | null
       : menuStack?.closest('[data-menu-left]') as HTMLElement | null;
-    if (!anchor || !label || !wrap || !verticalTarget) return null;
+    if (!anchor || !trajectoryEnd || !label || !wrap || !verticalTarget) return null;
 
     const vh = window.innerHeight / 100;
     const splashH = splashHeightVh * splashScale * vh;
     const anchorRect = anchor.getBoundingClientRect();
+    const trajectoryEndRect = trajectoryEnd.getBoundingClientRect();
     const labelRect = label.getBoundingClientRect();
     const currentWrapY = Number(gsap.getProperty(wrap, 'y')) || 0;
     const currentMenuY = Number(gsap.getProperty(verticalTarget, 'y')) || 0;
     const targetWrapY = selectedItemOffsetYVh * vh;
     const targetMenuY = menuScrollYVh * vh;
     const pendingY = targetWrapY - currentWrapY + targetMenuY - currentMenuY;
-    const leftEdgeScreen = anchorRect.left;
+    const trajectoryStartX = anchorRect.left + anchorRect.width / 2;
+    const trajectoryStartY = anchorRect.top + anchorRect.height / 2;
+    const trajectoryEndX = trajectoryEndRect.left + trajectoryEndRect.width / 2;
+    const trajectoryEndY = trajectoryEndRect.top + trajectoryEndRect.height / 2;
+    const trajectoryX = trajectoryEndX - trajectoryStartX;
+    const trajectoryY = trajectoryEndY - trajectoryStartY;
+    const trajectoryLength = Math.hypot(trajectoryX, trajectoryY);
+    const leftEdgeScreen = trajectoryStartX;
     const labelCenterY = labelRect.top + labelRect.height / 2 + pendingY;
 
     const elementLeftPx = splashLeftVh * vh;
@@ -139,24 +147,18 @@ function MenuItemBackground({
       width: splashW,
       height: splashH,
       pivotX,
-      trajectoryTransform: getMenuItemTrajectory(selectedIndex),
+      rotation: Math.atan2(trajectoryY, trajectoryX) * 180 / Math.PI,
+      scaleX: trajectoryLength / el.offsetWidth,
     };
   }, [itemRefs, itemScale, layoutMode, menuScrollYVh, menuStackRef, selectedIndex, selectedItemOffsetYVh, splashHeightVh, splashLeftVh, splashOffsetY, splashScale, splashTipXPct]);
 
-  const applyGeometry = useCallback((
-    geometry: SplashGeometry,
-    settleSelection: boolean,
-    onComplete?: () => void,
-  ) => {
+  const applyGeometry = useCallback((geometry: SplashGeometry) => {
     const splash = splashRef.current;
     if (!splash) return;
 
-    selectionSettleRef.current?.kill();
-    selectionSettleRef.current = null;
-
     splash.style.width = `${geometry.width}px`;
     splash.style.height = `${geometry.height}px`;
-    splash.style.transform = `translateY(${geometry.centerY - geometry.height / 2}px) ${geometry.trajectoryTransform}`;
+    splash.style.transform = `translateY(${geometry.centerY - geometry.height / 2}px) rotate(${geometry.rotation}deg) scaleX(${geometry.scaleX})`;
     splash.style.transformOrigin = `${geometry.pivotX}px center`;
     splash.style.opacity = '1';
     splash.style.removeProperty('will-change');
@@ -164,30 +166,16 @@ function MenuItemBackground({
       readyRef.current = true;
       setReady(true);
     }
-
-    if (!settleSelection) {
-      onComplete?.();
-      return;
-    }
-
-    selectionSettleRef.current = gsap.delayedCall(0.2, () => {
-      selectionSettleRef.current = null;
-      onComplete?.();
-    });
   }, []);
 
   const measureNow = useCallback(() => {
     const geometry = measureGeometry();
-    if (geometry) applyGeometry(geometry, false);
+    if (geometry) applyGeometry(geometry);
   }, [applyGeometry, measureGeometry]);
 
-  const moveToSelection = useCallback((settleSelection: boolean, onComplete?: () => void) => {
+  const moveToSelection = useCallback(() => {
     const geometry = measureGeometry();
-    if (!geometry) {
-      onComplete?.();
-      return;
-    }
-    applyGeometry(geometry, settleSelection, onComplete);
+    if (geometry) applyGeometry(geometry);
   }, [applyGeometry, measureGeometry]);
   const measureNowRef = useRef(measureNow);
   measureNowRef.current = measureNow;
@@ -232,11 +220,6 @@ function MenuItemBackground({
   useEffect(() => {
     if (readyRef.current) measureNowRef.current();
   }, [layoutMode, measureKey]);
-
-  useEffect(() => () => {
-    selectionSettleRef.current?.kill();
-    selectionSettleRef.current = null;
-  }, []);
 
   useGSAP(() => {
     if (!backRef.current || !frontRef.current || !effectsWrapRef.current || !effectsInnerRef.current) return;

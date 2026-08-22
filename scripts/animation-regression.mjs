@@ -279,7 +279,8 @@ async function measureSplashTip(page) {
         selectedId,
         tipX: 0,
         tipY: 0,
-        trajectoryMatches: false,
+        angleDelta: 360,
+        scaleDelta: Number.POSITIVE_INFINITY,
         localExtension: 0,
         expectedExtension: 0,
       };
@@ -302,15 +303,29 @@ async function measureSplashTip(page) {
     };
 
     const pivotX = Number.parseFloat(splash.style.transformOrigin);
+    const splashStartMarker = createMarker(`${pivotX}px`);
     const splashTipMarker = createMarker('60%');
-    splash.append(splashTipMarker);
+    splash.append(splashStartMarker, splashTipMarker);
+    const splashStart = markerCenter(splashStartMarker);
     const splashTip = markerCenter(splashTipMarker);
     const menuItem = label.closest('[data-menu-item]');
-    const menuTrajectory = menuItem instanceof HTMLElement
-      ? menuItem.style.transform.replace(/^translateX\([^)]*\)\s*/, '')
-      : '';
-    const splashTrajectory = splash.style.transform.replace(/^translateY\([^)]*\)\s*/, '');
-    const trajectoryMatches = menuTrajectory === splashTrajectory;
+    const menuStartMarker = menuItem?.querySelector('[data-menu-anchor]');
+    const menuEndMarker = menuItem?.querySelector('[data-menu-trajectory-end]');
+    const menuStart = menuStartMarker instanceof HTMLElement ? markerCenter(menuStartMarker) : { x: 0, y: 0 };
+    const menuEnd = menuEndMarker instanceof HTMLElement ? markerCenter(menuEndMarker) : { x: 0, y: 0 };
+    const splashX = splashTip.x - splashStart.x;
+    const splashY = splashTip.y - splashStart.y;
+    const menuX = menuEnd.x - menuStart.x;
+    const menuY = menuEnd.y - menuStart.y;
+    const splashAngle = Math.atan2(splashY, splashX);
+    const menuAngle = Math.atan2(menuY, menuX);
+    const rawAngleDelta = Math.abs((splashAngle - menuAngle) * 180 / Math.PI);
+    const angleDelta = Math.min(rawAngleDelta, 360 - rawAngleDelta);
+    const splashScaleX = Math.hypot(splashX, splashY) / (splash.offsetWidth * 0.6 - pivotX);
+    const menuScaleX = menuItem instanceof HTMLElement
+      ? Math.hypot(menuX, menuY) / menuItem.offsetWidth
+      : 0;
+    const scaleDelta = Math.abs(splashScaleX - menuScaleX);
     const localExtension = splash.offsetWidth * 0.6 - pivotX - label.offsetLeft - label.offsetWidth;
     const splashScale = root.dataset.layoutMode === 'compact'
       ? 0.7
@@ -319,12 +334,14 @@ async function measureSplashTip(page) {
         : 1;
     const expectedExtension = window.innerHeight * 0.6 * splashScale;
 
+    splashStartMarker.remove();
     splashTipMarker.remove();
     return {
       selectedId,
       tipX: splashTip.x,
       tipY: splashTip.y,
-      trajectoryMatches,
+      angleDelta,
+      scaleDelta,
       localExtension,
       expectedExtension,
     };
@@ -544,10 +561,14 @@ async function run() {
           measurements.push(await measureSplashTip(page));
         }
 
-        measurements.forEach(({ selectedId, trajectoryMatches, localExtension, expectedExtension }) => {
+        measurements.forEach(({ selectedId, angleDelta, scaleDelta, localExtension, expectedExtension }) => {
           assert(
-            trajectoryMatches,
-            `${selectedId} paint splash does not use its menu word trajectory`,
+            angleDelta < 0.1,
+            `${selectedId} paint splash differs from its word trajectory by ${angleDelta.toFixed(2)} degrees`,
+          );
+          assert(
+            scaleDelta < 0.002,
+            `${selectedId} paint splash trajectory scale differs by ${scaleDelta.toFixed(3)}`,
           );
           assert(
             Math.abs(localExtension - expectedExtension) < 1.5,
@@ -603,7 +624,7 @@ async function run() {
           const original = Element.prototype.getBoundingClientRect;
           let selectionReads = 0;
           Element.prototype.getBoundingClientRect = function getBoundingClientRect() {
-            if (this.matches('[data-menu-anchor], [data-menu-label]')) {
+            if (this.matches('[data-menu-anchor], [data-menu-trajectory-end], [data-menu-label]')) {
               selectionReads += 1;
             }
             return original.call(this);
@@ -627,17 +648,17 @@ async function run() {
           return reads;
         });
 
-        assert(selectionReads <= 2, `menu selection performed ${selectionReads} geometry reads`);
+        assert(selectionReads <= 3, `menu selection performed ${selectionReads} geometry reads`);
       });
     });
 
-    await test('splash ambience waits for selection settlement', async () => {
+    await test('splash ambience stays active through selection changes', async () => {
       await withPage(browser, {}, async (page) => {
         await openMenu(page, server.baseUrl);
         await page.waitForSelector('[data-paint-splash][data-splash-ambient-active="true"]');
 
         await page.keyboard.press('ArrowDown');
-        await page.waitForSelector('[data-paint-splash][data-splash-ambient-active="false"]');
+        await page.waitForSelector('[data-app-root][data-selected-menu-item="skills"]');
         await page.waitForSelector('[data-paint-splash][data-splash-ambient-active="true"]', {
           timeout: STATE_TIMEOUT_MS,
         });

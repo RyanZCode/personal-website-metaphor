@@ -334,7 +334,6 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
   const [soundEnabled, setSoundEnabled] = useState(initialClientPreferencesRef.current.soundEnabled);
   const [supportsHoverPointer, setSupportsHoverPointer] = useState(false);
   const [splashMeasureKey, setSplashMeasureKey] = useState(0);
-  const [splashAmbientIndex, setSplashAmbientIndex] = useState(initialSelectedIndex);
   const [hintsMode, setHintsMode] = useState<'menu' | 'page'>(
     shouldMountPageDirectOnLoadRef.current ? 'page' : 'menu'
   );
@@ -821,9 +820,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
     const changed = prevIdx !== selectedIndex && appState === 'idle' && animationsEnabled;
     const newY = `${(2.5 - selectedIndex) * 1.5}vh`;
 
-    splashHandleRef.current?.moveToSelection(changed, () => {
-      setSplashAmbientIndex(selectedIndex);
-    });
+    splashHandleRef.current?.moveToSelection();
 
     MENU_ITEMS.forEach((_, i) => {
       const wrap = itemWrapRefs.current[i];
@@ -2047,7 +2044,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
           menuStackRef={menuStackRef}
           menuScrollViewportRef={menuScrollViewportRef}
           selectedIndex={selectedIndex}
-          ambientAnimationsEnabled={ambientAnimationsEnabled && splashAmbientIndex === selectedIndex}
+          ambientAnimationsEnabled={ambientAnimationsEnabled}
           accentH={activeItem.accentH}
           accentS={activeItem.accentS}
           accentL={activeItem.accentL}

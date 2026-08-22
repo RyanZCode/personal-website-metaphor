@@ -67,6 +67,20 @@ const MenuItem = memo(forwardRef<HTMLDivElement, MenuItemProps>(
           }}
         />
         <span
+          data-menu-trajectory-end
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            left: '100%',
+            top: '50%',
+            width: '1px',
+            height: '1px',
+            transform: 'translateY(-50%)',
+            pointerEvents: 'none',
+            opacity: 0,
+          }}
+        />
+        <span
           data-menu-label
           style={{
           display: 'inline-block',

@@ -27,7 +27,7 @@ export const MENU_ITEMS: MenuItemConfig[] = [
     accentS: '88%',
     accentL: '45%',
     splashHeightVh: 40,
-    splashOffsetY: -3,
+    splashOffsetY: -4,
     splashTipXPct: 60,
     splashTaperYPct: 12,
   },
