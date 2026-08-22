@@ -63,7 +63,7 @@ interface SplashGeometry {
 
 const SPLASH_TIP_EXTENSION_VH = 60;
 const SPLASH_LEFT_OVERSCAN_VH = 2;
-const SPLASH_TAPER_LENGTH_PCT = 10;
+const SPLASH_TIP_LENGTH_PCT = 2;
 const EFFECT_COMPONENTS = [
   AboutTriangles,
   SkillsBands,
@@ -288,7 +288,7 @@ function MenuItemBackground({
   }, { dependencies: [ready, ambientAnimationsEnabled], revertOnUpdate: true });
 
   const color = `hsl(${accentH}, ${accentS}, ${accentL})`;
-  const taperStartXPct = splashTipXPct - SPLASH_TAPER_LENGTH_PCT;
+  const taperStartXPct = splashTipXPct - SPLASH_TIP_LENGTH_PCT;
   const clipPath = `polygon(0% 0%, ${taperStartXPct}% ${splashTaperYPct}%, ${splashTipXPct}% 50%, ${taperStartXPct}% ${100 - splashTaperYPct}%, 0% 100%)`;
 
   return (
@@ -296,7 +296,8 @@ function MenuItemBackground({
       ref={splashRef}
       data-paint-splash
       data-splash-ambient-active={ambientAnimationsEnabled ? 'true' : 'false'}
-      data-splash-taper-length={SPLASH_TAPER_LENGTH_PCT}
+      data-splash-tip-length={SPLASH_TIP_LENGTH_PCT}
+      data-splash-taper-inset={splashTaperYPct}
       style={{
         position: 'absolute',
         left: 0,

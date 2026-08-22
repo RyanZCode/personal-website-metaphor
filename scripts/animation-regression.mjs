@@ -338,7 +338,8 @@ async function measureSplashTip(page) {
         : 1;
     const expectedExtension = window.innerHeight * 0.6 * splashScale;
     const leftEdgeMaxX = Math.max(splashLeftTop.x, splashLeftBottom.x);
-    const taperLength = Number(splash.dataset.splashTaperLength ?? 0);
+    const tipLength = Number(splash.dataset.splashTipLength ?? 100);
+    const taperInset = Number(splash.dataset.splashTaperInset ?? 0);
 
     splashLeftTopMarker.remove();
     splashLeftBottomMarker.remove();
@@ -353,7 +354,8 @@ async function measureSplashTip(page) {
       localExtension,
       expectedExtension,
       leftEdgeMaxX,
-      taperLength,
+      tipLength,
+      taperInset,
     };
   });
 }
@@ -571,7 +573,7 @@ async function run() {
           measurements.push(await measureSplashTip(page));
         }
 
-        measurements.forEach(({ selectedId, angleDelta, scaleDelta, localExtension, expectedExtension, leftEdgeMaxX, taperLength }) => {
+        measurements.forEach(({ selectedId, angleDelta, scaleDelta, localExtension, expectedExtension, leftEdgeMaxX, tipLength, taperInset }) => {
           assert(
             angleDelta < 0.1,
             `${selectedId} paint splash differs from its word trajectory by ${angleDelta.toFixed(2)} degrees`,
@@ -589,8 +591,12 @@ async function run() {
             `${selectedId} paint splash leaves a ${leftEdgeMaxX.toFixed(1)}px gap at the left edge`,
           );
           assert(
-            taperLength >= 8,
-            `${selectedId} paint splash taper is only ${taperLength.toFixed(1)} percent long`,
+            tipLength <= 3,
+            `${selectedId} paint splash tip is ${tipLength.toFixed(1)} percent long`,
+          );
+          assert(
+            taperInset >= 30,
+            `${selectedId} paint splash only tapers ${taperInset.toFixed(1)} percent vertically`,
           );
         });
       });

@@ -29,7 +29,7 @@ export const MENU_ITEMS: MenuItemConfig[] = [
     splashHeightVh: 40,
     splashOffsetY: -4,
     splashTipXPct: 60,
-    splashTaperYPct: 12,
+    splashTaperYPct: 33,
   },
   {
     id: 'skills',
@@ -44,7 +44,7 @@ export const MENU_ITEMS: MenuItemConfig[] = [
     splashHeightVh: 36,
     splashOffsetY: -1,
     splashTipXPct: 60,
-    splashTaperYPct: 12,
+    splashTaperYPct: 33,
   },
   {
     id: 'experience',
@@ -59,7 +59,7 @@ export const MENU_ITEMS: MenuItemConfig[] = [
     splashHeightVh: 40,
     splashOffsetY: -1.5,
     splashTipXPct: 60,
-    splashTaperYPct: 12,
+    splashTaperYPct: 33,
   },
   {
     id: 'contact',
@@ -74,7 +74,7 @@ export const MENU_ITEMS: MenuItemConfig[] = [
     splashHeightVh: 32,
     splashOffsetY: 2,
     splashTipXPct: 60,
-    splashTaperYPct: 12,
+    splashTaperYPct: 33,
   },
   {
     id: 'memorandum',
@@ -89,7 +89,7 @@ export const MENU_ITEMS: MenuItemConfig[] = [
     splashHeightVh: 35,
     splashOffsetY: 6,
     splashTipXPct: 60,
-    splashTaperYPct: 12,
+    splashTaperYPct: 33,
   },
   {
     id: 'system',
@@ -104,6 +104,6 @@ export const MENU_ITEMS: MenuItemConfig[] = [
     splashHeightVh: 30,
     splashOffsetY: 7,
     splashTipXPct: 60,
-    splashTaperYPct: 12,
+    splashTaperYPct: 33,
   },
 ];
