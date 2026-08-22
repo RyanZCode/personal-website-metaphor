@@ -61,7 +61,7 @@ interface SplashGeometry {
   scaleX: number;
 }
 
-const SPLASH_TIP_EXTENSION_VH = 44;
+const SPLASH_TIP_EXTENSION_VH = 30;
 const SPLASH_LEFT_OVERSCAN_VH = 2;
 const SPLASH_TIP_LENGTH_PCT = 2;
 const EFFECT_COMPONENTS = [
@@ -238,7 +238,7 @@ function MenuItemBackground({
 
     // --- Back layer: slow bloom ---
     const backTween = gsap.to(backRef.current, {
-      opacity: 0.1, scale: 1.12,
+      opacity: 0.1, scale: 1.06,
       duration: 2, ease: 'sine.inOut', repeat: -1, yoyo: true,
       transformOrigin: 'left center',
     });
@@ -249,22 +249,22 @@ function MenuItemBackground({
     const tl = gsap.timeline({ repeat: -1 });
 
     tl.to([frontRef.current, effectsWrapRef.current], {
-        scaleX: 1.1, scaleY: 1.02,
+        scaleX: 1.045, scaleY: 1.015,
         duration: 1.2, ease: 'power2.out', transformOrigin: 'left center',
       })
       .to(frontRef.current, { opacity: 0.9, duration: 1.2, ease: 'power2.out' }, '<')
       .to(effectsInnerRef.current, {
-        scaleX: 1 / 1.1, scaleY: 1 / 1.02,
+        scaleX: 1 / 1.045, scaleY: 1 / 1.015,
         duration: 1.2, ease: 'power2.out', transformOrigin: 'left center',
       }, '<')
 
       .to([frontRef.current, effectsWrapRef.current], {
-        scaleX: 0.96, scaleY: 0.99,
+        scaleX: 0.985, scaleY: 0.995,
         duration: 2, ease: 'sine.inOut', transformOrigin: 'left center',
       })
       .to(frontRef.current, { opacity: 1, duration: 2, ease: 'sine.inOut' }, '<')
       .to(effectsInnerRef.current, {
-        scaleX: 1 / 0.96, scaleY: 1 / 0.99,
+        scaleX: 1 / 0.985, scaleY: 1 / 0.995,
         duration: 2, ease: 'sine.inOut', transformOrigin: 'left center',
       }, '<')
 

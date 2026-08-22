@@ -3,13 +3,13 @@ import gsap from 'gsap';
 type CharEntry = { char: HTMLElement; withinItemIdx: number; itemIdx: number };
 
 const MENU_LETTER_PULSE_PATTERN = [
-  { scaleX: 0.96, scaleY: 0.82, delay: 0 },
-  { scaleX: 0.99, scaleY: 0.91, delay: 0.014 },
-  { scaleX: 0.94, scaleY: 0.75, delay: 0.006 },
-  { scaleX: 0.97, scaleY: 0.87, delay: 0.021 },
-  { scaleX: 0.95, scaleY: 0.79, delay: 0.01 },
-  { scaleX: 0.98, scaleY: 0.93, delay: 0.024 },
-  { scaleX: 0.93, scaleY: 0.76, delay: 0.003 },
+  { scaleX: 0.985, scaleY: 0.9, delay: 0 },
+  { scaleX: 0.995, scaleY: 0.96, delay: 0.014 },
+  { scaleX: 0.975, scaleY: 0.86, delay: 0.006 },
+  { scaleX: 0.985, scaleY: 0.93, delay: 0.021 },
+  { scaleX: 0.98, scaleY: 0.89, delay: 0.01 },
+  { scaleX: 0.99, scaleY: 0.97, delay: 0.024 },
+  { scaleX: 0.975, scaleY: 0.88, delay: 0.003 },
 ] as const;
 
 function toDefinedTargets(targets: gsap.TweenTarget): Element[] {
