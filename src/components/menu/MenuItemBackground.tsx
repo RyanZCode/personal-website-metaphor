@@ -129,10 +129,13 @@ function MenuItemBackground({
     if (!anchor || !trajectoryEnd || !label || !wrap || !verticalTarget) return null;
 
     const vh = window.innerHeight / 100;
-    const splashH = splashHeightVh * splashScale * vh;
     const anchorRect = anchor.getBoundingClientRect();
     const trajectoryEndRect = trajectoryEnd.getBoundingClientRect();
     const labelRect = label.getBoundingClientRect();
+    const configuredSplashH = splashHeightVh * splashScale * vh;
+    const splashH = layoutMode === 'compact'
+      ? Math.min(Math.max(label.offsetHeight * 1.75, 9 * vh), 22 * vh)
+      : configuredSplashH;
     const currentWrapY = getRenderedTranslateY(wrap);
     const currentMenuY = getRenderedTranslateY(verticalTarget);
     const targetWrapY = selectedItemOffsetYVh * vh;
@@ -156,11 +159,13 @@ function MenuItemBackground({
     const pivotX = (leftEdgeScreen + leftOverscan + rotatedVerticalReach) / projectedHorizontalScale;
     const elementLeftPx = leftEdgeScreen - pivotX;
     const labelEndX = label.offsetLeft + label.offsetWidth;
-    const tipExtension = splashTipExtensionVh * splashScale * vh;
+    const tipExtension = layoutMode === 'compact'
+      ? window.innerWidth * 0.08
+      : splashTipExtensionVh * splashScale * vh;
     const splashW = (pivotX + labelEndX + tipExtension) / (splashTipXPct / 100);
 
     return {
-      centerY: labelCenterY + splashOffsetY * itemScale * vh,
+      centerY: labelCenterY + splashOffsetY * (layoutMode === 'compact' ? 0.38 : itemScale) * vh,
       left: elementLeftPx,
       width: splashW,
       height: splashH,
