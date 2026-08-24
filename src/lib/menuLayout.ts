@@ -18,6 +18,11 @@ export function getMenuItemTrajectory(index: number) {
 
 export function getMenuItemTransform(index: number, layoutMode: LayoutMode) {
   const arcX = ARC_CURVE_X[Math.min(index, ARC_CURVE_X.length - 1)];
+  if (layoutMode === 'compact') {
+    const translateX = (arcX * 0.42).toFixed(2);
+    return `translateX(${translateX}vw) ${getMenuItemTrajectory(index)}`;
+  }
+
   const translateX = ((arcX * 16 / 9) * getMenuArcFactor(layoutMode)).toFixed(2);
   return `translateX(${translateX}vh) ${getMenuItemTrajectory(index)}`;
 }

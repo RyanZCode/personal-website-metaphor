@@ -58,7 +58,7 @@ export default function CharacterPortrait({ animationsEnabled, layoutMode = 'des
           width: 'auto',
           objectFit: 'contain',
           objectPosition: 'bottom center',
-          transform: isCompact ? 'translateX(17vw)' : 'none',
+          transform: isCompact ? 'translateX(4vw)' : 'none',
           position: 'relative',
           zIndex: 1,
           maxWidth: 'none',

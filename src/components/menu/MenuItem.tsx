@@ -23,13 +23,29 @@ function scaleVhValue(value: string, factor: number) {
   return `${parseFloat(value) * factor}vh`;
 }
 
+function estimateLabelWidthEm(label: string) {
+  return [...label].reduce((width, char) => {
+    if ('MW'.includes(char)) return width + 1;
+    if ('I'.includes(char)) return width + 0.42;
+    if ('LTFE'.includes(char)) return width + 0.64;
+    if ('OUNDC'.includes(char)) return width + 0.8;
+    return width + 0.74;
+  }, 0);
+}
+
 const MenuItem = memo(forwardRef<HTMLDivElement, MenuItemProps>(
   ({ item, index, isSelected, subtitle, subtitleVisible, animationsEnabled, layoutMode = 'desktop', onMouseEnter }, ref) => {
     const scale = ITEM_SCALES[Math.min(index, ITEM_SCALES.length - 1)];
     const sizeFactor = getMenuItemScaleFactor(layoutMode);
+    const scaledFontSize = scaleVhValue(scale.fontSize, sizeFactor);
+    const selectedScale = parseFloat(scaleVhValue(item.selectedSize, sizeFactor)) / parseFloat(scaledFontSize);
     const sizeScale = isSelected
-      ? parseFloat(scaleVhValue(item.selectedSize, sizeFactor)) / parseFloat(scaleVhValue(scale.fontSize, sizeFactor))
+      ? selectedScale
       : 1;
+    const compactWidthCap = 118 / (estimateLabelWidthEm(item.label.toUpperCase()) * Math.max(1, selectedScale));
+    const fontSize = layoutMode === 'compact'
+      ? `min(${scaledFontSize}, ${compactWidthCap.toFixed(2)}vw)`
+      : scaledFontSize;
 
     return (
       <div
@@ -38,7 +54,7 @@ const MenuItem = memo(forwardRef<HTMLDivElement, MenuItemProps>(
         onMouseEnter={() => onMouseEnter?.(index)}
         style={{
           position: 'relative',
-          fontSize: scaleVhValue(scale.fontSize, sizeFactor),
+          fontSize,
           fontWeight: isSelected ? scale.selectedFontWeight : scale.fontWeight,
           opacity: isSelected ? 1 : scale.opacity,
           transform: getMenuItemTransform(index, layoutMode),
@@ -85,7 +101,7 @@ const MenuItem = memo(forwardRef<HTMLDivElement, MenuItemProps>(
           style={{
           display: 'inline-block',
           transform: `scaleX(${sizeScale}) scaleY(${sizeScale * 0.8})`,
-          transformOrigin: isSelected ? 'right bottom' : 'left bottom',
+          transformOrigin: layoutMode === 'compact' ? 'left bottom' : isSelected ? 'right bottom' : 'left bottom',
         }}>
           {item.label.split('').map((char, i) => (
             <span key={i} data-char style={{ display: 'inline-block' }}>{char}</span>

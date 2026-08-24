@@ -238,6 +238,22 @@ function getResponsiveMenuItemSpacing(
   item: (typeof MENU_ITEMS)[number],
   layoutMode: 'desktop' | 'tablet' | 'compact',
 ) {
+  if (layoutMode === 'compact') {
+    const compactMarginBottom: Record<(typeof MENU_ITEMS)[number]['id'], string> = {
+      about: '-1vh',
+      skills: '1vh',
+      experience: '-1vh',
+      contact: '0',
+      memorandum: '-2vh',
+      system: '0',
+    };
+
+    return {
+      marginBottom: compactMarginBottom[item.id],
+      marginTop: item.marginTop,
+    };
+  }
+
   const factor = 1;
   let marginBottom = scaleVhSpacing(item.marginBottom, factor) ?? item.marginBottom;
   const marginTop = scaleVhSpacing(item.marginTop, factor) ?? item.marginTop;
@@ -349,7 +365,6 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
   const [showScrollHint, setShowScrollHint] = useState(false);
   const [hintVariant, setHintVariant] = useState<'memorandum-detail' | undefined>(undefined);
   const [readMemorandumEntryIds, setReadMemorandumEntryIds] = useState<string[]>([]);
-  const [compactMenuScrollWidth, setCompactMenuScrollWidth] = useState<number | null>(null);
   const [currentLocationPath, setCurrentLocationPath] = useState(() =>
     initialTargetPathRef.current
   );
@@ -420,9 +435,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
   const menuTouchStartYRef = useRef<number | null>(null);
   const menuTouchStartXRef = useRef<number | null>(null);
   const menuTouchStartIndexRef = useRef<number | null>(null);
-  const menuTouchStartScrollLeftRef = useRef(0);
   const menuTouchNavigatedRef = useRef(false);
-  const menuTouchStartedInScrollViewportRef = useRef(false);
   const menuTouchAxisRef = useRef<'horizontal' | 'vertical' | null>(null);
   const menuTouchSuppressClickUntilRef = useRef(0);
   const menuTouchSelectionActiveRef = useRef(false);
@@ -1045,78 +1058,6 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
       window.removeEventListener('resize', scheduleMeasurement);
     };
   }, []);
-
-  useEffect(() => {
-    if (viewportProfile.layoutMode !== 'compact' || !menuScrollViewportRef.current || !containerRef.current) {
-      setCompactMenuScrollWidth(null);
-      return;
-    }
-    if (menuTouchSelectionActiveRef.current) return;
-
-    const scrollViewport = menuScrollViewportRef.current;
-    const root = containerRef.current;
-    const measureScrollWidth = rafThrottle(() => {
-      const viewportRect = scrollViewport.getBoundingClientRect();
-      const paintSplash = root.querySelector('[data-paint-splash]') as HTMLElement | null;
-      const labels = Array.from(root.querySelectorAll('[data-menu-label]')) as HTMLElement[];
-      const rightEdges = labels.map((label) => (
-        scrollViewport.scrollLeft + (label.getBoundingClientRect().right - viewportRect.left)
-      ));
-
-      if (paintSplash) {
-        rightEdges.push(
-          scrollViewport.scrollLeft + (paintSplash.getBoundingClientRect().right - viewportRect.left) + 24
-        );
-      }
-
-      const contentRight = rightEdges.length > 0
-        ? Math.max(...rightEdges)
-        : scrollViewport.clientWidth;
-      const measuredScrollWidth = Math.max(scrollViewport.clientWidth, Math.ceil(contentRight));
-      const measuredOverflow = Math.max(0, measuredScrollWidth - scrollViewport.clientWidth);
-      const nextScrollWidth = scrollViewport.clientWidth + Math.ceil(measuredOverflow * 0.7);
-      const maxScrollLeft = Math.max(0, nextScrollWidth - scrollViewport.clientWidth);
-
-      setCompactMenuScrollWidth((current) => current === nextScrollWidth ? current : nextScrollWidth);
-      if (scrollViewport.scrollLeft > maxScrollLeft) {
-        scrollViewport.scrollLeft = maxScrollLeft;
-      }
-    });
-
-    measureScrollWidth();
-    const settledMeasurement = gsap.delayedCall(0.22, measureScrollWidth);
-
-    window.addEventListener('resize', measureScrollWidth);
-
-    return () => {
-      settledMeasurement.kill();
-      measureScrollWidth.cancel();
-      window.removeEventListener('resize', measureScrollWidth);
-    };
-  }, [selectedIndex, appState, splashMeasureKey, viewportProfile.layoutMode]);
-
-  useEffect(() => {
-    const scrollViewport = menuScrollViewportRef.current;
-    const menuStack = menuStackRef.current;
-    if (!scrollViewport || !menuStack) return;
-
-    const syncMenuScroll = () => {
-      if (viewportProfile.layoutMode === 'compact') {
-        gsap.set(menuStack, { x: -scrollViewport.scrollLeft });
-        return;
-      }
-
-      gsap.set(menuStack, { x: 0 });
-    };
-
-    syncMenuScroll();
-    scrollViewport.addEventListener('scroll', syncMenuScroll, { passive: true });
-
-    return () => {
-      scrollViewport.removeEventListener('scroll', syncMenuScroll);
-    };
-  }, [viewportProfile.layoutMode, compactMenuScrollWidth]);
-
 
   useEffect(() => {
     const markTouchInput = () => {
@@ -2068,17 +2009,11 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
       className={`menu-root${inputMode === 'keyboard' ? ' keyboard-mode' : ''}`}
       onTouchStart={(event) => {
         if (!viewportProfile.shouldUseTouchNav || appState !== 'idle') return;
-        menuTouchStartedInScrollViewportRef.current = Boolean(
-          (event.target as Element).closest(
-            '[data-menu-scroll-viewport], [data-menu-scroll-overlay], [data-menu-left], [data-menu-item], [data-menu-item-wrap], [data-menu-item-target]'
-          )
-        );
         menuTouchAxisRef.current = null;
         const touch = event.touches[0];
         menuTouchStartYRef.current = touch.clientY;
         menuTouchStartXRef.current = touch.clientX;
         menuTouchStartIndexRef.current = selectedIndexRef.current;
-        menuTouchStartScrollLeftRef.current = menuScrollViewportRef.current?.scrollLeft ?? 0;
         menuTouchNavigatedRef.current = false;
         menuTouchPendingIndexRef.current = null;
       }}
@@ -2104,17 +2039,6 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
         }
 
         if (menuTouchAxisRef.current === 'horizontal') {
-          if (menuTouchStartedInScrollViewportRef.current) {
-            if (menuScrollViewportRef.current) {
-              menuScrollViewportRef.current.scrollLeft = Math.max(
-                0,
-                menuTouchStartScrollLeftRef.current - deltaX
-              );
-            }
-            menuTouchSuppressClickUntilRef.current = Date.now() + 250;
-            lastTouchInputAt.current = Date.now();
-            setInputMode('touch');
-          }
           return;
         }
 
@@ -2142,7 +2066,6 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
         menuTouchStartXRef.current = null;
         menuTouchStartIndexRef.current = null;
         menuTouchNavigatedRef.current = false;
-        menuTouchStartedInScrollViewportRef.current = false;
         menuTouchAxisRef.current = null;
       }}
       onTouchCancel={() => {
@@ -2152,7 +2075,6 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
         menuTouchStartXRef.current = null;
         menuTouchStartIndexRef.current = null;
         menuTouchNavigatedRef.current = false;
-        menuTouchStartedInScrollViewportRef.current = false;
         menuTouchAxisRef.current = null;
       }}
       onClick={(e) => {
@@ -2246,9 +2168,6 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
             <div
               className="menu-scroll-spacer"
               aria-hidden="true"
-              style={viewportProfile.layoutMode === 'compact' && compactMenuScrollWidth
-                ? { width: `${compactMenuScrollWidth}px` }
-                : undefined}
             />
           </div>
           <div
