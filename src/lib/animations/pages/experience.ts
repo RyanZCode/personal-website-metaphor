@@ -7,9 +7,8 @@ function withWillChange(targets: gsap.TweenTarget): gsap.TweenTarget[] {
 }
 
 function getExperiencePanelAngle(container: Element): number {
-  const isCompact = container.getAttribute('data-experience-compact') === 'true';
-  const leftTop = isCompact ? 22 : 65;
-  const leftBottom = isCompact ? -8 : 35;
+  const leftTop = Number(container.getAttribute('data-experience-left-top')) || 65;
+  const leftBottom = Number(container.getAttribute('data-experience-left-bottom')) || 35;
   const dx = (leftTop - leftBottom) * window.innerWidth / 100;
   const dy = window.innerHeight;
   return Math.atan2(dx, dy) * 180 / Math.PI;

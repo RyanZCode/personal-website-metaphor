@@ -100,11 +100,15 @@ export const COMPACT_GEOMETRY: ExperienceGeometry = {
   rightStartY: 10,
 };
 
-// Portrait is 26vw wide from 6vw padding, with content starting at 35vw.
-// The panel is a pentagon: top edge from LEFT_TOP% to 100%, then down the right edge to
-// RIGHT_START_Y%, then the diagonal to RIGHT_BOT% at 100%, then back along the bottom.
-// Width ~41vw at row positions, rows use 41vw to stay inside each boundary.
-// paddingLeft inside each row is 0.5vw, accounted for in the margin calculation.
+export const TABLET_GEOMETRY: ExperienceGeometry = {
+  leftTop: 52,
+  leftBottom: 28,
+  rightBottom: 76,
+  rightStartY: 0,
+};
+
+// Rows use the narrowest intersection of both diagonal edges so their content stays
+// inside the panel. Signed border insets let separators reach each edge independently.
 const ROW_PADDING_L_VW = 0.5;
 export const ROW_PADDING_R_VW = 5.25;
 const LOGO_OVERHANG_REM = 0.7;
@@ -114,6 +118,8 @@ const LOGO_OVERHANG_REM = 0.7;
 export interface RowLayout {
   marginLeft: string;
   width: string;
+  topBorderInsetLeft: string;
+  topBorderInsetRight: string;
   bottomBorderInsetLeft: string;
   bottomBorderInsetRight: string;
   contentInsetLeft: string;
@@ -136,6 +142,8 @@ export function createDefaultRowLayout(): RowLayout {
   return {
     marginLeft: '0px',
     width: '35vw',
+    topBorderInsetLeft: '0px',
+    topBorderInsetRight: '0px',
     bottomBorderInsetLeft: '0px',
     bottomBorderInsetRight: '0px',
     contentInsetLeft: '0px',
@@ -146,6 +154,8 @@ export function haveRowLayoutsChanged(nextLayouts: RowLayout[], currentLayouts: 
   return nextLayouts.some((layout, index) => (
     layout.marginLeft !== currentLayouts[index]?.marginLeft ||
     layout.width !== currentLayouts[index]?.width ||
+    layout.topBorderInsetLeft !== currentLayouts[index]?.topBorderInsetLeft ||
+    layout.topBorderInsetRight !== currentLayouts[index]?.topBorderInsetRight ||
     layout.bottomBorderInsetLeft !== currentLayouts[index]?.bottomBorderInsetLeft ||
     layout.bottomBorderInsetRight !== currentLayouts[index]?.bottomBorderInsetRight ||
     layout.contentInsetLeft !== currentLayouts[index]?.contentInsetLeft
@@ -158,6 +168,7 @@ export function buildRowLayouts(
   viewportWidth: number,
   viewportHeight: number,
   geometry: ExperienceGeometry,
+  minimumContentInsetPx = 0,
 ): RowLayout[] {
   if (viewportWidth <= 0 || viewportHeight <= 0) {
     return JOBS.map(() => createDefaultRowLayout());
@@ -195,14 +206,17 @@ export function buildRowLayouts(
     const rowRightBorderPx = Math.min(rowTopRightBorderPx, bottomBorderRightPx);
     const rowLeftPx = Math.max(
       rowLeftBorderPx,
-      rowLeftBorderPx + logoOverhangPx - rowPaddingLeftPx
+      rowLeftBorderPx + logoOverhangPx - rowPaddingLeftPx,
+      contentLeft + minimumContentInsetPx,
     );
 
     return {
       marginLeft: `${Math.max(0, rowLeftBorderPx - contentLeft)}px`,
       width: `${Math.max(0, rowRightBorderPx - rowLeftBorderPx)}px`,
-      bottomBorderInsetLeft: `${Math.max(0, bottomBorderLeftPx - rowLeftBorderPx)}px`,
-      bottomBorderInsetRight: `${Math.max(0, rowRightBorderPx - bottomBorderRightPx)}px`,
+      topBorderInsetLeft: `${rowTopLeftBorderPx - rowLeftBorderPx}px`,
+      topBorderInsetRight: `${rowRightBorderPx - rowTopRightBorderPx}px`,
+      bottomBorderInsetLeft: `${bottomBorderLeftPx - rowLeftBorderPx}px`,
+      bottomBorderInsetRight: `${rowRightBorderPx - bottomBorderRightPx}px`,
       contentInsetLeft: `${Math.max(0, rowLeftPx - rowLeftBorderPx)}px`,
     };
   });

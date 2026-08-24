@@ -515,11 +515,22 @@
 }
 
 .menu-root[data-layout-mode='compact'] [data-experience-layout] {
-  padding: 9.5vh 4vw 4vh 4vw !important;
+  padding: 9.5vh 0 4vh !important;
 }
 
-.menu-root[data-layout-mode='compact'] [data-experience-panel-group] [style*='padding: 10vh 0 10vh 35vw'] {
-  padding: 9.5vh 4vw 4vh 4vw !important;
+.menu-root[data-layout-mode='tablet'] [data-experience-layout] {
+  padding: 9vh 0 5vh !important;
+}
+
+.menu-root[data-layout-mode='tablet'] [data-experience-portrait] {
+  left: 4vw !important;
+  top: 8vh !important;
+  bottom: 12vh !important;
+}
+
+.menu-root[data-layout-mode='tablet'] [data-experience-portrait-frame] {
+  width: clamp(13rem, 27vw, 20rem) !important;
+  height: clamp(13rem, 27vw, 20rem) !important;
 }
 
 .menu-root[data-layout-mode='compact'] [data-experience-portrait] {

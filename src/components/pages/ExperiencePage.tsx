@@ -19,6 +19,7 @@ import {
   EXPERIENCE_SCROLL_STEP,
   JOBS,
   ROW_PADDING_R_VW,
+  TABLET_GEOMETRY,
   buildRowLayouts,
   computeRippleLayout,
   createDefaultRowLayout,
@@ -50,7 +51,12 @@ export default function ExperiencePage({
 }: ExperiencePageProps) {
   const viewportProfile = useViewportProfile();
   const isCompact = viewportProfile.layoutMode === 'compact';
-  const geometry = isCompact ? COMPACT_GEOMETRY : DEFAULT_GEOMETRY;
+  const isTablet = viewportProfile.layoutMode === 'tablet';
+  const geometry = isCompact
+    ? COMPACT_GEOMETRY
+    : isTablet
+      ? TABLET_GEOMETRY
+      : DEFAULT_GEOMETRY;
   const containerRef = useRef<HTMLElement | null>(null);
   const bobAnim  = ambientAnimationsEnabled ? 'portrait-bob 4s ease-in-out infinite' : 'none';
   const glowAnim = ambientAnimationsEnabled ? 'portrait-glow 3s ease-in-out infinite' : 'none';
@@ -102,10 +108,18 @@ export default function ExperiencePage({
     options?: { paused?: boolean },
   ) => {
     const currentLayoutMode = readViewportProfile().layoutMode;
+    const currentGeometry = currentLayoutMode === 'compact'
+      ? COMPACT_GEOMETRY
+      : currentLayoutMode === 'tablet'
+        ? TABLET_GEOMETRY
+        : DEFAULT_GEOMETRY;
     container.setAttribute(
       'data-experience-compact',
       currentLayoutMode === 'compact' ? 'true' : 'false',
     );
+    container.setAttribute('data-experience-layout-mode', currentLayoutMode);
+    container.setAttribute('data-experience-left-top', String(currentGeometry.leftTop));
+    container.setAttribute('data-experience-left-bottom', String(currentGeometry.leftBottom));
 
     return createExperienceEntryTimeline(container, options);
   }, []);
@@ -217,6 +231,7 @@ export default function ExperiencePage({
         window.innerWidth,
         window.innerHeight,
         geometry,
+        isCompact ? window.innerWidth * 0.04 : 0,
       );
       setRowLayouts((currentLayouts) => {
         return haveRowLayoutsChanged(nextLayouts, currentLayouts) ? nextLayouts : currentLayouts;
@@ -280,6 +295,7 @@ export default function ExperiencePage({
       viewportSize.width,
       viewportSize.height,
       geometry,
+      isCompact ? viewportSize.width * 0.04 : 0,
     );
     setRowLayouts((currentLayouts) => (
       haveRowLayoutsChanged(nextLayouts, currentLayouts) ? nextLayouts : currentLayouts
@@ -339,15 +355,18 @@ export default function ExperiencePage({
     Math.max(0.18, scrollMetrics.viewportHeight / Math.max(scrollMetrics.contentHeight, 1))
   );
   const scrollbarProgress = maxScrollOffset <= 1 ? 0 : scrollOffset / maxScrollOffset;
-  const trackAngleDeg = Math.atan2(
-    ((100 - geometry.rightStartY) / 100) * viewportSize.height,
-    ((geometry.rightBottom - 100) / 100) * viewportSize.width
-  ) * 180 / Math.PI;
-  const trackLengthPx = Math.min(scrollMetrics.viewportHeight * 0.76, scrollMetrics.viewportWidth * 0.7);
-  const trackTopPx = scrollMetrics.viewportHeight * 0.16;
-  const trackRightPx = isCompact
-    ? Math.max(8, scrollMetrics.viewportWidth * 0.025)
-    : Math.max(18, scrollMetrics.viewportWidth * 0.075);
+  const panelRightEdgeDxPx = ((geometry.rightBottom - 100) / 100) * viewportSize.width;
+  const panelRightEdgeDyPx = ((100 - geometry.rightStartY) / 100) * viewportSize.height;
+  const trackStartProgress = 0.12;
+  const trackEndProgress = 0.88;
+  const trackInsetPx = isCompact ? 10 : Math.max(16, viewportSize.width * 0.012);
+  const trackAngleDeg = Math.atan2(panelRightEdgeDyPx, panelRightEdgeDxPx) * 180 / Math.PI;
+  const trackLengthPx = Math.hypot(panelRightEdgeDxPx, panelRightEdgeDyPx) * (
+    trackEndProgress - trackStartProgress
+  );
+  const trackLeftPx = viewportSize.width + panelRightEdgeDxPx * trackStartProgress - trackInsetPx;
+  const trackTopPx = (geometry.rightStartY / 100) * viewportSize.height +
+    panelRightEdgeDyPx * trackStartProgress;
   const thumbWidthPx = trackLengthPx * scrollbarThumbFraction;
   const thumbTravelPx = Math.max(0, trackLengthPx - thumbWidthPx);
   const thumbOffsetPx = thumbTravelPx * scrollbarProgress;
@@ -359,6 +378,9 @@ export default function ExperiencePage({
       data-experience-page
       data-page-ambient={ambientAnimationsEnabled ? 'running' : 'paused'}
       data-experience-compact={isCompact ? 'true' : 'false'}
+      data-experience-layout-mode={viewportProfile.layoutMode}
+      data-experience-left-top={geometry.leftTop}
+      data-experience-left-bottom={geometry.leftBottom}
       style={{
         position: 'absolute',
         inset: 0,
@@ -462,6 +484,7 @@ export default function ExperiencePage({
         }}
       >
         <div
+          data-experience-portrait-frame
           style={{
             animation: bobAnim,
             position: 'relative',
@@ -574,7 +597,7 @@ export default function ExperiencePage({
             position: 'relative',
             zIndex: 3,
             height: '100%',
-            padding: '10vh 0 10vh 35vw',
+            padding: '10vh 0',
             display: 'flex',
             alignItems: 'center',
             pointerEvents: 'auto',
@@ -609,48 +632,6 @@ export default function ExperiencePage({
                   touchAction: maxScrollOffset > 1 ? 'none' : 'auto',
                 }}
               >
-              {maxScrollOffset > 1 ? (
-                <div
-                  aria-hidden="true"
-                  style={{
-                    position: 'absolute',
-                    top: `${trackTopPx}px`,
-                    left: `calc(100% - ${trackRightPx}px)`,
-                    width: `${trackLengthPx}px`,
-                    height: '12px',
-                    zIndex: 2,
-                    pointerEvents: 'none',
-                    transform: `translateY(-50%) rotate(${trackAngleDeg}deg)`,
-                    transformOrigin: '0 50%',
-                  }}
-                >
-                  <div
-                    style={{
-                      position: 'absolute',
-                      left: 0,
-                      top: '50%',
-                      width: '100%',
-                      height: '4px',
-                      transform: 'translateY(-50%)',
-                      borderRadius: '999px',
-                      background: 'rgba(255, 214, 224, 0.24)',
-                    }}
-                  />
-                  <div
-                    style={{
-                      position: 'absolute',
-                      left: `${thumbOffsetPx}px`,
-                      top: '50%',
-                      width: `${thumbWidthPx}px`,
-                      height: '4px',
-                      transform: 'translateY(-50%)',
-                      borderRadius: '999px',
-                      background: 'rgba(255, 214, 224, 0.7)',
-                      boxShadow: '0 0 8px rgba(255, 132, 176, 0.42)',
-                    }}
-                  />
-                </div>
-              ) : null}
               <div
                 data-page-content
                 ref={contentRef}
@@ -683,11 +664,21 @@ export default function ExperiencePage({
                         paddingLeft: '0.5vw',
                         paddingTop: '1.1rem',
                         paddingBottom: '1.1rem',
-                        paddingRight: `${ROW_PADDING_R_VW}vw`,
-                        borderTop: '1px solid rgba(240, 232, 236, 0.22)',
+                        paddingRight: `${isCompact ? 3 : isTablet ? 2.5 : ROW_PADDING_R_VW}vw`,
                         background: 'transparent',
                       }}
                     >
+                      <div
+                        aria-hidden="true"
+                        style={{
+                          position: 'absolute',
+                          left: rowLayout?.topBorderInsetLeft ?? '0px',
+                          right: rowLayout?.topBorderInsetRight ?? '0px',
+                          top: 0,
+                          borderTop: '1px solid rgba(240, 232, 236, 0.22)',
+                          pointerEvents: 'none',
+                        }}
+                      />
                       <div
                         style={{
                           display: 'flex',
@@ -833,6 +824,49 @@ export default function ExperiencePage({
             </div>
           </div>
         </div>
+        {maxScrollOffset > 1 ? (
+          <div
+            data-experience-scrollbar
+            aria-hidden="true"
+            style={{
+              position: 'absolute',
+              top: `${trackTopPx}px`,
+              left: `${trackLeftPx}px`,
+              width: `${trackLengthPx}px`,
+              height: '12px',
+              zIndex: 4,
+              pointerEvents: 'none',
+              transform: `translateY(-50%) rotate(${trackAngleDeg}deg)`,
+              transformOrigin: '0 50%',
+            }}
+          >
+            <div
+              style={{
+                position: 'absolute',
+                left: 0,
+                top: '50%',
+                width: '100%',
+                height: '4px',
+                transform: 'translateY(-50%)',
+                borderRadius: '999px',
+                background: 'rgba(255, 214, 224, 0.24)',
+              }}
+            />
+            <div
+              style={{
+                position: 'absolute',
+                left: `${thumbOffsetPx}px`,
+                top: '50%',
+                width: `${thumbWidthPx}px`,
+                height: '4px',
+                transform: 'translateY(-50%)',
+                borderRadius: '999px',
+                background: 'rgba(255, 214, 224, 0.7)',
+                boxShadow: '0 0 8px rgba(255, 132, 176, 0.42)',
+              }}
+            />
+          </div>
+        ) : null}
       </div>
 
       <div
