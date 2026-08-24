@@ -19,6 +19,7 @@ import {
   EXPERIENCE_SCROLL_STEP,
   JOBS,
   ROW_PADDING_R_VW,
+  TABLET_GEOMETRY,
   buildRowLayouts,
   computeRippleLayout,
   createDefaultRowLayout,
@@ -50,7 +51,12 @@ export default function ExperiencePage({
 }: ExperiencePageProps) {
   const viewportProfile = useViewportProfile();
   const isCompact = viewportProfile.layoutMode === 'compact';
-  const geometry = isCompact ? COMPACT_GEOMETRY : DEFAULT_GEOMETRY;
+  const isTablet = viewportProfile.layoutMode === 'tablet';
+  const geometry = isCompact
+    ? COMPACT_GEOMETRY
+    : isTablet
+      ? TABLET_GEOMETRY
+      : DEFAULT_GEOMETRY;
   const containerRef = useRef<HTMLElement | null>(null);
   const bobAnim  = ambientAnimationsEnabled ? 'portrait-bob 4s ease-in-out infinite' : 'none';
   const glowAnim = ambientAnimationsEnabled ? 'portrait-glow 3s ease-in-out infinite' : 'none';
@@ -102,10 +108,18 @@ export default function ExperiencePage({
     options?: { paused?: boolean },
   ) => {
     const currentLayoutMode = readViewportProfile().layoutMode;
+    const currentGeometry = currentLayoutMode === 'compact'
+      ? COMPACT_GEOMETRY
+      : currentLayoutMode === 'tablet'
+        ? TABLET_GEOMETRY
+        : DEFAULT_GEOMETRY;
     container.setAttribute(
       'data-experience-compact',
       currentLayoutMode === 'compact' ? 'true' : 'false',
     );
+    container.setAttribute('data-experience-layout-mode', currentLayoutMode);
+    container.setAttribute('data-experience-left-top', String(currentGeometry.leftTop));
+    container.setAttribute('data-experience-left-bottom', String(currentGeometry.leftBottom));
 
     return createExperienceEntryTimeline(container, options);
   }, []);
@@ -359,6 +373,9 @@ export default function ExperiencePage({
       data-experience-page
       data-page-ambient={ambientAnimationsEnabled ? 'running' : 'paused'}
       data-experience-compact={isCompact ? 'true' : 'false'}
+      data-experience-layout-mode={viewportProfile.layoutMode}
+      data-experience-left-top={geometry.leftTop}
+      data-experience-left-bottom={geometry.leftBottom}
       style={{
         position: 'absolute',
         inset: 0,
@@ -462,6 +479,7 @@ export default function ExperiencePage({
         }}
       >
         <div
+          data-experience-portrait-frame
           style={{
             animation: bobAnim,
             position: 'relative',
@@ -574,7 +592,7 @@ export default function ExperiencePage({
             position: 'relative',
             zIndex: 3,
             height: '100%',
-            padding: '10vh 0 10vh 35vw',
+            padding: '10vh 0',
             display: 'flex',
             alignItems: 'center',
             pointerEvents: 'auto',
@@ -683,11 +701,21 @@ export default function ExperiencePage({
                         paddingLeft: '0.5vw',
                         paddingTop: '1.1rem',
                         paddingBottom: '1.1rem',
-                        paddingRight: `${ROW_PADDING_R_VW}vw`,
-                        borderTop: '1px solid rgba(240, 232, 236, 0.22)',
+                        paddingRight: `${isCompact ? 3 : isTablet ? 2.5 : ROW_PADDING_R_VW}vw`,
                         background: 'transparent',
                       }}
                     >
+                      <div
+                        aria-hidden="true"
+                        style={{
+                          position: 'absolute',
+                          left: rowLayout?.topBorderInsetLeft ?? '0px',
+                          right: rowLayout?.topBorderInsetRight ?? '0px',
+                          top: 0,
+                          borderTop: '1px solid rgba(240, 232, 236, 0.22)',
+                          pointerEvents: 'none',
+                        }}
+                      />
                       <div
                         style={{
                           display: 'flex',
