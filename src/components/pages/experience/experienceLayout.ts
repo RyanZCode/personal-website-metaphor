@@ -15,7 +15,7 @@ export const JOBS: Job[] = [
   {
     company: 'Shopify',
     role: 'Intern Engineer (Infrastructure)',
-    period: 'May 2026 - Present',
+    period: 'May 2026 - Aug 2026',
     type: 'Internship',
     logo: '/assets/experience-logos/shopify-logo.webp',
     logoScale: 0.8,
@@ -25,7 +25,7 @@ export const JOBS: Job[] = [
   {
     company: 'Shopify',
     role: 'Intern Engineer (Full-Stack)',
-    period: 'Sept 2025 - Dec 2025',
+    period: 'Sep 2025 - Dec 2025',
     type: 'Internship',
     logo: '/assets/experience-logos/shopify-logo.webp',
     logoScale: 0.8,
@@ -65,7 +65,7 @@ export const JOBS: Job[] = [
   {
     company: 'University of Waterloo',
     role: 'Bachelor of Computer Science (Co-op)',
-    period: 'Sept 2023 - Present',
+    period: 'Sep 2023 - Present',
     type: 'Education',
     logo: '/assets/experience-logos/uwaterloo-logo.webp',
     logoScale: 1,

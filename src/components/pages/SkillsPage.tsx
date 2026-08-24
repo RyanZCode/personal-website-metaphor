@@ -28,9 +28,18 @@ interface SkillGroup {
 }
 
 const SKILL_GROUPS: SkillGroup[] = [
-  { category: 'Frontend',        skills: ['React', 'Next.js', 'Tailwind'] },
-  { category: 'Backend / Infra', skills: ['Node.js', 'SQL', 'Kubernetes'] },
-  { category: 'Languages',       skills: ['TypeScript', 'Ruby', 'Python', 'C++', 'C', 'Java'] },
+  {
+    category: 'Languages',
+    skills: ['C++', 'Ruby', 'Python', 'SQL', 'TypeScript', 'JavaScript', 'C', 'Java'],
+  },
+  {
+    category: 'Frameworks & APIs',
+    skills: ['Rails', 'React', 'Node.js/Express', 'GraphQL'],
+  },
+  {
+    category: 'Infrastructure & Data',
+    skills: ['Kubernetes', 'Docker', 'Linux', 'BigQuery', 'PostgreSQL', 'CI/CD (Buildkite)'],
+  },
 ];
 
 const accent = 'hsl(335, 75%, 50%)';
