@@ -134,7 +134,7 @@ function MenuItemBackground({
     const labelRect = label.getBoundingClientRect();
     const configuredSplashH = splashHeightVh * splashScale * vh;
     const splashH = layoutMode === 'compact'
-      ? Math.min(Math.max(label.offsetHeight * 1.75, 9 * vh), 22 * vh)
+      ? Math.min(Math.max(label.offsetHeight * 2.1, 10 * vh), 26 * vh)
       : configuredSplashH;
     const currentWrapY = getRenderedTranslateY(wrap);
     const currentMenuY = getRenderedTranslateY(verticalTarget);
@@ -160,7 +160,7 @@ function MenuItemBackground({
     const elementLeftPx = leftEdgeScreen - pivotX;
     const labelEndX = label.offsetLeft + label.offsetWidth;
     const tipExtension = layoutMode === 'compact'
-      ? window.innerWidth * 0.08
+      ? window.innerWidth * 0.1
       : splashTipExtensionVh * splashScale * vh;
     const splashW = (pivotX + labelEndX + tipExtension) / (splashTipXPct / 100);
 

@@ -240,11 +240,11 @@ function getResponsiveMenuItemSpacing(
 ) {
   if (layoutMode === 'compact') {
     const compactMarginBottom: Record<(typeof MENU_ITEMS)[number]['id'], string> = {
-      about: '1vh',
-      skills: '2vh',
-      experience: '2vh',
-      contact: '5vh',
-      memorandum: '4vh',
+      about: '0',
+      skills: '1vh',
+      experience: '1vh',
+      contact: '3vh',
+      memorandum: '2vh',
       system: '0',
     };
 
