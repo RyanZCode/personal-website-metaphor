@@ -168,6 +168,7 @@ export function buildRowLayouts(
   viewportWidth: number,
   viewportHeight: number,
   geometry: ExperienceGeometry,
+  minimumContentInsetPx = 0,
 ): RowLayout[] {
   if (viewportWidth <= 0 || viewportHeight <= 0) {
     return JOBS.map(() => createDefaultRowLayout());
@@ -205,7 +206,8 @@ export function buildRowLayouts(
     const rowRightBorderPx = Math.min(rowTopRightBorderPx, bottomBorderRightPx);
     const rowLeftPx = Math.max(
       rowLeftBorderPx,
-      rowLeftBorderPx + logoOverhangPx - rowPaddingLeftPx
+      rowLeftBorderPx + logoOverhangPx - rowPaddingLeftPx,
+      contentLeft + minimumContentInsetPx,
     );
 
     return {

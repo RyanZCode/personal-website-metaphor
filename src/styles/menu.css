@@ -515,7 +515,7 @@
 }
 
 .menu-root[data-layout-mode='compact'] [data-experience-layout] {
-  padding: 9.5vh 4vw 4vh 4vw !important;
+  padding: 9.5vh 0 4vh !important;
 }
 
 .menu-root[data-layout-mode='tablet'] [data-experience-layout] {

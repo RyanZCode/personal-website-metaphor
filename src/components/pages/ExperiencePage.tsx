@@ -231,6 +231,7 @@ export default function ExperiencePage({
         window.innerWidth,
         window.innerHeight,
         geometry,
+        isCompact ? window.innerWidth * 0.04 : 0,
       );
       setRowLayouts((currentLayouts) => {
         return haveRowLayoutsChanged(nextLayouts, currentLayouts) ? nextLayouts : currentLayouts;
@@ -294,6 +295,7 @@ export default function ExperiencePage({
       viewportSize.width,
       viewportSize.height,
       geometry,
+      isCompact ? viewportSize.width * 0.04 : 0,
     );
     setRowLayouts((currentLayouts) => (
       haveRowLayoutsChanged(nextLayouts, currentLayouts) ? nextLayouts : currentLayouts
