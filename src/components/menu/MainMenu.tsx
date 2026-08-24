@@ -146,6 +146,7 @@ const MENU_SELECTED_OFFSET_VH = 1;
 const MENU_BELOW_SELECTED_OFFSET_VH = 2;
 const TOUCH_INPUT_GRACE_MS = 800;
 const MENU_TOUCH_STEP_VH = 4.5;
+const MENU_TOUCH_DIRECTION_LOCK_PX = 10;
 type IdleDeadline = {
   didTimeout: boolean;
   timeRemaining: () => number;
@@ -422,7 +423,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
   const menuTouchStartScrollLeftRef = useRef(0);
   const menuTouchNavigatedRef = useRef(false);
   const menuTouchStartedInScrollViewportRef = useRef(false);
-  const menuTouchHorizontalScrollLockedRef = useRef(false);
+  const menuTouchAxisRef = useRef<'horizontal' | 'vertical' | null>(null);
   const menuTouchSuppressClickUntilRef = useRef(0);
   const menuTouchSelectionActiveRef = useRef(false);
   const menuTouchLastSelectionAtRef = useRef(0);
@@ -2072,7 +2073,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
             '[data-menu-scroll-viewport], [data-menu-scroll-overlay], [data-menu-left], [data-menu-item], [data-menu-item-wrap], [data-menu-item-target]'
           )
         );
-        menuTouchHorizontalScrollLockedRef.current = false;
+        menuTouchAxisRef.current = null;
         const touch = event.touches[0];
         menuTouchStartYRef.current = touch.clientY;
         menuTouchStartXRef.current = touch.clientX;
@@ -2092,38 +2093,33 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
         const touch = event.touches[0];
         const deltaY = touch.clientY - menuTouchStartYRef.current;
         const deltaX = touch.clientX - menuTouchStartXRef.current;
+        const absDeltaY = Math.abs(deltaY);
+        const absDeltaX = Math.abs(deltaX);
         const touchStepPx = getMenuTouchStepPx();
-        if (menuTouchStartedInScrollViewportRef.current) {
-          if (menuTouchHorizontalScrollLockedRef.current) {
-            if (menuScrollViewportRef.current) {
-              menuScrollViewportRef.current.scrollLeft = Math.max(
-                0,
-                menuTouchStartScrollLeftRef.current - deltaX
-              );
-            }
-            menuTouchSuppressClickUntilRef.current = Date.now() + 250;
-            lastTouchInputAt.current = Date.now();
-            setInputMode('touch');
-            return;
-          }
-          if (Math.abs(deltaY) < touchStepPx && Math.abs(deltaX) < touchStepPx) return;
-          if (Math.abs(deltaX) > Math.abs(deltaY)) {
-            menuTouchHorizontalScrollLockedRef.current = true;
-            if (menuScrollViewportRef.current) {
-              menuScrollViewportRef.current.scrollLeft = Math.max(
-                0,
-                menuTouchStartScrollLeftRef.current - deltaX
-              );
-            }
-            menuTouchSuppressClickUntilRef.current = Date.now() + 250;
-            lastTouchInputAt.current = Date.now();
-            setInputMode('touch');
-            return;
-          }
+
+        if (!menuTouchAxisRef.current) {
+          if (Math.max(absDeltaX, absDeltaY) < MENU_TOUCH_DIRECTION_LOCK_PX) return;
+          if (absDeltaX === absDeltaY) return;
+          menuTouchAxisRef.current = absDeltaX > absDeltaY ? 'horizontal' : 'vertical';
         }
 
-        if (Math.abs(deltaY) < touchStepPx || Math.abs(deltaY) <= Math.abs(deltaX)) return;
-        const indexDelta = Math.floor(Math.abs(deltaY) / touchStepPx);
+        if (menuTouchAxisRef.current === 'horizontal') {
+          if (menuTouchStartedInScrollViewportRef.current) {
+            if (menuScrollViewportRef.current) {
+              menuScrollViewportRef.current.scrollLeft = Math.max(
+                0,
+                menuTouchStartScrollLeftRef.current - deltaX
+              );
+            }
+            menuTouchSuppressClickUntilRef.current = Date.now() + 250;
+            lastTouchInputAt.current = Date.now();
+            setInputMode('touch');
+          }
+          return;
+        }
+
+        if (absDeltaY < touchStepPx) return;
+        const indexDelta = Math.floor(absDeltaY / touchStepPx);
         if (indexDelta < 1) return;
 
         const startIndex = menuTouchStartIndexRef.current;
@@ -2147,7 +2143,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
         menuTouchStartIndexRef.current = null;
         menuTouchNavigatedRef.current = false;
         menuTouchStartedInScrollViewportRef.current = false;
-        menuTouchHorizontalScrollLockedRef.current = false;
+        menuTouchAxisRef.current = null;
       }}
       onTouchCancel={() => {
         flushMenuTouchSelection();
@@ -2157,7 +2153,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
         menuTouchStartIndexRef.current = null;
         menuTouchNavigatedRef.current = false;
         menuTouchStartedInScrollViewportRef.current = false;
-        menuTouchHorizontalScrollLockedRef.current = false;
+        menuTouchAxisRef.current = null;
       }}
       onClick={(e) => {
         if (appState !== 'idle') return;
