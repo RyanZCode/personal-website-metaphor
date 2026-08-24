@@ -37,6 +37,7 @@ interface MenuItemBackgroundProps {
   menuStackRef: RefObject<HTMLDivElement | null>;
   menuScrollViewportRef?: RefObject<HTMLDivElement | null>;
   selectedIndex: number;
+  effectIndex: number;
   ambientAnimationsEnabled: boolean;
   accentH: number;
   accentS: string;
@@ -86,6 +87,7 @@ function MenuItemBackground({
   menuStackRef,
   menuScrollViewportRef,
   selectedIndex,
+  effectIndex,
   ambientAnimationsEnabled,
   accentH,
   accentS,
@@ -305,6 +307,7 @@ function MenuItemBackground({
       ref={splashRef}
       data-paint-splash
       data-splash-ambient-active={ambientAnimationsEnabled ? 'true' : 'false'}
+      data-splash-effect-index={effectIndex}
       data-splash-tip-length={SPLASH_TIP_LENGTH_PCT}
       data-splash-taper-inset={splashTaperYPct}
       data-splash-tip-extension={splashTipExtensionVh}
@@ -339,12 +342,12 @@ function MenuItemBackground({
         >
           <div ref={effectsInnerRef} style={{ position: 'absolute', inset: 0, transformOrigin: 'left center' }}>
             {(() => {
-              const EffectComponent = EFFECT_COMPONENTS[selectedIndex];
+              const EffectComponent = EFFECT_COMPONENTS[effectIndex];
               if (!EffectComponent) return null;
               return (
                 <EffectComponent
-                  key={selectedIndex}
-                  isActive={true}
+                  key={effectIndex}
+                  isActive={ambientAnimationsEnabled}
                   animationsEnabled={ambientAnimationsEnabled}
                 />
               );

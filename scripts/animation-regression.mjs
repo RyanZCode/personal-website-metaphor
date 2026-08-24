@@ -39,6 +39,15 @@ async function wait(ms) {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function dispatchTouchEvent(client, type, x, y) {
+  await client.send('Input.dispatchTouchEvent', {
+    type,
+    touchPoints: type === 'touchEnd' || type === 'touchCancel'
+      ? []
+      : [{ x, y, id: 0, radiusX: 8, radiusY: 8, force: 1 }],
+  });
+}
+
 async function waitForServer(url) {
   const start = Date.now();
   let lastError = null;
@@ -744,6 +753,51 @@ async function run() {
             await wait(280);
           }
           await assertSplashAligned(page, id);
+        }
+      });
+    });
+
+    await test('compact touch swipe defers selection effects until settlement', async () => {
+      await withPage(browser, {
+        viewport: { width: 390, height: 844 },
+        hasTouch: true,
+      }, async (page) => {
+        await page.goto(`${server.baseUrl}/`, { waitUntil: 'domcontentloaded' });
+        await page.getByRole('button', { name: 'Ok' }).click();
+        await waitForAppState(page, 'idle');
+
+        const client = await page.context().newCDPSession(page);
+        try {
+          await dispatchTouchEvent(client, 'touchStart', 180, 620);
+          await dispatchTouchEvent(client, 'touchMove', 180, 520);
+          await page.waitForSelector('[data-app-root][data-menu-touch-effects="suspended"]');
+
+          const duringGesture = await page.evaluate(() => ({
+            selected: document.querySelector('[data-app-root]')?.getAttribute('data-selected-menu-item'),
+            effectIndex: document.querySelector('[data-paint-splash]')?.getAttribute('data-splash-effect-index'),
+            ambientActive: document.querySelector('[data-paint-splash]')?.getAttribute('data-splash-ambient-active'),
+          }));
+
+          await dispatchTouchEvent(client, 'touchMove', 180, 450);
+          await dispatchTouchEvent(client, 'touchEnd', 180, 450);
+          await page.waitForSelector('[data-app-root][data-menu-touch-effects="active"]');
+          await page.waitForSelector('[data-paint-splash][data-splash-ambient-active="true"]');
+
+          const afterGesture = await page.evaluate(() => ({
+            selected: document.querySelector('[data-app-root]')?.getAttribute('data-selected-menu-item'),
+            effectIndex: document.querySelector('[data-paint-splash]')?.getAttribute('data-splash-effect-index'),
+          }));
+
+          assert(duringGesture.selected !== 'about', 'touch swipe did not update the menu selection');
+          assert(duringGesture.effectIndex === '0', 'splash effect changed during the active touch gesture');
+          assert(duringGesture.ambientActive === 'false', 'splash ambience kept running during the touch gesture');
+          assert(afterGesture.selected !== 'about', 'touch swipe did not retain its final selection');
+          assert(
+            afterGesture.effectIndex === String(MENU_ITEMS.indexOf(afterGesture.selected)),
+            'final splash effect did not match the settled touch selection',
+          );
+        } finally {
+          await client.detach();
         }
       });
     });

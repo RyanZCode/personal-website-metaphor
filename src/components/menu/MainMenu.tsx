@@ -340,6 +340,8 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
   const [soundEnabled, setSoundEnabled] = useState(initialClientPreferencesRef.current.soundEnabled);
   const [supportsHoverPointer, setSupportsHoverPointer] = useState(false);
   const [splashMeasureKey, setSplashMeasureKey] = useState(0);
+  const [touchSplashEffectIndex, setTouchSplashEffectIndex] = useState(initialSelectedIndex);
+  const [touchSelectionEffectsSuspended, setTouchSelectionEffectsSuspended] = useState(false);
   const [hintsMode, setHintsMode] = useState<'menu' | 'page'>(
     shouldMountPageDirectOnLoadRef.current ? 'page' : 'menu'
   );
@@ -422,6 +424,11 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
   const menuTouchStartedInScrollViewportRef = useRef(false);
   const menuTouchHorizontalScrollLockedRef = useRef(false);
   const menuTouchSuppressClickUntilRef = useRef(0);
+  const menuTouchSelectionActiveRef = useRef(false);
+  const menuTouchLastSelectionAtRef = useRef(0);
+  const menuTouchSettleDelayRef = useRef<gsap.core.Tween | null>(null);
+  const menuTouchPendingIndexRef = useRef<number | null>(null);
+  const menuTouchSelectionRafRef = useRef<number | null>(null);
   const viewportProfile = useViewportProfile();
   const isCompactViewport = viewportProfile.layoutMode === 'compact';
   const [unsupportedScreenDismissed, setUnsupportedScreenDismissed] = useState(false);
@@ -483,6 +490,12 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
       controlHintsRevealTweenRef.current = null;
       letterPulseTlRef.current?.kill();
       letterPulseTlRef.current = null;
+      menuTouchSettleDelayRef.current?.kill();
+      menuTouchSettleDelayRef.current = null;
+      if (menuTouchSelectionRafRef.current !== null) {
+        cancelAnimationFrame(menuTouchSelectionRafRef.current);
+        menuTouchSelectionRafRef.current = null;
+      }
     };
   }, []);
 
@@ -527,13 +540,16 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
     });
   }, [playSoundEffect]);
 
-  const selectMenuIndex = useCallback((nextIndex: number, options?: { playSound?: boolean }) => {
+  const selectMenuIndex = useCallback((
+    nextIndex: number,
+    options?: { playSound?: boolean; prefetch?: boolean },
+  ) => {
     const normalizedIndex = ((nextIndex % MENU_ITEMS.length) + MENU_ITEMS.length) % MENU_ITEMS.length;
     const changed = selectedIndexRef.current !== normalizedIndex;
     selectedIndexRef.current = normalizedIndex;
     setSelectedIndex(normalizedIndex);
 
-    if (appStateRef.current === 'idle') {
+    if (appStateRef.current === 'idle' && options?.prefetch !== false) {
       const pageId = MENU_ITEMS[normalizedIndex].id as AppPageId;
       void PAGE_COMPONENT_LOADERS[pageId]?.();
     }
@@ -551,6 +567,97 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
 
     return changed;
   }, [playSoundEffect]);
+
+  const playMenuLetterPulse = useCallback(() => {
+    letterPulseTlRef.current?.kill();
+    letterPulseTlRef.current = null;
+    const menuItems = itemRefs.current.filter((item): item is HTMLDivElement => item !== null);
+    letterPulseTlRef.current = createMenuLetterPulseTimeline(menuItems);
+  }, []);
+
+  const beginMenuTouchSelection = useCallback(() => {
+    if (menuTouchSelectionActiveRef.current) return;
+
+    menuTouchSettleDelayRef.current?.kill();
+    menuTouchSettleDelayRef.current = null;
+    menuTouchSelectionActiveRef.current = true;
+    setTouchSplashEffectIndex(selectedIndexRef.current);
+    setTouchSelectionEffectsSuspended(true);
+    splashHandleRef.current?.pauseAmbient();
+    letterPulseTlRef.current?.kill();
+    letterPulseTlRef.current = null;
+  }, []);
+
+  const applyMenuTouchSelection = useCallback((nextIndex: number) => {
+    if (nextIndex === selectedIndexRef.current) return;
+
+    beginMenuTouchSelection();
+    if (selectMenuIndex(nextIndex, { prefetch: false })) {
+      menuTouchLastSelectionAtRef.current = performance.now();
+    }
+  }, [beginMenuTouchSelection, selectMenuIndex]);
+
+  const queueMenuTouchSelection = useCallback((nextIndex: number) => {
+    menuTouchPendingIndexRef.current = nextIndex;
+    if (menuTouchSelectionRafRef.current !== null) return;
+
+    menuTouchSelectionRafRef.current = requestAnimationFrame(() => {
+      menuTouchSelectionRafRef.current = null;
+      const pendingIndex = menuTouchPendingIndexRef.current;
+      menuTouchPendingIndexRef.current = null;
+      if (pendingIndex !== null) {
+        applyMenuTouchSelection(pendingIndex);
+      }
+    });
+  }, [applyMenuTouchSelection]);
+
+  const flushMenuTouchSelection = useCallback(() => {
+    if (menuTouchSelectionRafRef.current !== null) {
+      cancelAnimationFrame(menuTouchSelectionRafRef.current);
+      menuTouchSelectionRafRef.current = null;
+    }
+
+    const pendingIndex = menuTouchPendingIndexRef.current;
+    menuTouchPendingIndexRef.current = null;
+    if (pendingIndex !== null) {
+      applyMenuTouchSelection(pendingIndex);
+    }
+  }, [applyMenuTouchSelection]);
+
+  const finishMenuTouchSelection = useCallback((didNavigate: boolean) => {
+    if (!menuTouchSelectionActiveRef.current) return;
+
+    menuTouchSelectionActiveRef.current = false;
+    menuTouchSettleDelayRef.current?.kill();
+
+    const elapsedSeconds = (performance.now() - menuTouchLastSelectionAtRef.current) / 1000;
+    const settleDelaySeconds = didNavigate && animationsEnabled
+      ? Math.max(0, 0.2 - elapsedSeconds)
+      : 0;
+
+    menuTouchSettleDelayRef.current = gsap.delayedCall(settleDelaySeconds, () => {
+      menuTouchSettleDelayRef.current = null;
+      const finalIndex = selectedIndexRef.current;
+      setTouchSplashEffectIndex(finalIndex);
+      setTouchSelectionEffectsSuspended(false);
+
+      if (!didNavigate) return;
+
+      const pageId = MENU_ITEMS[finalIndex].id as AppPageId;
+      void PAGE_COMPONENT_LOADERS[pageId]?.();
+      setSplashMeasureKey((key) => key + 1);
+
+      const container = containerRef.current;
+      if (container) {
+        invalidateMenuCharacterGeometry(container);
+        measureMenuCharacterGeometry(container);
+      }
+
+      if (animationsEnabled) {
+        playMenuLetterPulse();
+      }
+    });
+  }, [animationsEnabled, playMenuLetterPulse]);
 
   const setPageNavigation = useCallback((handler: PageNavigationHandler | null) => {
     pageNavigationRef.current = handler;
@@ -802,9 +909,14 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
 
   useEffect(() => {
     if (appState !== 'idle') return;
+    if (menuTouchSelectionActiveRef.current) return;
 
     const selectedPageId = MENU_ITEMS[selectedIndex].id as AppPageId;
     void PAGE_COMPONENT_LOADERS[selectedPageId]();
+
+    if (viewportProfile.layoutMode === 'compact' && viewportProfile.shouldUseTouchNav) {
+      return;
+    }
 
     const idleWindow = window as IdleWindow;
     const preloadRemainingPages = () => {
@@ -822,7 +934,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
 
     const timeoutId = window.setTimeout(preloadRemainingPages, 250);
     return () => window.clearTimeout(timeoutId);
-  }, [appState, selectedIndex]);
+  }, [appState, selectedIndex, viewportProfile.layoutMode, viewportProfile.shouldUseTouchNav]);
 
   // Smooth scroll + index fade when selectedIndex changes
   useEffect(() => {
@@ -876,15 +988,15 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
 
     letterPulseTlRef.current?.kill();
     letterPulseTlRef.current = null;
-    if (changed) {
-      const menuItems = itemRefs.current.filter((item): item is HTMLDivElement => item !== null);
-      letterPulseTlRef.current = createMenuLetterPulseTimeline(menuItems);
+    if (changed && !menuTouchSelectionActiveRef.current) {
+      playMenuLetterPulse();
     }
-  }, [selectedIndex, appState, animationsEnabled, viewportProfile.layoutMode]);
+  }, [selectedIndex, appState, animationsEnabled, viewportProfile.layoutMode, playMenuLetterPulse]);
 
   useEffect(() => {
     const container = containerRef.current;
     if (appState !== 'idle' || !container) return;
+    if (menuTouchSelectionActiveRef.current) return;
 
     const geometryKey = [
       selectedIndex,
@@ -938,6 +1050,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
       setCompactMenuScrollWidth(null);
       return;
     }
+    if (menuTouchSelectionActiveRef.current) return;
 
     const scrollViewport = menuScrollViewportRef.current;
     const root = containerRef.current;
@@ -1526,6 +1639,10 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
   const visualQuality = getVisualQuality(animationsEnabled);
   const ambientAnimationsEnabled = shouldRunAmbientAnimations(visualActivity);
   const pageAmbientAnimationsEnabled = shouldRunPageAmbientAnimations(visualActivity);
+  const splashAmbientAnimationsEnabled = ambientAnimationsEnabled && !touchSelectionEffectsSuspended;
+  const splashEffectIndex = touchSelectionEffectsSuspended
+    ? touchSplashEffectIndex
+    : selectedIndex;
 
   useEffect(() => {
     if (ambientAnimationsEnabled) {
@@ -1944,6 +2061,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
       data-visual-activity={visualActivity}
       data-visual-quality={visualQuality}
       data-root-ambient={ambientAnimationsEnabled ? 'running' : 'paused'}
+      data-menu-touch-effects={touchSelectionEffectsSuspended ? 'suspended' : 'active'}
       data-layout-mode={viewportProfile.layoutMode}
       data-orientation={viewportProfile.orientation}
       className={`menu-root${inputMode === 'keyboard' ? ' keyboard-mode' : ''}`}
@@ -1961,6 +2079,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
         menuTouchStartIndexRef.current = selectedIndexRef.current;
         menuTouchStartScrollLeftRef.current = menuScrollViewportRef.current?.scrollLeft ?? 0;
         menuTouchNavigatedRef.current = false;
+        menuTouchPendingIndexRef.current = null;
       }}
       onTouchMove={(event) => {
         if (!viewportProfile.shouldUseTouchNav || appState !== 'idle') return;
@@ -2012,15 +2131,17 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
           ? Math.max(startIndex - indexDelta, 0)
           : Math.min(startIndex + indexDelta, MENU_ITEMS.length - 1);
 
-        menuTouchNavigatedRef.current = nextIndex !== startIndex;
         if (nextIndex !== startIndex) {
-          menuTouchSuppressClickUntilRef.current = Date.now() + 250;
+          menuTouchNavigatedRef.current = true;
         }
+        menuTouchSuppressClickUntilRef.current = Date.now() + 250;
         lastTouchInputAt.current = Date.now();
         setInputMode('touch');
-        selectMenuIndex(nextIndex);
+        queueMenuTouchSelection(nextIndex);
       }}
       onTouchEnd={() => {
+        flushMenuTouchSelection();
+        finishMenuTouchSelection(menuTouchNavigatedRef.current);
         menuTouchStartYRef.current = null;
         menuTouchStartXRef.current = null;
         menuTouchStartIndexRef.current = null;
@@ -2029,6 +2150,8 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
         menuTouchHorizontalScrollLockedRef.current = false;
       }}
       onTouchCancel={() => {
+        flushMenuTouchSelection();
+        finishMenuTouchSelection(menuTouchNavigatedRef.current);
         menuTouchStartYRef.current = null;
         menuTouchStartXRef.current = null;
         menuTouchStartIndexRef.current = null;
@@ -2099,7 +2222,8 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
             menuStackRef={menuStackRef}
             menuScrollViewportRef={menuScrollViewportRef}
             selectedIndex={selectedIndex}
-            ambientAnimationsEnabled={ambientAnimationsEnabled}
+            effectIndex={splashEffectIndex}
+            ambientAnimationsEnabled={splashAmbientAnimationsEnabled}
             accentH={activeItem.accentH}
             accentS={activeItem.accentS}
             accentL={activeItem.accentL}
