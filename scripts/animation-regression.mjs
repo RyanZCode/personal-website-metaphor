@@ -757,6 +757,46 @@ async function run() {
       });
     });
 
+    await test('compact to desktop viewport clears compact menu offset', async () => {
+      await withPage(browser, { viewport: { width: 390, height: 844 } }, async (page) => {
+        await page.goto(`${server.baseUrl}/`, { waitUntil: 'domcontentloaded' });
+        await page.getByRole('button', { name: 'Ok' }).click();
+        await waitForAppState(page, 'idle');
+
+        await page.setViewportSize({ width: 1440, height: 900 });
+        await page.waitForSelector('[data-app-root][data-layout-mode="desktop"]');
+        await wait(300);
+
+        const offsets = await page.evaluate(() => {
+          const getTranslateY = (selector) => {
+            const element = document.querySelector(selector);
+            if (!(element instanceof HTMLElement)) return Number.NaN;
+            const transform = getComputedStyle(element).transform;
+            return transform === 'none' ? 0 : new DOMMatrix(transform).m42;
+          };
+          const selectedId = document.querySelector('[data-app-root]')
+            ?.getAttribute('data-selected-menu-item');
+          const selectedIndex = ['about', 'skills', 'experience', 'contact', 'memorandum', 'system']
+            .indexOf(selectedId ?? '');
+
+          return {
+            menuLeftY: getTranslateY('[data-menu-left]'),
+            overlayY: getTranslateY('[data-menu-scroll-overlay]'),
+            expectedMenuLeftY: window.innerHeight * (2.5 - selectedIndex) * 0.015,
+          };
+        });
+
+        assert(
+          Math.abs(offsets.overlayY) < 0.5,
+          `compact menu offset remained ${offsets.overlayY.toFixed(1)}px after switching to desktop`,
+        );
+        assert(
+          Math.abs(offsets.menuLeftY - offsets.expectedMenuLeftY) < 1,
+          `desktop menu offset was ${offsets.menuLeftY.toFixed(1)}px instead of ${offsets.expectedMenuLeftY.toFixed(1)}px`,
+        );
+      });
+    });
+
     await test('compact touch swipe defers selection effects until settlement', async () => {
       await withPage(browser, {
         viewport: { width: 390, height: 844 },

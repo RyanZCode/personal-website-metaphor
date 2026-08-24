@@ -950,6 +950,16 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
     return () => window.clearTimeout(timeoutId);
   }, [appState, selectedIndex, viewportProfile.layoutMode, viewportProfile.shouldUseTouchNav]);
 
+  useLayoutEffect(() => {
+    const inactiveVerticalMotionTarget = viewportProfile.layoutMode === 'compact'
+      ? menuLeftRef.current
+      : menuScrollOverlayRef.current;
+
+    if (!inactiveVerticalMotionTarget) return;
+    gsap.killTweensOf(inactiveVerticalMotionTarget, 'y');
+    gsap.set(inactiveVerticalMotionTarget, { y: 0 });
+  }, [viewportProfile.layoutMode]);
+
   // Smooth scroll + index fade when selectedIndex changes
   useEffect(() => {
     const prevIdx = prevSelectedIndexRef.current;
@@ -982,8 +992,14 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
 
     if (menuVerticalMotionTarget) {
       if (changed) {
-        gsap.to(menuVerticalMotionTarget, { y: newY, duration: 0.2, ease: 'power3.out' });
+        gsap.to(menuVerticalMotionTarget, {
+          y: newY,
+          duration: 0.2,
+          ease: 'power3.out',
+          overwrite: 'auto',
+        });
       } else {
+        gsap.killTweensOf(menuVerticalMotionTarget, 'y');
         gsap.set(menuVerticalMotionTarget, { y: newY });
       }
     }

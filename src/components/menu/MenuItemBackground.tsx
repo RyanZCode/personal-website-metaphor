@@ -142,7 +142,7 @@ function MenuItemBackground({
     const labelRect = label.getBoundingClientRect();
     const configuredSplashH = splashHeightVh * splashScale * vh;
     const splashH = layoutMode === 'compact'
-      ? Math.min(Math.max(label.offsetHeight * 2.4, 11 * vh), 30 * vh)
+      ? Math.min(Math.max(label.offsetHeight * 2.5, 11.5 * vh), 31 * vh)
       : configuredSplashH;
     const currentWrapY = getRenderedTranslateY(wrap);
     const currentMenuY = getRenderedTranslateY(verticalTarget);
@@ -159,7 +159,12 @@ function MenuItemBackground({
     const rotation = Math.atan2(trajectoryY, trajectoryX);
     const scaleX = trajectoryLength / el.offsetWidth;
     const leftEdgeScreen = trajectoryStartX;
+    const labelCenterX = labelRect.left + labelRect.width / 2;
     const labelCenterY = labelRect.top + labelRect.height / 2 + pendingY;
+    const compactVerticalOffset = selectedIndex >= 2 ? 0.75 * vh : 0;
+    const compactCenterY = labelCenterY
+      - Math.tan(rotation) * (labelCenterX - leftEdgeScreen)
+      - compactVerticalOffset;
 
     const projectedHorizontalScale = Math.max(Math.cos(rotation) * scaleX, 0.01);
     const rotatedVerticalReach = Math.abs(Math.sin(rotation)) * splashH / 2;
@@ -170,12 +175,14 @@ function MenuItemBackground({
       layoutMode === 'compact' ? getRenderedScaleX(label) : 1
     );
     const tipExtension = layoutMode === 'compact'
-      ? window.innerWidth * 0.12
+      ? window.innerWidth * 0.15
       : splashTipExtensionVh * splashScale * vh;
     const splashW = (pivotX + labelEndX + tipExtension) / (splashTipXPct / 100);
 
     return {
-      centerY: labelCenterY + (layoutMode === 'compact' ? 0 : splashOffsetY * itemScale * vh),
+      centerY: layoutMode === 'compact'
+        ? compactCenterY
+        : labelCenterY + splashOffsetY * itemScale * vh,
       left: elementLeftPx,
       width: splashW,
       height: splashH,
