@@ -82,6 +82,14 @@ function getRenderedTranslateY(element: HTMLElement) {
   return transform.startsWith('matrix3d') ? values[13] ?? 0 : values[5] ?? 0;
 }
 
+function getRenderedScaleX(element: HTMLElement) {
+  const transform = window.getComputedStyle(element).transform;
+  if (transform === 'none') return 1;
+
+  const values = transform.slice(transform.indexOf('(') + 1, -1).split(',').map(Number);
+  return Math.hypot(values[0] ?? 1, values[1] ?? 0);
+}
+
 function MenuItemBackground({
   itemRefs,
   menuStackRef,
@@ -129,10 +137,13 @@ function MenuItemBackground({
     if (!anchor || !trajectoryEnd || !label || !wrap || !verticalTarget) return null;
 
     const vh = window.innerHeight / 100;
-    const splashH = splashHeightVh * splashScale * vh;
     const anchorRect = anchor.getBoundingClientRect();
     const trajectoryEndRect = trajectoryEnd.getBoundingClientRect();
     const labelRect = label.getBoundingClientRect();
+    const configuredSplashH = splashHeightVh * splashScale * vh;
+    const splashH = layoutMode === 'compact'
+      ? Math.min(Math.max(label.offsetHeight * 2.5, 11.5 * vh), 31 * vh)
+      : configuredSplashH;
     const currentWrapY = getRenderedTranslateY(wrap);
     const currentMenuY = getRenderedTranslateY(verticalTarget);
     const targetWrapY = selectedItemOffsetYVh * vh;
@@ -148,19 +159,30 @@ function MenuItemBackground({
     const rotation = Math.atan2(trajectoryY, trajectoryX);
     const scaleX = trajectoryLength / el.offsetWidth;
     const leftEdgeScreen = trajectoryStartX;
+    const labelCenterX = labelRect.left + labelRect.width / 2;
     const labelCenterY = labelRect.top + labelRect.height / 2 + pendingY;
+    const compactVerticalOffset = selectedIndex >= 2 ? 0.75 * vh : 0;
+    const compactCenterY = labelCenterY
+      - Math.tan(rotation) * (labelCenterX - leftEdgeScreen)
+      - compactVerticalOffset;
 
     const projectedHorizontalScale = Math.max(Math.cos(rotation) * scaleX, 0.01);
     const rotatedVerticalReach = Math.abs(Math.sin(rotation)) * splashH / 2;
     const leftOverscan = SPLASH_LEFT_OVERSCAN_VH * vh;
     const pivotX = (leftEdgeScreen + leftOverscan + rotatedVerticalReach) / projectedHorizontalScale;
     const elementLeftPx = leftEdgeScreen - pivotX;
-    const labelEndX = label.offsetLeft + label.offsetWidth;
-    const tipExtension = splashTipExtensionVh * splashScale * vh;
+    const labelEndX = label.offsetLeft + label.offsetWidth * (
+      layoutMode === 'compact' ? getRenderedScaleX(label) : 1
+    );
+    const tipExtension = layoutMode === 'compact'
+      ? window.innerWidth * 0.15
+      : splashTipExtensionVh * splashScale * vh;
     const splashW = (pivotX + labelEndX + tipExtension) / (splashTipXPct / 100);
 
     return {
-      centerY: labelCenterY + splashOffsetY * itemScale * vh,
+      centerY: layoutMode === 'compact'
+        ? compactCenterY
+        : labelCenterY + splashOffsetY * itemScale * vh,
       left: elementLeftPx,
       width: splashW,
       height: splashH,

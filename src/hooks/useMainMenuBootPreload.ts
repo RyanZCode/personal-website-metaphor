@@ -4,8 +4,7 @@ import { shouldReduceBootWork } from '../lib/deviceProfile';
 import type { MemorandumData } from '../lib/memorandum';
 import type { AppPageId } from '../lib/routes';
 
-type AppState = 'preloading' | 'unsupported-screen' | 'entry' | 'idle' | 'entering-page' | 'page-active' | 'exiting-page';
-type UnsupportedScreenResumeState = 'entry' | 'entering-page' | 'page-active';
+type AppState = 'preloading' | 'entry' | 'idle' | 'entering-page' | 'page-active' | 'exiting-page';
 
 type IdleDeadline = {
   didTimeout: boolean;
@@ -30,12 +29,9 @@ interface MainMenuBootPreloadOptions {
   effectiveMemorandumData: MemorandumData;
   initialNormalizedPathRef: MutableRefObject<string>;
   initialTargetRouteRef: MutableRefObject<InitialTargetRoute>;
-  isCompactViewport: boolean;
   setAppState: Dispatch<SetStateAction<AppState>>;
   setMemorandumData: Dispatch<SetStateAction<MemorandumData | null>>;
   shouldMountPageDirectOnLoadRef: MutableRefObject<boolean>;
-  unsupportedScreenDismissed: boolean;
-  unsupportedScreenResumeStateRef: MutableRefObject<UnsupportedScreenResumeState>;
 }
 
 function getBootTargetAppState(
@@ -56,12 +52,9 @@ export function useMainMenuBootPreload({
   effectiveMemorandumData,
   initialNormalizedPathRef,
   initialTargetRouteRef,
-  isCompactViewport,
   setAppState,
   setMemorandumData,
   shouldMountPageDirectOnLoadRef,
-  unsupportedScreenDismissed,
-  unsupportedScreenResumeStateRef,
 }: MainMenuBootPreloadOptions): void {
   const memoFetchStartedRef = useRef(false);
   const memoFetchPromiseRef = useRef<Promise<MemorandumData | null>>(Promise.resolve(null));
@@ -106,16 +99,10 @@ export function useMainMenuBootPreload({
       if (cancelled) return;
       if (appStateRef.current !== 'preloading') return;
       requestAnimationFrame(() => requestAnimationFrame(() => {
-        const bootTargetState = getBootTargetAppState(
+        const nextState = getBootTargetAppState(
           shouldMountPageDirectOnLoadRef.current,
           shouldMountPageDirectOnLoadRef.current && animationsEnabled
-        ) as UnsupportedScreenResumeState;
-        const nextState = isCompactViewport && !unsupportedScreenDismissed
-          ? 'unsupported-screen'
-          : bootTargetState;
-        if (nextState === 'unsupported-screen') {
-          unsupportedScreenResumeStateRef.current = bootTargetState;
-        }
+        );
         appStateRef.current = nextState;
         setAppState(nextState);
       }));
@@ -125,7 +112,7 @@ export function useMainMenuBootPreload({
       cancelled = true;
       preloadController.abort();
     };
-  }, [animationsEnabled, emptyMemorandumData, initialNormalizedPathRef, initialTargetRouteRef, isCompactViewport, setAppState, setMemorandumData, shouldMountPageDirectOnLoadRef, unsupportedScreenDismissed, unsupportedScreenResumeStateRef, appStateRef]);
+  }, [animationsEnabled, emptyMemorandumData, initialNormalizedPathRef, initialTargetRouteRef, setAppState, setMemorandumData, shouldMountPageDirectOnLoadRef, appStateRef]);
 
   useEffect(() => {
     if (appState === 'preloading' || deferredImageWarmupStartedRef.current) return;

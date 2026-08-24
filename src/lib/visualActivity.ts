@@ -8,7 +8,6 @@ export function getVisualActivity(
   if (!animationsEnabled) return 'off';
   if (appState === 'entering-page' || appState === 'exiting-page') return 'transition';
   if (appState === 'page-active') return 'page';
-  if (appState === 'unsupported-screen') return 'off';
   return 'menu';
 }
 
