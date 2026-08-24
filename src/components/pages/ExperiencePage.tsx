@@ -664,7 +664,13 @@ export default function ExperiencePage({
                         paddingLeft: '0.5vw',
                         paddingTop: '1.1rem',
                         paddingBottom: '1.1rem',
-                        paddingRight: `${isCompact ? 3 : isTablet ? 2.5 : ROW_PADDING_R_VW}vw`,
+                        paddingRight: isCompact
+                          ? '3vw'
+                          : isTablet
+                            ? '2.5vw'
+                            : viewportSize.width >= 1920
+                              ? '3rem'
+                              : `${ROW_PADDING_R_VW}vw`,
                         background: 'transparent',
                       }}
                     >
@@ -796,7 +802,8 @@ export default function ExperiencePage({
                                   letterSpacing: '0.15em',
                                   textTransform: 'uppercase',
                                   color: COLORS.textPrimaryDim,
-                                  whiteSpace: 'normal',
+                                  marginLeft: 'auto',
+                                  whiteSpace: 'nowrap',
                                 }}
                               >
                                 {job.type}
