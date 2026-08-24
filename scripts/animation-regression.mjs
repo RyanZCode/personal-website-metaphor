@@ -742,8 +742,11 @@ async function run() {
     await test('compact menu splash stays aligned', async () => {
       await withPage(browser, { viewport: { width: 390, height: 844 } }, async (page) => {
         await page.goto(`${server.baseUrl}/`, { waitUntil: 'domcontentloaded' });
-        await page.getByRole('button', { name: 'Ok' }).click();
         await waitForAppState(page, 'idle');
+        assert(
+          await page.getByText('Suboptimal Screen Size').count() === 0,
+          'compact screen warning was still rendered',
+        );
 
         for (const id of MENU_ITEMS) {
           const selected = await page.locator('[data-app-root]').getAttribute('data-selected-menu-item');
@@ -760,7 +763,6 @@ async function run() {
     await test('compact to desktop viewport clears compact menu offset', async () => {
       await withPage(browser, { viewport: { width: 390, height: 844 } }, async (page) => {
         await page.goto(`${server.baseUrl}/`, { waitUntil: 'domcontentloaded' });
-        await page.getByRole('button', { name: 'Ok' }).click();
         await waitForAppState(page, 'idle');
 
         await page.setViewportSize({ width: 1440, height: 900 });
@@ -803,7 +805,6 @@ async function run() {
         hasTouch: true,
       }, async (page) => {
         await page.goto(`${server.baseUrl}/`, { waitUntil: 'domcontentloaded' });
-        await page.getByRole('button', { name: 'Ok' }).click();
         await waitForAppState(page, 'idle');
 
         const client = await page.context().newCDPSession(page);

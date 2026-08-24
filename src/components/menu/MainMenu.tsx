@@ -19,7 +19,6 @@ import StatsPanel from './StatsPanel';
 import ControlHints from '../shared/ControlHints';
 import LoadingScreen from '../shared/LoadingScreen';
 import CustomCursor from '../shared/CustomCursor';
-import UnsupportedScreen from '../shared/UnsupportedScreen';
 import { readViewportProfile, useViewportProfile } from '../../lib/deviceProfile';
 import { rafThrottle } from '../../lib/rafThrottle';
 import {
@@ -52,11 +51,10 @@ import type {
   PortfolioPerformanceDebug,
 } from '../../lib/performanceDebug';
 
-type AppState = 'preloading' | 'unsupported-screen' | 'entry' | 'idle' | 'entering-page' | 'page-active' | 'exiting-page';
+type AppState = 'preloading' | 'entry' | 'idle' | 'entering-page' | 'page-active' | 'exiting-page';
 type PageId = AppPageId | null;
 type CursorStyle = 'default' | 'metaphor';
 type TransitionPhase = 'menu' | 'entering-page' | 'page-active' | 'exiting-page';
-type UnsupportedScreenResumeState = 'entry' | 'entering-page' | 'page-active';
 
 interface PageTransitionOptions {
   fromPopState?: boolean;
@@ -287,15 +285,6 @@ function readClientPreferences(): ClientPreferences {
   };
 }
 
-function getBootTargetAppState(
-  shouldMountPageDirectOnLoad: boolean,
-  shouldAnimateDirectPageEntry: boolean,
-): AppState {
-  if (shouldAnimateDirectPageEntry) return 'entering-page';
-  if (shouldMountPageDirectOnLoad) return 'page-active';
-  return 'entry';
-}
-
 export default function MainMenu({ initialPathname }: MainMenuProps) {
   const [memorandumData, setMemorandumData] = useState<MemorandumData | null>(null);
   const effectiveMemorandumData = memorandumData ?? EMPTY_MEMORANDUM_DATA;
@@ -307,7 +296,6 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
   const initialTargetRouteRef = useRef(
     resolveAppRoute(initialTargetPathRef.current, effectiveMemorandumData)
   );
-  const initialShouldShowUnsupportedScreenRef = useRef(false);
   const initialAnimationsEnabled = initialClientPreferencesRef.current.animationsEnabled;
   const shouldMountPageDirectOnLoad = initialTargetRouteRef.current.pageId !== null;
   const shouldAnimateDirectPageEntry = shouldMountPageDirectOnLoad && initialAnimationsEnabled;
@@ -328,12 +316,10 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
     shouldMountPageDirectOnLoad
   );
   const shouldSkipBlockingPreloadRef = useRef(
-    shouldMountPageDirectOnLoad && !initialShouldShowUnsupportedScreenRef.current
+    shouldMountPageDirectOnLoad
   );
   const [appState, setAppState] = useState<AppState>(
-    initialShouldShowUnsupportedScreenRef.current
-      ? 'preloading'
-      : shouldAnimateDirectPageEntry
+    shouldAnimateDirectPageEntry
       ? 'entering-page'
       : shouldMountPageDirectOnLoadRef.current && initialTargetRouteRef.current?.pageId
         ? 'page-active'
@@ -392,9 +378,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
   const lastScrollAt = useRef(0);
   const lastKeyNavAt = useRef(0);
   const appStateRef = useRef<AppState>(
-    initialShouldShowUnsupportedScreenRef.current
-      ? 'preloading'
-      : shouldAnimateDirectPageEntry
+    shouldAnimateDirectPageEntry
       ? 'entering-page'
       : shouldMountPageDirectOnLoadRef.current && initialTargetRouteRef.current?.pageId
         ? 'page-active'
@@ -444,27 +428,6 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
   const menuTouchPendingIndexRef = useRef<number | null>(null);
   const menuTouchSelectionRafRef = useRef<number | null>(null);
   const viewportProfile = useViewportProfile();
-  const isCompactViewport = viewportProfile.layoutMode === 'compact';
-  const [unsupportedScreenDismissed, setUnsupportedScreenDismissed] = useState(false);
-  const unsupportedScreenResumeStateRef = useRef<UnsupportedScreenResumeState>(
-    getBootTargetAppState(
-      shouldMountPageDirectOnLoadRef.current,
-      shouldAnimateDirectPageEntry
-    ) as UnsupportedScreenResumeState
-  );
-
-  const continueFromUnsupportedScreen = useCallback(() => {
-    setUnsupportedScreenDismissed(true);
-    if (appStateRef.current !== 'unsupported-screen') return;
-
-    const nextState = unsupportedScreenResumeStateRef.current;
-    if (nextState === 'entering-page') {
-      initialDirectMountAppliedRef.current = false;
-      initialDirectPageEntryInProgressRef.current = Boolean(activePageRef.current);
-    }
-    appStateRef.current = nextState;
-    setAppState(nextState);
-  }, []);
 
   useEffect(() => {
     setClientReady(true);
@@ -758,12 +721,9 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
     effectiveMemorandumData,
     initialNormalizedPathRef,
     initialTargetRouteRef,
-    isCompactViewport,
     setAppState,
     setMemorandumData,
     shouldMountPageDirectOnLoadRef,
-    unsupportedScreenDismissed,
-    unsupportedScreenResumeStateRef,
   });
 
   useLayoutEffect(() => {
@@ -1333,38 +1293,6 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
   }, [viewportProfile.layoutMode, viewportProfile.orientation]);
 
   useEffect(() => {
-    if (!isCompactViewport) {
-      setUnsupportedScreenDismissed(false);
-      if (appStateRef.current === 'unsupported-screen') {
-        const nextState = unsupportedScreenResumeStateRef.current;
-        if (nextState === 'entering-page') {
-          initialDirectMountAppliedRef.current = false;
-          initialDirectPageEntryInProgressRef.current = Boolean(activePageRef.current);
-        }
-        appStateRef.current = nextState;
-        setAppState(nextState);
-      }
-      return;
-    }
-
-    if (unsupportedScreenDismissed || appStateRef.current === 'unsupported-screen') return;
-    if (appStateRef.current !== 'entry' && appStateRef.current !== 'entering-page') return;
-
-    unsupportedScreenResumeStateRef.current = appStateRef.current;
-    entryTlRef.current?.kill();
-    entryTlRef.current = null;
-    pageTlRef.current?.kill();
-    pageTlRef.current = null;
-    cancelPendingPageShellReveal();
-    if (appStateRef.current === 'entering-page') {
-      initialDirectMountAppliedRef.current = false;
-      initialDirectPageEntryInProgressRef.current = Boolean(activePageRef.current);
-    }
-    appStateRef.current = 'unsupported-screen';
-    setAppState('unsupported-screen');
-  }, [cancelPendingPageShellReveal, isCompactViewport, unsupportedScreenDismissed]);
-
-  useEffect(() => {
     if (appState === 'page-active' && activePage) {
       const pendingPath = pendingLocationPageRef.current;
       const resolvedCurrentRoute = resolveAppRoute(currentLocationPath, effectiveMemorandumData);
@@ -1622,7 +1550,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
     initialDirectPageEntryInProgressRef.current
     ? handleDirectPageEntryComplete
     : undefined;
-  const shouldRenderPageShell = Boolean(activePage) && appState !== 'preloading' && appState !== 'unsupported-screen';
+  const shouldRenderPageShell = Boolean(activePage) && appState !== 'preloading';
 
   function handleCursorChange(style: CursorStyle, options?: { playSound?: boolean }) {
     if (cursorStyle === style) return;
@@ -1907,11 +1835,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
       : appState === 'exiting-page'
         ? 'exiting-page'
         : 'page-active';
-  const shouldShowUnsupportedScreen = (
-    appState !== 'preloading' &&
-    (appState === 'unsupported-screen' || isCompactViewport)
-  ) && !unsupportedScreenDismissed;
-  const shouldShowLoadingScreen = appState === 'preloading' || appState === 'unsupported-screen';
+  const shouldShowLoadingScreen = appState === 'preloading';
   const initialEntryDelaySeconds = 0;
   const AboutPage = PAGE_COMPONENT_MODULES.about.getLoadedModule()?.default ?? LazyAboutPage;
   const SkillsPage = PAGE_COMPONENT_MODULES.skills.getLoadedModule()?.default ?? LazySkillsPage;
@@ -2338,9 +2262,6 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
         </div>
       )}
     </div>
-    {shouldShowUnsupportedScreen && (
-      <UnsupportedScreen onDismiss={continueFromUnsupportedScreen} />
-    )}
     </>
   );
 }
