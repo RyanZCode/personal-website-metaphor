@@ -907,6 +907,39 @@ async function run() {
       });
     });
 
+    await test('transparent menu letters stop receiving exit transforms', async () => {
+      await withPage(browser, {}, async (page) => {
+        await openMenu(page, server.baseUrl);
+        await page.keyboard.press('Enter');
+        await wait(360);
+
+        const movement = await page.evaluate(async () => {
+          const chars = Array.from(document.querySelectorAll('[data-char]'))
+            .filter((char) => Number(getComputedStyle(char).opacity) < 0.01);
+          const readPositions = () => chars.map((char) => {
+            const transform = getComputedStyle(char).transform;
+            const matrix = transform === 'none' ? new DOMMatrix() : new DOMMatrix(transform);
+            return { x: matrix.e, y: matrix.f };
+          });
+          const before = readPositions();
+          await new Promise((resolve) => setTimeout(resolve, 80));
+          const after = readPositions();
+          return {
+            count: chars.length,
+            maxDelta: Math.max(0, ...before.map((position, index) => (
+              Math.hypot(after[index].x - position.x, after[index].y - position.y)
+            ))),
+          };
+        });
+
+        assert(movement.count >= 6, `only ${movement.count} transparent menu letters were sampled`);
+        assert(
+          movement.maxDelta < 0.5,
+          `transparent menu letters moved another ${movement.maxDelta.toFixed(1)}px`,
+        );
+      });
+    });
+
     await test('splash ambience stays active through selection changes', async () => {
       await withPage(browser, {}, async (page) => {
         await openMenu(page, server.baseUrl);

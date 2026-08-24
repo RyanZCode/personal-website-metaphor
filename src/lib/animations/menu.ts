@@ -322,12 +322,16 @@ export function createPageEnterTimeline(
   const FLY_DUR    = 0.55;
   const FADE_DELAY = 0.08;
   const FADE_DUR   = 0.20;
+  // Preserve the visible power2.in path without updating transparent letters.
+  const VISIBLE_FLY_DUR = FADE_DELAY + FADE_DUR;
+  const VISIBLE_FLY_PROGRESS = VISIBLE_FLY_DUR / FLY_DUR;
   const MOUNT_AT   = PAGE_ENTER_MOUNT_AT;
   const DONE_AT    = MOUNT_AT + 0.40;
   const CONTROL_HINTS_OUT_AT = 0.20;
   const CONTROL_HINTS_OUT_DUR = 0.12;
   const CONTROL_HINTS_SWITCH_AT = CONTROL_HINTS_OUT_AT + CONTROL_HINTS_OUT_DUR;
   const CONTROL_HINTS_IN_AT = 0.36;
+  const chars = charExits.map(({ char }) => char);
 
   let interrupted = false;
   const tl = gsap.timeline({
@@ -336,7 +340,6 @@ export function createPageEnterTimeline(
       resetSplashWipe(paintSplash, paintSplashContent, 1);
     },
   });
-  const chars = charExits.map(({ char }) => char);
 
   const mountAndRevealPage = () => {
     if (interrupted) return;
@@ -347,8 +350,8 @@ export function createPageEnterTimeline(
   tl.to(chars, {
     x: (index) => charExits[index].localX,
     y: (index) => charExits[index].localY,
-    duration: FLY_DUR,
-    ease: 'power2.in',
+    duration: VISIBLE_FLY_DUR,
+    ease: (progress) => (progress * VISIBLE_FLY_PROGRESS) ** 3,
     stagger: (index) => charExits[index].startTime,
   }, 0);
   tl.to(chars, {

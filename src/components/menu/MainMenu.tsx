@@ -2277,9 +2277,6 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
             opacity: pageVisible ? 1 : 0,
             isolation: 'isolate',
             pointerEvents: appState === 'page-active' ? 'auto' : 'none',
-            willChange: appState === 'entering-page' || appState === 'exiting-page'
-              ? 'opacity'
-              : undefined,
           }}
       >
           {activePageContent}
