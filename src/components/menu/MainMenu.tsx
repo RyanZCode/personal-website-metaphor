@@ -22,6 +22,10 @@ import CustomCursor from '../shared/CustomCursor';
 import UnsupportedScreen from '../shared/UnsupportedScreen';
 import { readViewportProfile, useViewportProfile } from '../../lib/deviceProfile';
 import { rafThrottle } from '../../lib/rafThrottle';
+import {
+  invalidateMenuCharacterGeometry,
+  measureMenuCharacterGeometry,
+} from '../../lib/menuCharacterGeometry';
 import type { PageNavigationDirection, PageNavigationHandler } from '../../lib/pageNavigation';
 import {
   APP_PAGE_IDS,
@@ -199,8 +203,9 @@ function setDirectPageInitialStates(container: Element): void {
   setIfPresent(container.querySelector('[data-menu-index]'), { y: '1.5vh', opacity: 0 });
   setIfPresent(container.querySelector('[data-paint-splash-wrap]'), {
     opacity: 0,
-    clipPath: 'inset(0 0 0 0%)',
+    xPercent: 0,
   });
+  setIfPresent(container.querySelector('[data-paint-splash-wipe-content]'), { xPercent: 0 });
   setIfPresent(container.querySelector('[data-stats-hints]'), { y: '1.5vh', opacity: 0 });
   setIfPresent(container.querySelector('[data-control-hints-fixed]'), { y: '1vh', opacity: 0 });
   setIfPresent(container.querySelector('[data-portrait-wrap]'), { opacity: 0 });
@@ -357,6 +362,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
   const indexAnimTlRef = useRef<gsap.core.Timeline | null>(null);
   const letterPulseTlRef = useRef<gsap.core.Timeline | null>(null);
   const pageTlRef = useRef<gsap.core.Timeline | null>(null);
+  const menuGeometryKeyRef = useRef<string | null>(null);
   const menuEntryPerfTokenRef = useRef<string | null>(null);
   const pageEnterPerfTokenRef = useRef<string | null>(null);
   const pageExitPerfTokenRef = useRef<string | null>(null);
@@ -775,6 +781,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
       () => {
         endPerformanceSpan(menuEntryPerfTokenRef.current);
         menuEntryPerfTokenRef.current = null;
+        if (containerRef.current) measureMenuCharacterGeometry(containerRef.current);
         setAppState('idle');
       },
       () => setSubtitleVisible(true)
@@ -874,6 +881,57 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
       letterPulseTlRef.current = createMenuLetterPulseTimeline(menuItems);
     }
   }, [selectedIndex, appState, animationsEnabled, viewportProfile.layoutMode]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (appState !== 'idle' || !container) return;
+
+    const geometryKey = [
+      selectedIndex,
+      viewportProfile.layoutMode,
+      viewportProfile.orientation,
+    ].join(':');
+    const keyChanged = menuGeometryKeyRef.current !== null && menuGeometryKeyRef.current !== geometryKey;
+    menuGeometryKeyRef.current = geometryKey;
+    if (keyChanged) invalidateMenuCharacterGeometry(container);
+    if (!keyChanged && container.dataset.menuGeometryCache === 'ready') return;
+
+    const measurement = gsap.delayedCall(keyChanged && animationsEnabled ? 0.4 : 0, () => {
+      if (appStateRef.current === 'idle') measureMenuCharacterGeometry(container);
+    });
+
+    return () => measurement.kill();
+  }, [appState, animationsEnabled, selectedIndex, viewportProfile.layoutMode, viewportProfile.orientation]);
+
+  useEffect(() => {
+    let pendingMeasurement: gsap.core.Tween | null = null;
+    let cancelled = false;
+    const scheduleMeasurement = () => {
+      const container = containerRef.current;
+      if (!container || appStateRef.current !== 'idle') return;
+
+      invalidateMenuCharacterGeometry(container);
+      pendingMeasurement?.kill();
+      pendingMeasurement = gsap.delayedCall(0.22, () => {
+        if (!cancelled && appStateRef.current === 'idle') {
+          measureMenuCharacterGeometry(container);
+        }
+      });
+    };
+
+    void document.fonts.ready.then(() => {
+      if (containerRef.current?.dataset.menuGeometryCache !== 'ready') {
+        scheduleMeasurement();
+      }
+    });
+    window.addEventListener('resize', scheduleMeasurement);
+
+    return () => {
+      cancelled = true;
+      pendingMeasurement?.kill();
+      window.removeEventListener('resize', scheduleMeasurement);
+    };
+  }, []);
 
   useEffect(() => {
     if (viewportProfile.layoutMode !== 'compact' || !menuScrollViewportRef.current || !containerRef.current) {
@@ -1695,7 +1753,8 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
         gsap.set(c.querySelector('[data-menu-left]'),           { x: 0, opacity: 1 });
         gsap.set(c.querySelector('[data-menu-index]'),          { y: 0, opacity: 1 });
         gsap.set(c.querySelector('[data-stats-hints]'),         { y: 0, opacity: 1 });
-        gsap.set(c.querySelector('[data-paint-splash-wrap]'),   { opacity: 1, clipPath: 'inset(0 0 0 0%)' });
+        gsap.set(c.querySelector('[data-paint-splash-wrap]'),   { opacity: 1, xPercent: 0 });
+        gsap.set(c.querySelector('[data-paint-splash-wipe-content]'), { xPercent: 0 });
         gsap.set(c.querySelector('[data-control-hints-fixed]'), { y: 0, opacity: 1 });
         gsap.set(c.querySelector('[data-portrait-wrap]'),       { y: 0, opacity: 1 });
         gsap.set(c.querySelectorAll('[data-char]'),             { x: 0, y: 0, scaleX: 1, scaleY: 1, opacity: 1 });
@@ -2020,28 +2079,41 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
 
       <div
         data-paint-splash-wrap
-        style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 4 }}
+        data-splash-wipe-mode="transform"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          overflow: 'hidden',
+          pointerEvents: 'none',
+          transformOrigin: 'right center',
+          zIndex: 4,
+        }}
       >
-        <MenuItemBackground
-          ref={splashHandleRef}
-          itemRefs={itemRefs}
-          menuStackRef={menuStackRef}
-          menuScrollViewportRef={menuScrollViewportRef}
-          selectedIndex={selectedIndex}
-          ambientAnimationsEnabled={ambientAnimationsEnabled}
-          accentH={activeItem.accentH}
-          accentS={activeItem.accentS}
-          accentL={activeItem.accentL}
-          splashHeightVh={activeItem.splashHeightVh}
-          splashTipExtensionVh={activeItem.splashTipExtensionVh}
-          splashOffsetY={activeItem.splashOffsetY}
-          splashTipXPct={activeItem.splashTipXPct}
-          splashTaperYPct={activeItem.splashTaperYPct}
-          menuScrollYVh={(2.5 - selectedIndex) * 1.5}
-          selectedItemOffsetYVh={getMenuItemWrapOffsetYVh(selectedIndex, selectedIndex)}
-          measureKey={splashMeasureKey}
-          layoutMode={viewportProfile.layoutMode}
-        />
+        <div
+          data-paint-splash-wipe-content
+          style={{ position: 'absolute', inset: 0, transformOrigin: 'right center' }}
+        >
+          <MenuItemBackground
+            ref={splashHandleRef}
+            itemRefs={itemRefs}
+            menuStackRef={menuStackRef}
+            menuScrollViewportRef={menuScrollViewportRef}
+            selectedIndex={selectedIndex}
+            ambientAnimationsEnabled={ambientAnimationsEnabled}
+            accentH={activeItem.accentH}
+            accentS={activeItem.accentS}
+            accentL={activeItem.accentL}
+            splashHeightVh={activeItem.splashHeightVh}
+            splashTipExtensionVh={activeItem.splashTipExtensionVh}
+            splashOffsetY={activeItem.splashOffsetY}
+            splashTipXPct={activeItem.splashTipXPct}
+            splashTaperYPct={activeItem.splashTaperYPct}
+            menuScrollYVh={(2.5 - selectedIndex) * 1.5}
+            selectedItemOffsetYVh={getMenuItemWrapOffsetYVh(selectedIndex, selectedIndex)}
+            measureKey={splashMeasureKey}
+            layoutMode={viewportProfile.layoutMode}
+          />
+        </div>
       </div>
 
       <div ref={menuLeftRef} className="menu-left" data-menu-left>
@@ -2205,9 +2277,6 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
             opacity: pageVisible ? 1 : 0,
             isolation: 'isolate',
             pointerEvents: appState === 'page-active' ? 'auto' : 'none',
-            willChange: appState === 'entering-page' || appState === 'exiting-page'
-              ? 'opacity'
-              : undefined,
           }}
       >
           {activePageContent}
