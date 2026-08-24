@@ -103,8 +103,8 @@ export const COMPACT_GEOMETRY: ExperienceGeometry = {
 export const TABLET_GEOMETRY: ExperienceGeometry = {
   leftTop: 52,
   leftBottom: 28,
-  rightBottom: 92,
-  rightStartY: 10,
+  rightBottom: 76,
+  rightStartY: 0,
 };
 
 // Rows use the narrowest intersection of both diagonal edges so their content stays

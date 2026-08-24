@@ -353,15 +353,18 @@ export default function ExperiencePage({
     Math.max(0.18, scrollMetrics.viewportHeight / Math.max(scrollMetrics.contentHeight, 1))
   );
   const scrollbarProgress = maxScrollOffset <= 1 ? 0 : scrollOffset / maxScrollOffset;
-  const trackAngleDeg = Math.atan2(
-    ((100 - geometry.rightStartY) / 100) * viewportSize.height,
-    ((geometry.rightBottom - 100) / 100) * viewportSize.width
-  ) * 180 / Math.PI;
-  const trackLengthPx = Math.min(scrollMetrics.viewportHeight * 0.76, scrollMetrics.viewportWidth * 0.7);
-  const trackTopPx = scrollMetrics.viewportHeight * 0.16;
-  const trackRightPx = isCompact
-    ? Math.max(8, scrollMetrics.viewportWidth * 0.025)
-    : Math.max(18, scrollMetrics.viewportWidth * 0.075);
+  const panelRightEdgeDxPx = ((geometry.rightBottom - 100) / 100) * viewportSize.width;
+  const panelRightEdgeDyPx = ((100 - geometry.rightStartY) / 100) * viewportSize.height;
+  const trackStartProgress = 0.12;
+  const trackEndProgress = 0.88;
+  const trackInsetPx = isCompact ? 10 : Math.max(16, viewportSize.width * 0.012);
+  const trackAngleDeg = Math.atan2(panelRightEdgeDyPx, panelRightEdgeDxPx) * 180 / Math.PI;
+  const trackLengthPx = Math.hypot(panelRightEdgeDxPx, panelRightEdgeDyPx) * (
+    trackEndProgress - trackStartProgress
+  );
+  const trackLeftPx = viewportSize.width + panelRightEdgeDxPx * trackStartProgress - trackInsetPx;
+  const trackTopPx = (geometry.rightStartY / 100) * viewportSize.height +
+    panelRightEdgeDyPx * trackStartProgress;
   const thumbWidthPx = trackLengthPx * scrollbarThumbFraction;
   const thumbTravelPx = Math.max(0, trackLengthPx - thumbWidthPx);
   const thumbOffsetPx = thumbTravelPx * scrollbarProgress;
@@ -627,48 +630,6 @@ export default function ExperiencePage({
                   touchAction: maxScrollOffset > 1 ? 'none' : 'auto',
                 }}
               >
-              {maxScrollOffset > 1 ? (
-                <div
-                  aria-hidden="true"
-                  style={{
-                    position: 'absolute',
-                    top: `${trackTopPx}px`,
-                    left: `calc(100% - ${trackRightPx}px)`,
-                    width: `${trackLengthPx}px`,
-                    height: '12px',
-                    zIndex: 2,
-                    pointerEvents: 'none',
-                    transform: `translateY(-50%) rotate(${trackAngleDeg}deg)`,
-                    transformOrigin: '0 50%',
-                  }}
-                >
-                  <div
-                    style={{
-                      position: 'absolute',
-                      left: 0,
-                      top: '50%',
-                      width: '100%',
-                      height: '4px',
-                      transform: 'translateY(-50%)',
-                      borderRadius: '999px',
-                      background: 'rgba(255, 214, 224, 0.24)',
-                    }}
-                  />
-                  <div
-                    style={{
-                      position: 'absolute',
-                      left: `${thumbOffsetPx}px`,
-                      top: '50%',
-                      width: `${thumbWidthPx}px`,
-                      height: '4px',
-                      transform: 'translateY(-50%)',
-                      borderRadius: '999px',
-                      background: 'rgba(255, 214, 224, 0.7)',
-                      boxShadow: '0 0 8px rgba(255, 132, 176, 0.42)',
-                    }}
-                  />
-                </div>
-              ) : null}
               <div
                 data-page-content
                 ref={contentRef}
@@ -861,6 +822,49 @@ export default function ExperiencePage({
             </div>
           </div>
         </div>
+        {maxScrollOffset > 1 ? (
+          <div
+            data-experience-scrollbar
+            aria-hidden="true"
+            style={{
+              position: 'absolute',
+              top: `${trackTopPx}px`,
+              left: `${trackLeftPx}px`,
+              width: `${trackLengthPx}px`,
+              height: '12px',
+              zIndex: 4,
+              pointerEvents: 'none',
+              transform: `translateY(-50%) rotate(${trackAngleDeg}deg)`,
+              transformOrigin: '0 50%',
+            }}
+          >
+            <div
+              style={{
+                position: 'absolute',
+                left: 0,
+                top: '50%',
+                width: '100%',
+                height: '4px',
+                transform: 'translateY(-50%)',
+                borderRadius: '999px',
+                background: 'rgba(255, 214, 224, 0.24)',
+              }}
+            />
+            <div
+              style={{
+                position: 'absolute',
+                left: `${thumbOffsetPx}px`,
+                top: '50%',
+                width: `${thumbWidthPx}px`,
+                height: '4px',
+                transform: 'translateY(-50%)',
+                borderRadius: '999px',
+                background: 'rgba(255, 214, 224, 0.7)',
+                boxShadow: '0 0 8px rgba(255, 132, 176, 0.42)',
+              }}
+            />
+          </div>
+        ) : null}
       </div>
 
       <div
