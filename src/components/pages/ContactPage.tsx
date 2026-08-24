@@ -249,12 +249,17 @@ export default function ContactPage({
     ? `hsl(${contactItem.accentH} ${contactItem.accentS} ${contactItem.accentL})`
     : 'hsl(25 80% 50%)';
   const isCompact = viewportProfile.layoutMode === 'compact';
+  const isTablet = viewportProfile.layoutMode === 'tablet';
   const isNarrowCompactViewport = isCompact && typeof window !== 'undefined' && window.innerWidth <= 380;
+  const isWideCompactViewport = isCompact && typeof window !== 'undefined' && window.innerWidth >= 768;
   const contactRowHeight = isCompact
-    ? isNarrowCompactViewport
+    ? isWideCompactViewport
+      ? CONTACT_ROW_HEIGHT
+      : isNarrowCompactViewport
       ? NARROW_COMPACT_CONTACT_ROW_HEIGHT
       : COMPACT_CONTACT_ROW_HEIGHT
     : CONTACT_ROW_HEIGHT;
+  const panelSidePadding = isCompact ? 20 : isTablet ? 24 : PANEL_SIDE_PADDING;
 
   useEffect(() => {
     selectedIndexRef.current = selectedIndex;
@@ -549,7 +554,7 @@ export default function ContactPage({
                 minHeight: 0,
                 background: 'linear-gradient(140deg, rgba(25, 9, 13, 0.92), rgba(7, 4, 7, 0.86))',
                 boxShadow: '0 0 0 1px rgba(205, 35, 45, 0.18), 0 2rem 5rem rgba(0, 0, 0, 0.45)',
-                padding: `${PANEL_TOP_PADDING}px ${PANEL_SIDE_PADDING}px ${PANEL_BOTTOM_PADDING}px`,
+                padding: `${PANEL_TOP_PADDING}px ${panelSidePadding}px ${PANEL_BOTTOM_PADDING}px`,
                 boxSizing: 'border-box',
               }}
               thumbColor="rgba(255, 214, 224, 0.62)"
@@ -576,9 +581,9 @@ export default function ContactPage({
                     gap: '1.5rem',
                     height: `${contactRowHeight}px`,
                     minHeight: `${contactRowHeight}px`,
-                    padding: `0 ${PANEL_SIDE_PADDING}px`,
-                    marginLeft: `-${PANEL_SIDE_PADDING}px`,
-                    marginRight: `-${PANEL_SIDE_PADDING}px`,
+                    padding: `0 ${panelSidePadding}px`,
+                    marginLeft: `-${panelSidePadding}px`,
+                    marginRight: `-${panelSidePadding}px`,
                     textDecoration: 'none',
                     color: 'inherit',
                     cursor: 'pointer',
