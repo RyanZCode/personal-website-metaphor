@@ -82,6 +82,14 @@ function getRenderedTranslateY(element: HTMLElement) {
   return transform.startsWith('matrix3d') ? values[13] ?? 0 : values[5] ?? 0;
 }
 
+function getRenderedScaleX(element: HTMLElement) {
+  const transform = window.getComputedStyle(element).transform;
+  if (transform === 'none') return 1;
+
+  const values = transform.slice(transform.indexOf('(') + 1, -1).split(',').map(Number);
+  return Math.hypot(values[0] ?? 1, values[1] ?? 0);
+}
+
 function MenuItemBackground({
   itemRefs,
   menuStackRef,
@@ -134,7 +142,7 @@ function MenuItemBackground({
     const labelRect = label.getBoundingClientRect();
     const configuredSplashH = splashHeightVh * splashScale * vh;
     const splashH = layoutMode === 'compact'
-      ? Math.min(Math.max(label.offsetHeight * 2.1, 10 * vh), 26 * vh)
+      ? Math.min(Math.max(label.offsetHeight * 2.4, 11 * vh), 30 * vh)
       : configuredSplashH;
     const currentWrapY = getRenderedTranslateY(wrap);
     const currentMenuY = getRenderedTranslateY(verticalTarget);
@@ -158,14 +166,16 @@ function MenuItemBackground({
     const leftOverscan = SPLASH_LEFT_OVERSCAN_VH * vh;
     const pivotX = (leftEdgeScreen + leftOverscan + rotatedVerticalReach) / projectedHorizontalScale;
     const elementLeftPx = leftEdgeScreen - pivotX;
-    const labelEndX = label.offsetLeft + label.offsetWidth;
+    const labelEndX = label.offsetLeft + label.offsetWidth * (
+      layoutMode === 'compact' ? getRenderedScaleX(label) : 1
+    );
     const tipExtension = layoutMode === 'compact'
-      ? window.innerWidth * 0.1
+      ? window.innerWidth * 0.12
       : splashTipExtensionVh * splashScale * vh;
     const splashW = (pivotX + labelEndX + tipExtension) / (splashTipXPct / 100);
 
     return {
-      centerY: labelCenterY + splashOffsetY * (layoutMode === 'compact' ? 0.38 : itemScale) * vh,
+      centerY: labelCenterY + (layoutMode === 'compact' ? 0 : splashOffsetY * itemScale * vh),
       left: elementLeftPx,
       width: splashW,
       height: splashH,
