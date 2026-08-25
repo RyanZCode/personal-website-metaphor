@@ -60,6 +60,22 @@ const labelStyle: React.CSSProperties = {
   alignItems: 'center',
 };
 
+function HintHoverOverlay() {
+  return (
+    <span
+      data-hint-hover-overlay
+      aria-hidden="true"
+      style={{
+        position: 'absolute',
+        inset: 0,
+        background: 'rgba(0, 0, 0, 1)',
+        opacity: 0,
+        pointerEvents: 'none',
+      }}
+    />
+  );
+}
+
 function Chip({
   keys,
   label,
@@ -117,21 +133,7 @@ function Chip({
           pointerEvents: 'auto',
         }}
       >
-        {isBackChip && (
-          <span
-            data-back-hint-accent
-            aria-hidden="true"
-            style={{
-              position: 'absolute',
-              inset: 0,
-              background: 'linear-gradient(90deg, hsla(var(--accent-h), var(--accent-s), var(--accent-l), 0.5), hsla(var(--accent-h), var(--accent-s), var(--accent-l), 0))',
-              opacity: 0.18,
-              transform: 'scaleX(0.35)',
-              transformOrigin: '0 50%',
-              pointerEvents: 'none',
-            }}
-          />
-        )}
+        <HintHoverOverlay />
         {icon}
         {keys && <span style={{ ...keyStyle, position: 'relative', zIndex: 1 }}>{keys}</span>}
         <span
@@ -309,16 +311,21 @@ export default function ControlHints({
         >
           {chip.id === 'toggle-animations' ? (
             <button
+              type="button"
+              data-hint-chip
               onClick={chip.onClick}
               style={{
                 ...baseChipStyle,
+                position: 'relative',
+                overflow: 'hidden',
                 border: 'none',
                 cursor: 'pointer',
                 pointerEvents: 'auto',
               }}
             >
-              <span style={keyStyle}>{chip.keys}</span>
-              <span style={labelStyle}>Toggle Animations</span>
+              <HintHoverOverlay />
+              <span style={{ ...keyStyle, position: 'relative', zIndex: 1 }}>{chip.keys}</span>
+              <span style={{ ...labelStyle, position: 'relative', zIndex: 1 }}>Toggle Animations</span>
               <span style={{
                 fontFamily: 'Cambria, "Times New Roman", serif',
                 fontSize: 'var(--font-fluid-xs)',
@@ -328,6 +335,7 @@ export default function ControlHints({
                 display: 'inline-flex',
                 alignItems: 'center',
                 lineHeight: 1,
+                zIndex: 1,
               }}>
                 <span style={{ visibility: 'hidden' }}>Off</span>
                 <span style={{
