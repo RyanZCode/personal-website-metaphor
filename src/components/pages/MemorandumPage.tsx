@@ -357,7 +357,9 @@ export default function MemorandumPage({
   const initialState = getInitialMemorandumState(locationPath, memorandumData);
   const containerRef = useRef<HTMLElement>(null);
   const listViewportRef = useRef<HTMLDivElement>(null);
+  const detailPanelRef = useRef<HTMLDivElement>(null);
   const detailViewportRef = useRef<HTMLDivElement>(null);
+  const detailImageScrollRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const exitTlRef = useRef<gsap.core.Timeline | null>(null);
   const detailTlRef = useRef<gsap.core.Timeline | null>(null);
@@ -442,7 +444,11 @@ export default function MemorandumPage({
   };
 
   const scrollDetailBody = (direction: 'up' | 'down') => {
-    const viewport = detailViewportRef.current;
+    const panel = detailPanelRef.current;
+    const bodyViewport = detailViewportRef.current;
+    const viewport = panel && panel.scrollHeight - panel.clientHeight > 1
+      ? panel
+      : bodyViewport;
     if (!viewport) return false;
 
     const scrollRange = viewport.scrollHeight - viewport.clientHeight;
@@ -1190,26 +1196,44 @@ export default function MemorandumPage({
   }, [animationsEnabled, currentEntryIndex, detailEntryId, hasEntries, isTransitioning, selectedColumnIndex]);
 
   useLayoutEffect(() => {
-    const viewport = detailViewportRef.current;
-    if (!viewport || !hasDisplayedDetail) {
+    const panel = detailPanelRef.current;
+    const bodyViewport = detailViewportRef.current;
+    const imageScroll = detailImageScrollRef.current;
+    if ((!panel && !bodyViewport) || !hasDisplayedDetail) {
       setIsDetailBodyScrollable(false);
       return;
     }
 
     const updateScrollability = rafThrottle(() => {
-      setIsDetailBodyScrollable(viewport.scrollHeight - viewport.clientHeight > 1);
+      const panelScrollable = panel
+        ? panel.scrollHeight - panel.clientHeight > 1
+        : false;
+      const bodyScrollable = bodyViewport
+        ? bodyViewport.scrollHeight - bodyViewport.clientHeight > 1
+        : false;
+      setIsDetailBodyScrollable(panelScrollable || bodyScrollable);
     });
 
-    viewport.scrollTop = 0;
+    if (panel) panel.scrollTop = 0;
+    if (bodyViewport) bodyViewport.scrollTop = 0;
+    if (imageScroll) imageScroll.scrollLeft = 0;
     updateScrollability();
 
     const resizeObserver = typeof ResizeObserver === 'undefined'
       ? null
       : new ResizeObserver(updateScrollability);
 
-    resizeObserver?.observe(viewport);
-    if (viewport.firstElementChild instanceof HTMLElement) {
-      resizeObserver?.observe(viewport.firstElementChild);
+    if (panel) {
+      resizeObserver?.observe(panel);
+      if (panel.firstElementChild instanceof HTMLElement) {
+        resizeObserver?.observe(panel.firstElementChild);
+      }
+    }
+    if (bodyViewport) {
+      resizeObserver?.observe(bodyViewport);
+      if (bodyViewport.firstElementChild instanceof HTMLElement) {
+        resizeObserver?.observe(bodyViewport.firstElementChild);
+      }
     }
 
     window.addEventListener('resize', updateScrollability);
@@ -2217,6 +2241,7 @@ export default function MemorandumPage({
           <>
             <PageBackground />
             <div
+              ref={detailPanelRef}
               data-memorandum-detail-panel
               style={{
                 position: 'absolute',
@@ -2480,6 +2505,8 @@ export default function MemorandumPage({
                     />
 
                     <div
+                      ref={detailImageScrollRef}
+                      data-memorandum-detail-image-scroll
                       style={{
                         position: 'relative',
                         display: 'flex',
@@ -2492,6 +2519,7 @@ export default function MemorandumPage({
                         data-memorandum-detail-image-motion
                         style={{
                           position: 'relative',
+                          minWidth: 0,
                           padding: '0.95rem',
                           background: 'rgba(12, 8, 10, 0.88)',
                           border: '2px solid rgba(255, 255, 255, 0.5)',
