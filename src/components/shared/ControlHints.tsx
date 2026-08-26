@@ -19,6 +19,7 @@ interface HintChip {
   id: string;
   keys: string;
   label: string;
+  ariaLabel?: string;
   onClick?: () => void;
   hidden?: boolean;
   variant?: 'default' | 'back';
@@ -31,6 +32,7 @@ const baseChipStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: '0.35rem',
+  minHeight: '2.02rem',
 };
 
 const keyStyle: React.CSSProperties = {
@@ -59,14 +61,32 @@ const labelStyle: React.CSSProperties = {
   alignItems: 'center',
 };
 
+function HintHoverOverlay() {
+  return (
+    <span
+      data-hint-hover-overlay
+      aria-hidden="true"
+      style={{
+        position: 'absolute',
+        inset: 0,
+        background: 'rgba(0, 0, 0, 1)',
+        opacity: 0,
+        pointerEvents: 'none',
+      }}
+    />
+  );
+}
+
 function Chip({
   keys,
   label,
+  ariaLabel,
   onClick,
   variant = 'default',
 }: {
   keys: string;
   label: string;
+  ariaLabel?: string;
   onClick?: () => void;
   variant?: 'default' | 'back';
 }) {
@@ -75,21 +95,19 @@ function Chip({
     ...baseChipStyle,
     position: 'relative',
     overflow: 'hidden',
-    border: isBackChip ? `1px solid ${COLORS.chipBorder}` : 'none',
-    background: isBackChip
-      ? 'linear-gradient(135deg, rgba(255, 247, 233, 1), rgba(255, 221, 170, 0.98))'
-      : COLORS.chipBg,
-    boxShadow: isBackChip
-      ? '0 0 0 1px rgba(255, 240, 214, 0.55), 0 0.7rem 1.4rem rgba(0, 0, 0, 0.28)'
-      : 'none',
-    padding: isBackChip ? '0.62rem 2rem 0.62rem 1.7rem' : baseChipStyle.padding,
-    gap: isBackChip ? '0.52rem' : baseChipStyle.gap,
-    transform: isBackChip ? 'translateY(-0.08rem)' : 'none',
+    border: 'none',
+    background: COLORS.chipBg,
+    boxShadow: 'none',
+    padding: isBackChip ? '0.45rem 1.8rem 0.45rem 1.55rem' : baseChipStyle.padding,
+    gap: isBackChip ? '0.45rem' : baseChipStyle.gap,
+    minHeight: isBackChip ? '2.55rem' : baseChipStyle.minHeight,
   };
-  const icon = isBackChip ? (
+  const icon = isBackChip && !keys ? (
     <span
       aria-hidden="true"
       style={{
+        position: 'relative',
+        zIndex: 1,
         fontFamily: '"Cinzel", serif',
         fontSize: 'var(--font-fluid-xs)',
         fontWeight: 700,
@@ -105,6 +123,10 @@ function Chip({
   if (onClick) {
     return (
       <button
+        type="button"
+        aria-label={ariaLabel}
+        data-hint-chip
+        data-hint-variant={variant}
         onClick={onClick}
         style={{
           ...sharedStyle,
@@ -112,11 +134,14 @@ function Chip({
           pointerEvents: 'auto',
         }}
       >
+        <HintHoverOverlay />
         {icon}
-        <span style={keyStyle}>{keys}</span>
+        {keys && <span style={{ ...keyStyle, position: 'relative', zIndex: 1 }}>{keys}</span>}
         <span
           style={{
             ...labelStyle,
+            position: 'relative',
+            zIndex: 1,
             color: isBackChip ? COLORS.chipTextStrong : labelStyle.color,
             fontWeight: isBackChip ? 700 : 400,
             letterSpacing: isBackChip ? '0.08em' : labelStyle.letterSpacing,
@@ -161,18 +186,21 @@ export default function ControlHints({
   const chips: HintChip[] = [];
   const isCompactTouch = layoutMode === 'compact' && touchMode;
   const navigateKeys = touchMode ? 'Swipe' : 'W / S';
-  const confirmKeys = touchMode ? 'Tap' : 'Space';
-  const previousPageKeys = touchMode ? 'Tap' : 'A';
-  const nextPageKeys = touchMode ? 'Tap' : 'D';
-  const previousEntryKeys = touchMode ? 'Tap' : '1';
-  const nextEntryKeys = touchMode ? 'Tap' : '3';
+  const confirmKeys = touchMode ? '' : 'Space';
+  const previousPageKeys = touchMode ? '' : 'A';
+  const nextPageKeys = touchMode ? '' : 'D';
+  const previousEntryKeys = touchMode ? '' : '1';
+  const nextEntryKeys = touchMode ? '' : '3';
 
   const backLabel = activePage === 'memorandum' && hintVariant === 'memorandum-detail'
-    ? 'Back to Memorandum'
+    ? 'Memorandum'
     : mode === 'page'
-      ? 'Back to Main Menu'
+      ? 'Main Menu'
       : 'Back';
-  const clickableBackKeys = touchMode ? 'Tap' : 'C / Click';
+  const backAriaLabel = activePage === 'memorandum' && hintVariant === 'memorandum-detail'
+    ? 'Back to Memorandum'
+    : 'Back to Main Menu';
+  const clickableBackKeys = touchMode ? '' : 'C / Esc';
 
   if (mode === 'menu') {
     chips.push(
@@ -186,12 +214,14 @@ export default function ControlHints({
       case 'about':
       case 'skills':
       case 'experience':
-        chips.push({
-          id: 'page-scroll',
-          keys: navigateKeys,
-          label: 'Scroll',
-          hidden: !showScrollHint,
-        });
+        if (!touchMode) {
+          chips.push({
+            id: 'page-scroll',
+            keys: navigateKeys,
+            label: 'Scroll',
+            hidden: !showScrollHint,
+          });
+        }
         break;
       case 'contact':
         if (!isCompactTouch) {
@@ -229,31 +259,38 @@ export default function ControlHints({
         break;
       case 'system':
         if (!isCompactTouch) {
-          chips.push(
-            { id: 'page-select', keys: navigateKeys, label: 'Select' },
-            { id: 'page-change', keys: touchMode ? 'Tap' : 'A / D', label: 'Change' },
-          );
+          chips.push({ id: 'page-select', keys: navigateKeys, label: 'Select' });
+          if (!touchMode) {
+            chips.push({ id: 'page-change', keys: 'A / D', label: 'Change' });
+          }
         }
         break;
       default:
         break;
     }
+  }
 
+  chips.push({
+    id: 'toggle-animations',
+    keys: touchMode ? '' : 'F',
+    label: `Toggle Animations ${animationsEnabled ? 'On' : 'Off'}`,
+    onClick: onAnimationsToggle,
+  });
+
+  if (mode === 'page') {
     chips.push({
       id: 'page-back',
       keys: clickableBackKeys,
       label: backLabel,
+      ariaLabel: backAriaLabel,
       onClick: onBack,
       variant: 'back',
     });
   }
 
-  chips.push({ id: 'toggle-animations', keys: 'F', label: `Toggle Animations ${animationsEnabled ? 'On' : 'Off'}`, onClick: onAnimationsToggle });
-
   return (
     <div
       data-control-hints
-      key={`${mode}-${activePage ?? 'menu'}`}
       style={{
         display: 'flex',
         gap: '0.3rem',
@@ -280,16 +317,32 @@ export default function ControlHints({
         >
           {chip.id === 'toggle-animations' ? (
             <button
-              onClick={chip.onClick}
+              type="button"
+              data-hint-chip
+              onClick={(event) => {
+                if (event.detail > 0) {
+                  event.currentTarget.dataset.hoverSuppressed = 'true';
+                  event.currentTarget.blur();
+                }
+                chip.onClick?.();
+              }}
+              onPointerLeave={(event) => {
+                delete event.currentTarget.dataset.hoverSuppressed;
+              }}
               style={{
                 ...baseChipStyle,
+                position: 'relative',
+                overflow: 'hidden',
                 border: 'none',
                 cursor: 'pointer',
                 pointerEvents: 'auto',
               }}
             >
-              <span style={keyStyle}>{chip.keys}</span>
-              <span style={labelStyle}>Toggle Animations</span>
+              <HintHoverOverlay />
+              {chip.keys ? (
+                <span style={{ ...keyStyle, position: 'relative', zIndex: 1 }}>{chip.keys}</span>
+              ) : null}
+              <span style={{ ...labelStyle, position: 'relative', zIndex: 1 }}>Toggle Animations</span>
               <span style={{
                 fontFamily: 'Cambria, "Times New Roman", serif',
                 fontSize: 'var(--font-fluid-xs)',
@@ -299,6 +352,7 @@ export default function ControlHints({
                 display: 'inline-flex',
                 alignItems: 'center',
                 lineHeight: 1,
+                zIndex: 1,
               }}>
                 <span style={{ visibility: 'hidden' }}>Off</span>
                 <span style={{
@@ -316,6 +370,7 @@ export default function ControlHints({
             <Chip
               keys={chip.keys}
               label={chip.label}
+              ariaLabel={chip.ariaLabel}
               onClick={chip.onClick}
               variant={chip.variant}
             />
