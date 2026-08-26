@@ -220,8 +220,8 @@
   transition: opacity 140ms ease;
 }
 
-[data-hint-chip]:hover,
-[data-hint-chip]:focus-visible {
+[data-hint-chip]:hover:not([data-hover-suppressed='true']),
+[data-hint-chip]:focus-visible:not([data-hover-suppressed='true']) {
   transform: translateY(-2px) scale(1.02);
 }
 

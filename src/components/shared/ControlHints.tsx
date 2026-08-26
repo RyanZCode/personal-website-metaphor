@@ -214,12 +214,14 @@ export default function ControlHints({
       case 'about':
       case 'skills':
       case 'experience':
-        chips.push({
-          id: 'page-scroll',
-          keys: navigateKeys,
-          label: 'Scroll',
-          hidden: !showScrollHint,
-        });
+        if (!touchMode) {
+          chips.push({
+            id: 'page-scroll',
+            keys: navigateKeys,
+            label: 'Scroll',
+            hidden: !showScrollHint,
+          });
+        }
         break;
       case 'contact':
         if (!isCompactTouch) {
@@ -257,10 +259,10 @@ export default function ControlHints({
         break;
       case 'system':
         if (!isCompactTouch) {
-          chips.push(
-            { id: 'page-select', keys: navigateKeys, label: 'Select' },
-            { id: 'page-change', keys: touchMode ? '' : 'A / D', label: 'Change' },
-          );
+          chips.push({ id: 'page-select', keys: navigateKeys, label: 'Select' });
+          if (!touchMode) {
+            chips.push({ id: 'page-change', keys: 'A / D', label: 'Change' });
+          }
         }
         break;
       default:
@@ -268,9 +270,12 @@ export default function ControlHints({
     }
   }
 
-  if (!isCompactTouch) {
-    chips.push({ id: 'toggle-animations', keys: 'F', label: `Toggle Animations ${animationsEnabled ? 'On' : 'Off'}`, onClick: onAnimationsToggle });
-  }
+  chips.push({
+    id: 'toggle-animations',
+    keys: touchMode ? '' : 'F',
+    label: `Toggle Animations ${animationsEnabled ? 'On' : 'Off'}`,
+    onClick: onAnimationsToggle,
+  });
 
   if (mode === 'page') {
     chips.push({
@@ -314,7 +319,16 @@ export default function ControlHints({
             <button
               type="button"
               data-hint-chip
-              onClick={chip.onClick}
+              onClick={(event) => {
+                if (event.detail > 0) {
+                  event.currentTarget.dataset.hoverSuppressed = 'true';
+                  event.currentTarget.blur();
+                }
+                chip.onClick?.();
+              }}
+              onPointerLeave={(event) => {
+                delete event.currentTarget.dataset.hoverSuppressed;
+              }}
               style={{
                 ...baseChipStyle,
                 position: 'relative',
@@ -325,7 +339,9 @@ export default function ControlHints({
               }}
             >
               <HintHoverOverlay />
-              <span style={{ ...keyStyle, position: 'relative', zIndex: 1 }}>{chip.keys}</span>
+              {chip.keys ? (
+                <span style={{ ...keyStyle, position: 'relative', zIndex: 1 }}>{chip.keys}</span>
+              ) : null}
               <span style={{ ...labelStyle, position: 'relative', zIndex: 1 }}>Toggle Animations</span>
               <span style={{
                 fontFamily: 'Cambria, "Times New Roman", serif',
