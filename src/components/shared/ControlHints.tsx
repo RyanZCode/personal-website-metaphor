@@ -185,11 +185,11 @@ export default function ControlHints({
   const chips: HintChip[] = [];
   const isCompactTouch = layoutMode === 'compact' && touchMode;
   const navigateKeys = touchMode ? 'Swipe' : 'W / S';
-  const confirmKeys = touchMode ? 'Tap' : 'Space';
-  const previousPageKeys = touchMode ? 'Tap' : 'A';
-  const nextPageKeys = touchMode ? 'Tap' : 'D';
-  const previousEntryKeys = touchMode ? 'Tap' : '1';
-  const nextEntryKeys = touchMode ? 'Tap' : '3';
+  const confirmKeys = touchMode ? '' : 'Space';
+  const previousPageKeys = touchMode ? '' : 'A';
+  const nextPageKeys = touchMode ? '' : 'D';
+  const previousEntryKeys = touchMode ? '' : '1';
+  const nextEntryKeys = touchMode ? '' : '3';
 
   const backLabel = activePage === 'memorandum' && hintVariant === 'memorandum-detail'
     ? 'Memorandum'
@@ -258,7 +258,7 @@ export default function ControlHints({
         if (!isCompactTouch) {
           chips.push(
             { id: 'page-select', keys: navigateKeys, label: 'Select' },
-            { id: 'page-change', keys: touchMode ? 'Tap' : 'A / D', label: 'Change' },
+            { id: 'page-change', keys: touchMode ? '' : 'A / D', label: 'Change' },
           );
         }
         break;
