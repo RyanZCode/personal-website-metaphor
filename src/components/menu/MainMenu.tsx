@@ -2180,70 +2180,51 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
         </div>
       </div>
 
-      <div
-        data-stats-hints
-        style={{
-          position: 'fixed',
-          bottom: 'calc(2vh + 2.6rem)',
-          right: 0,
-          zIndex: 10,
-          pointerEvents: 'none',
-          overflow: 'visible',
-        }}
-      >
-        <StatsPanel layoutMode={viewportProfile.layoutMode} />
-      </div>
+      <div data-menu-hud>
+        <div data-stats-hints>
+          <StatsPanel layoutMode={viewportProfile.layoutMode} />
+        </div>
 
-      {/* Control hints - above page shell, always visible */}
-      <div
-        data-control-hints-fixed
-        style={{
-          position: 'fixed',
-          bottom: '2vh',
-          right: '2vw',
-          zIndex: 20,
-          pointerEvents: 'none',
-          overflow: 'visible',
-        }}
-      >
-        <ControlHints
-          animationsEnabled={animationsEnabled}
-          mode={hintsMode}
-          activePage={hintsPage}
-         hintVariant={hintVariant}
-         showScrollHint={showScrollHint}
-         layoutMode={viewportProfile.layoutMode}
-          touchMode={viewportProfile.shouldUseTouchNav}
-          onShortcutClick={(key) => {
-            if (pageNavigationRef.current?.inputLocked) return;
-            if (key === 'a' || key === 'A') {
-              pageNavigationRef.current?.onDirection?.('left');
-              return;
-            }
-            if (key === 'd' || key === 'D') {
-              pageNavigationRef.current?.onDirection?.('right');
-              return;
-            }
-            if (key === '1' || key === '3') {
-              pageNavigationRef.current?.onActionKey?.(key);
-            }
-          }}
-          onConfirm={() => {
-            if (hintsMode === 'menu') {
-              enterPage(MENU_ITEMS[selectedIndex].id as AppPageId, { playSound: true });
-              return;
-            }
+        <div data-control-hints-fixed>
+          <ControlHints
+            animationsEnabled={animationsEnabled}
+            mode={hintsMode}
+            activePage={hintsPage}
+            hintVariant={hintVariant}
+            showScrollHint={showScrollHint}
+            layoutMode={viewportProfile.layoutMode}
+            touchMode={viewportProfile.shouldUseTouchNav}
+            onShortcutClick={(key) => {
+              if (pageNavigationRef.current?.inputLocked) return;
+              if (key === 'a' || key === 'A') {
+                pageNavigationRef.current?.onDirection?.('left');
+                return;
+              }
+              if (key === 'd' || key === 'D') {
+                pageNavigationRef.current?.onDirection?.('right');
+                return;
+              }
+              if (key === '1' || key === '3') {
+                pageNavigationRef.current?.onActionKey?.(key);
+              }
+            }}
+            onConfirm={() => {
+              if (hintsMode === 'menu') {
+                enterPage(MENU_ITEMS[selectedIndex].id as AppPageId, { playSound: true });
+                return;
+              }
 
-            if (pageNavigationRef.current?.inputLocked) return;
-            pageNavigationRef.current?.onConfirm?.();
-          }}
-          onBack={() => {
-            if (pageNavigationRef.current?.inputLocked) return;
-            if (pageNavigationRef.current?.onBack?.()) return;
-            exitPage({ playSound: true });
-          }}
-          onAnimationsToggle={() => handleAnimationsToggle({ playSound: true })}
-        />
+              if (pageNavigationRef.current?.inputLocked) return;
+              pageNavigationRef.current?.onConfirm?.();
+            }}
+            onBack={() => {
+              if (pageNavigationRef.current?.inputLocked) return;
+              if (pageNavigationRef.current?.onBack?.()) return;
+              exitPage({ playSound: true });
+            }}
+            onAnimationsToggle={() => handleAnimationsToggle({ playSound: true })}
+          />
+        </div>
       </div>
 
       {shouldRenderPageShell && (
