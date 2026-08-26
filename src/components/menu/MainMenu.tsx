@@ -2086,6 +2086,7 @@ export default function MainMenu({ initialPathname }: MainMenuProps) {
             accentS={activeItem.accentS}
             accentL={activeItem.accentL}
             splashHeightVh={activeItem.splashHeightVh}
+            compactSplashMinHeightVh={activeItem.compactSplashMinHeightVh}
             splashTipExtensionVh={activeItem.splashTipExtensionVh}
             splashOffsetY={activeItem.splashOffsetY}
             splashTipXPct={activeItem.splashTipXPct}

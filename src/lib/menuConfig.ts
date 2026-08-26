@@ -10,6 +10,7 @@ export interface MenuItemConfig {
   accentS: string;
   accentL: string;
   splashHeightVh: number;   // height of the paint splash as % of viewport height
+  compactSplashMinHeightVh?: number;
   splashTipExtensionVh: number;
   splashOffsetY: number;    // vertical fine-tune in vh (positive = down)
   splashTipXPct: number;    // x% where the right edge comes to a point (default 60)
@@ -60,6 +61,7 @@ export const MENU_ITEMS: MenuItemConfig[] = [
     accentS: '72%',
     accentL: '42%',
     splashHeightVh: 51,
+    compactSplashMinHeightVh: 24,
     splashTipExtensionVh: 18,
     splashOffsetY: -1.5,
     splashTipXPct: 60,
@@ -92,6 +94,7 @@ export const MENU_ITEMS: MenuItemConfig[] = [
     accentS: '50%',
     accentL: '40%',
     splashHeightVh: 51,
+    compactSplashMinHeightVh: 24,
     splashTipExtensionVh: 23,
     splashOffsetY: 6,
     splashTipXPct: 60,

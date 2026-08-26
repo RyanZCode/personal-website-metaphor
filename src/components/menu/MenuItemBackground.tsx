@@ -43,6 +43,7 @@ interface MenuItemBackgroundProps {
   accentS: string;
   accentL: string;
   splashHeightVh: number;
+  compactSplashMinHeightVh?: number;
   splashTipExtensionVh: number;
   splashOffsetY: number;
   splashTipXPct: number;
@@ -101,6 +102,7 @@ function MenuItemBackground({
   accentS,
   accentL,
   splashHeightVh,
+  compactSplashMinHeightVh,
   splashTipExtensionVh,
   splashOffsetY,
   splashTipXPct,
@@ -142,7 +144,7 @@ function MenuItemBackground({
     const labelRect = label.getBoundingClientRect();
     const configuredSplashH = splashHeightVh * splashScale * vh;
     const splashH = layoutMode === 'compact'
-      ? Math.min(Math.max(label.offsetHeight * 2.5, 11.5 * vh), 31 * vh)
+      ? Math.min(Math.max(label.offsetHeight * 2.5, (compactSplashMinHeightVh ?? 11.5) * vh), 31 * vh)
       : configuredSplashH;
     const currentWrapY = getRenderedTranslateY(wrap);
     const currentMenuY = getRenderedTranslateY(verticalTarget);
@@ -190,7 +192,7 @@ function MenuItemBackground({
       rotation: rotation * 180 / Math.PI,
       scaleX,
     };
-  }, [itemRefs, itemScale, layoutMode, menuScrollYVh, menuStackRef, selectedIndex, selectedItemOffsetYVh, splashHeightVh, splashOffsetY, splashScale, splashTipExtensionVh, splashTipXPct]);
+  }, [compactSplashMinHeightVh, itemRefs, itemScale, layoutMode, menuScrollYVh, menuStackRef, selectedIndex, selectedItemOffsetYVh, splashHeightVh, splashOffsetY, splashScale, splashTipExtensionVh, splashTipXPct]);
 
   const applyGeometry = useCallback((geometry: SplashGeometry) => {
     const splash = splashRef.current;
