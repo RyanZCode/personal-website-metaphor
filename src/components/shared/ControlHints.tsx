@@ -32,6 +32,7 @@ const baseChipStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: '0.35rem',
+  minHeight: '2.02rem',
 };
 
 const keyStyle: React.CSSProperties = {
@@ -99,7 +100,7 @@ function Chip({
     boxShadow: 'none',
     padding: isBackChip ? '0.45rem 1.8rem 0.45rem 1.55rem' : baseChipStyle.padding,
     gap: isBackChip ? '0.45rem' : baseChipStyle.gap,
-    minHeight: isBackChip ? '2.55rem' : undefined,
+    minHeight: isBackChip ? '2.55rem' : baseChipStyle.minHeight,
   };
   const icon = isBackChip && !keys ? (
     <span
