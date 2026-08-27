@@ -410,7 +410,11 @@ export default function MemorandumPage({
     ? `hsl(${memorandumItem.accentH} ${memorandumItem.accentS} ${memorandumItem.accentL} / 0.33)`
     : 'hsl(120 50% 40% / 0.33)';
   const viewedPct = memorandumData.totalEntries > 0 ? Math.round((readEntryIds.length / memorandumData.totalEntries) * 100) : 100;
+  const readSet = new Set(readEntryIds);
   const currentColumn = columns[selectedColumnIndex];
+  const currentColumnHasUnreadEntries = currentColumn.entries.some(
+    (entry) => !readSet.has(entry.id)
+  );
   const currentEntryIndex = selectedEntryIndices[selectedColumnIndex] ?? 0;
   const hasEntries = currentColumn.entries.length > 0;
   const detailEntry =
@@ -423,7 +427,6 @@ export default function MemorandumPage({
   const displayedDetailPage = displayedDetailEntry
     ? displayedDetailEntry.pages[displayedDetail?.pageIndex ?? 0] ?? displayedDetailEntry.pages[0]
     : null;
-  const readSet = new Set(readEntryIds);
   const isDetailOpen = Boolean(detailEntryId);
   const hasDisplayedDetail = Boolean(displayedDetailEntry && displayedDetailPage);
   const isInputLocked = isTransitioning || !pageEntryReady;
@@ -1819,6 +1822,47 @@ export default function MemorandumPage({
                   </button>
                 );
               })}
+            </div>
+            <div
+              data-memorandum-compact-tabs
+              role="group"
+              aria-label="Memorandum categories"
+            >
+              <button
+                type="button"
+                aria-label="Previous category"
+                disabled={isInputLocked}
+                onClick={() => {
+                  if (isInputLocked) return;
+                  stepColumn(-1);
+                }}
+              >
+                <svg aria-hidden="true" viewBox="0 0 12 20">
+                  <path d="M10 2 2 10l8 8" />
+                </svg>
+              </button>
+              <div aria-live="polite" aria-atomic="true">
+                <span data-memorandum-compact-tab-count>
+                  {String(selectedColumnIndex + 1).padStart(2, '0')} / {String(columns.length).padStart(2, '0')}
+                </span>
+                <span data-memorandum-compact-tab-label>{currentColumn.label}</span>
+                {currentColumnHasUnreadEntries ? (
+                  <span data-memorandum-compact-tab-unread aria-label="Contains unread entries" />
+                ) : null}
+              </div>
+              <button
+                type="button"
+                aria-label="Next category"
+                disabled={isInputLocked}
+                onClick={() => {
+                  if (isInputLocked) return;
+                  stepColumn(1);
+                }}
+              >
+                <svg aria-hidden="true" viewBox="0 0 12 20">
+                  <path d="m2 2 8 8-8 8" />
+                </svg>
+              </button>
             </div>
             <div
               data-memorandum-tab-step="prev"
