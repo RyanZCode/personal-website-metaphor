@@ -622,10 +622,10 @@ export interface MemorandumTrapData {
   height: string;
   rotation: number;
   driftVw: number;
-  duration: number;
-  delay: number;
   opacity: number;
 }
+
+const MEMORANDUM_TRAPEZOID_CYCLE_SECONDS = 8.4;
 
 // Rotation only - physics x/y is handled separately in the component
 export function createMemorandumRotationTimelines(
@@ -673,7 +673,7 @@ export function createMemorandumTrapezoidTimelines(
       opacity: 0,
     });
 
-    const tl = gsap.timeline({ repeat: -1, delay: trap.delay, paused: true });
+    const tl = gsap.timeline({ repeat: -1, paused: true });
     tl.to(el, {
       opacity: trap.opacity,
       duration: 0.7,
@@ -683,14 +683,14 @@ export function createMemorandumTrapezoidTimelines(
         y: '-128vh',
         x: `${trap.driftVw}vw`,
         rotation: trap.rotation + 10,
-        duration: trap.duration,
+        duration: MEMORANDUM_TRAPEZOID_CYCLE_SECONDS,
         ease: 'none',
       }, 0)
       .to(el, {
         opacity: 0,
         duration: 0.8,
         ease: 'power1.in',
-      }, Math.max(trap.duration - 0.8, 0.1))
+      }, MEMORANDUM_TRAPEZOID_CYCLE_SECONDS - 0.8)
       .set(el, {
         x: 0,
         y: '18vh',
@@ -699,7 +699,7 @@ export function createMemorandumTrapezoidTimelines(
       })
       .to(el, { duration: 0.18 });
 
-    tl.seek((0.3 + Math.random() * 0.4) * tl.duration());
+    tl.progress((i + 0.5) / trapData.length);
     timelines.push(tl);
   });
 

@@ -335,16 +335,17 @@
 }
 
 .menu-root[data-layout-mode='compact'] .profile-card--compact {
-  grid-template-columns: minmax(0, 1fr);
-  width: min(10rem, calc(100vw - 2rem));
-  min-height: 2.75rem;
-  padding: 0.35rem 0.9rem 0.32rem 1.45rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  width: min(17rem, calc(100vw - 0.8rem));
+  min-height: 3rem;
+  padding: 0.48rem 1rem 0.5rem 1.55rem;
   color: rgba(12, 8, 10, 0.9);
   background: rgba(250, 247, 248, 0.96);
 }
 
 .menu-root[data-layout-mode='compact'] .profile-card__compact-copy strong {
-  font-size: clamp(0.68rem, 4.2vw, 1.08rem);
+  font-size: clamp(0.68rem, 4vw, 0.95rem);
   letter-spacing: 0.025em;
 }
 
@@ -354,7 +355,18 @@
 }
 
 .menu-root[data-layout-mode='compact'] .profile-card__compact-location {
-  display: none;
+  display: block;
+  font-size: clamp(0.34rem, 1.65vw, 0.48rem);
+}
+
+@media (max-width: 240px) {
+  .menu-root[data-layout-mode='compact'] .profile-card--compact {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .menu-root[data-layout-mode='compact'] .profile-card__compact-location {
+    display: none;
+  }
 }
 
 .menu-root[data-layout-mode='compact'] [data-control-hints] {
